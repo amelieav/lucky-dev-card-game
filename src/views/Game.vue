@@ -144,6 +144,15 @@
 
           <p class="mt-2 text-sm"><span class="font-semibold">Current:</span> {{ upgrade.currentEffect }}</p>
           <p class="text-sm text-muted"><span class="font-semibold text-main">Next:</span> {{ upgrade.nextEffect || 'Maxed' }}</p>
+          <div v-if="upgrade.key === 'tier_boost'" class="mt-2 rounded-lg border border-soft bg-white/70 p-2 text-xs text-muted">
+            <p><span class="font-semibold text-main">Effective now:</span> {{ upgrade.tierOddsNow }}</p>
+            <p v-if="upgrade.tierOddsAfterBuy"><span class="font-semibold text-main">After buy:</span> {{ upgrade.tierOddsAfterBuy }}</p>
+            <p v-if="upgrade.tierOddsUnchangedNextLevel">
+              No immediate odds change at next level.
+              <span v-if="upgrade.nextTierOddsChangeLevel">Next odds shift at Tier Boost Lv {{ upgrade.nextTierOddsChangeLevel }}.</span>
+            </p>
+            <p class="mt-1">This directly updates the Pack Odds tier panel.</p>
+          </div>
 
           <div class="mt-3 flex items-center justify-between">
             <p class="text-sm font-semibold">{{ upgrade.cost == null ? 'MAX' : `${formatNumber(upgrade.cost)} coins` }}</p>
@@ -227,6 +236,7 @@ import {
   getAutoOpensPerSecond,
   getEffectiveTierWeights,
   getMutationWeights,
+  getNextTierOddsChangeLevel,
   getProgressToNextTier,
   getRarityWeightsForTier,
   getUpgradeCost,
@@ -359,13 +369,30 @@ const shopRows = computed(() => {
   return SHOP_UPGRADES.map((upgrade) => {
     const preview = getUpgradePreview(state, upgrade.key)
     const cost = getUpgradeCost(state, upgrade.key)
-
-    return {
+    const baseRow = {
       ...upgrade,
       cost,
       currentEffect: preview.current,
       nextEffect: preview.next,
       canBuy: canBuyUpgrade(state, upgrade.key),
+    }
+
+    if (upgrade.key !== 'tier_boost') {
+      return baseRow
+    }
+
+    const currentLevel = Math.max(0, Number(state.tier_boost_level || 0))
+    const nextLevel = currentLevel + 1
+    const currentTierWeights = getEffectiveTierWeights({ ...state, tier_boost_level: currentLevel })
+    const nextTierWeights = getEffectiveTierWeights({ ...state, tier_boost_level: nextLevel })
+    const unchanged = areTierWeightsEqual(currentTierWeights, nextTierWeights)
+
+    return {
+      ...baseRow,
+      tierOddsNow: formatTierOdds(currentTierWeights),
+      tierOddsAfterBuy: cost == null ? null : formatTierOdds(nextTierWeights),
+      tierOddsUnchangedNextLevel: cost != null && unchanged,
+      nextTierOddsChangeLevel: getNextTierOddsChangeLevel(currentLevel),
     }
   })
 })
@@ -475,5 +502,21 @@ function cardMutationStyle(mutation) {
 
 function rarityColor(rarity) {
   return RARITY_COLORS[rarity] || 'var(--rarity-common)'
+}
+
+function areTierWeightsEqual(a, b) {
+  for (const tier of [1, 2, 3, 4, 5, 6]) {
+    if (Math.abs(Number(a?.[tier] || 0) - Number(b?.[tier] || 0)) > 0.0001) {
+      return false
+    }
+  }
+  return true
+}
+
+function formatTierOdds(weights) {
+  return [1, 2, 3, 4, 5, 6]
+    .filter((tier) => Number(weights?.[tier] || 0) > 0)
+    .map((tier) => `${packName(tier)} ${Number(weights[tier]).toFixed(1)}%`)
+    .join(' · ')
 }
 </script>

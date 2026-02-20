@@ -93,6 +93,15 @@ export function getBaseTierWeightsForBoostLevel(tierBoostLevel) {
   return normalizeWeightMap(base)
 }
 
+function tierWeightsEqual(a, b) {
+  for (const tier of TIERS) {
+    if (Math.abs(Number(a?.[tier] || 0) - Number(b?.[tier] || 0)) > 0.0001) {
+      return false
+    }
+  }
+  return true
+}
+
 export function getHighestUnlockedTier(stateLike) {
   const packsOpened = Math.max(0, Number(stateLike?.packs_opened ?? stateLike?.eggs_opened ?? 0))
   const tierBoostLevel = Math.max(0, Number(stateLike?.tier_boost_level || 0))
@@ -151,6 +160,20 @@ export function getEffectiveTierWeights(stateLike) {
   }
 
   return full
+}
+
+export function getNextTierOddsChangeLevel(currentTierBoostLevel) {
+  const currentLevel = Math.max(0, Number(currentTierBoostLevel || 0))
+  const current = getBaseTierWeightsForBoostLevel(currentLevel)
+
+  for (let level = currentLevel + 1; level <= BALANCE_CONFIG.upgradeCaps.tier_boost; level += 1) {
+    const next = getBaseTierWeightsForBoostLevel(level)
+    if (!tierWeightsEqual(current, next)) {
+      return level
+    }
+  }
+
+  return null
 }
 
 export function getProgressToNextTier(stateLike) {

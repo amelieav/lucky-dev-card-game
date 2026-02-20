@@ -9,6 +9,7 @@ export {
   getHighestUnlockedTier,
   getProgressToNextTier,
   getEffectiveTierWeights,
+  getNextTierOddsChangeLevel,
   getBaseTierWeightsForBoostLevel,
   getRarityWeightsForTier,
   getMutationWeights,
