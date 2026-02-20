@@ -1,9 +1,137 @@
-@import url('./assets/netflix-sans/style.css');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-main: #f6f8ff;
+  --bg-panel: #ffffff;
+  --bg-panel-strong: #eef2ff;
+  --brand-main: #3f62d9;
+  --brand-main-soft: #dbe5ff;
+  --text-main: #18223b;
+  --text-muted: #5f6f93;
+  --border-soft: #d9e1f5;
+  --rarity-common: #6f7d95;
+  --rarity-rare: #2d84ea;
+  --rarity-epic: #8c4fd2;
+  --rarity-legendary: #d28e22;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
+  margin: 0;
   min-width: 320px;
+  font-family: 'Segoe UI', 'Avenir Next', 'Helvetica Neue', Arial, sans-serif;
+  color: var(--text-main);
+  background: radial-gradient(circle at 10% 20%, #ebf0ff, transparent 45%),
+    radial-gradient(circle at 90% 5%, #dff9f3, transparent 40%),
+    var(--bg-main);
+}
+
+.bg-orb {
+  pointer-events: none;
+  position: fixed;
+  z-index: 0;
+  border-radius: 9999px;
+  filter: blur(56px);
+  opacity: 0.7;
+}
+
+.bg-orb-a {
+  width: 260px;
+  height: 260px;
+  background: #bdd3ff;
+  left: -60px;
+  top: 120px;
+}
+
+.bg-orb-b {
+  width: 280px;
+  height: 280px;
+  background: #caefe3;
+  right: -80px;
+  top: 40px;
+}
+
+.card {
+  border-radius: 1rem;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-panel);
+  box-shadow: 0 10px 30px rgba(31, 56, 128, 0.07);
+}
+
+.text-main {
+  color: var(--text-main);
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+
+.border-soft {
+  border-color: var(--border-soft);
+}
+
+.bg-panel {
+  background: var(--bg-panel);
+}
+
+.bg-panel-soft {
+  background: var(--bg-panel-strong);
+}
+
+.bg-main {
+  background: var(--bg-main);
+}
+
+.brand-bg {
+  background: var(--brand-main);
+}
+
+.btn-primary {
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  background: var(--brand-main);
+  color: #fff;
+  padding: 0.6rem 0.95rem;
+  font-weight: 600;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  border-radius: 0.7rem;
+  border: 1px solid var(--border-soft);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-soft);
+  background: #fff;
+  padding: 0.65rem 0.75rem;
+  color: var(--text-main);
+}
+
+.form-input:focus,
+.form-select:focus {
+  border-color: #8ca8eb;
+  box-shadow: 0 0 0 2px rgba(128, 155, 235, 0.2);
+  outline: 0;
 }

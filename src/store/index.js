@@ -1,14 +1,14 @@
 import { createStore } from 'vuex'
-import getters from './getters'
-import mutations from './mutations'
-import actions from './actions'
-import state from './state'
+import auth from './modules/auth'
+import game from './modules/game'
+import leaderboard from './modules/leaderboard'
+import debug from './modules/debug'
 
-const store = createStore({
-  state: state,
-  getters: getters,
-  mutations: mutations,
-  actions: actions,
+export default createStore({
+  modules: {
+    auth,
+    game,
+    leaderboard,
+    debug,
+  },
 })
-
-export default store
