@@ -158,10 +158,19 @@
           v-for="item in cards"
           :key="item.termKey"
           class="rounded-xl border border-soft bg-white p-4"
+          :style="cardMutationStyle(item.bestMutation)"
         >
           <div class="flex items-start justify-between gap-3">
             <h3 class="text-sm font-semibold">{{ item.name }}</h3>
-            <span class="rounded-full px-2 py-0.5 text-xs text-white" :style="{ background: rarityColor(item.rarity) }">{{ item.rarity }}</span>
+            <div class="flex items-center gap-1.5">
+              <span
+                class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                :style="mutationBadgeStyle(item.bestMutation)"
+              >
+                {{ mutationLabel(item.bestMutation) }}
+              </span>
+              <span class="rounded-full px-2 py-0.5 text-xs text-white" :style="{ background: rarityColor(item.rarity) }">{{ item.rarity }}</span>
+            </div>
           </div>
 
           <p class="mt-1 text-xs text-muted">{{ packName(item.tier) }}</p>
@@ -213,6 +222,44 @@ import {
 } from '../lib/packLogic.mjs'
 
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY !== '0'
+const MUTATION_ORDER = ['none', 'foil', 'holo', 'glitched', 'prismatic']
+const MUTATION_STYLE_MAP = {
+  none: {
+    badgeText: '#5f6f93',
+    badgeBg: 'rgba(95, 111, 147, 0.1)',
+    badgeBorder: 'rgba(95, 111, 147, 0.24)',
+    cardBorder: 'var(--border-soft)',
+    cardBg: 'linear-gradient(140deg, rgba(255,255,255,1), rgba(255,255,255,1))',
+  },
+  foil: {
+    badgeText: '#1b5fb8',
+    badgeBg: 'rgba(64, 150, 246, 0.14)',
+    badgeBorder: 'rgba(64, 150, 246, 0.35)',
+    cardBorder: 'rgba(64, 150, 246, 0.3)',
+    cardBg: 'linear-gradient(140deg, rgba(64,150,246,0.08), rgba(255,255,255,1) 55%)',
+  },
+  holo: {
+    badgeText: '#1f7f89',
+    badgeBg: 'rgba(53, 189, 206, 0.14)',
+    badgeBorder: 'rgba(53, 189, 206, 0.35)',
+    cardBorder: 'rgba(53, 189, 206, 0.33)',
+    cardBg: 'linear-gradient(140deg, rgba(53,189,206,0.08), rgba(255,255,255,1) 55%)',
+  },
+  glitched: {
+    badgeText: '#6d31bf',
+    badgeBg: 'rgba(145, 70, 245, 0.14)',
+    badgeBorder: 'rgba(145, 70, 245, 0.35)',
+    cardBorder: 'rgba(145, 70, 245, 0.35)',
+    cardBg: 'linear-gradient(140deg, rgba(145,70,245,0.09), rgba(255,255,255,1) 55%)',
+  },
+  prismatic: {
+    badgeText: '#9e4f10',
+    badgeBg: 'rgba(236, 146, 56, 0.16)',
+    badgeBorder: 'rgba(236, 146, 56, 0.4)',
+    cardBorder: 'rgba(236, 146, 56, 0.42)',
+    cardBg: 'linear-gradient(140deg, rgba(236,146,56,0.12), rgba(255,255,255,1) 55%)',
+  },
+}
 
 const store = useStore()
 const nowMs = ref(Date.now())
@@ -276,6 +323,7 @@ const cards = computed(() => {
         rarity: term.rarity,
         copies: Number(row.copies || 0),
         level: Number(row.level || 1),
+        bestMutation: normalizeMutation(row.best_mutation || 'none'),
       }
     })
     .filter(Boolean)
@@ -372,6 +420,38 @@ function percent(value) {
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString()
+}
+
+function normalizeMutation(mutation) {
+  const key = String(mutation || '').trim().toLowerCase()
+  return MUTATION_ORDER.includes(key) ? key : 'none'
+}
+
+function mutationLabel(mutation) {
+  const normalized = normalizeMutation(mutation)
+  if (normalized === 'none') return 'Base'
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
+function mutationStyle(mutation) {
+  return MUTATION_STYLE_MAP[normalizeMutation(mutation)] || MUTATION_STYLE_MAP.none
+}
+
+function mutationBadgeStyle(mutation) {
+  const style = mutationStyle(mutation)
+  return {
+    color: style.badgeText,
+    backgroundColor: style.badgeBg,
+    border: `1px solid ${style.badgeBorder}`,
+  }
+}
+
+function cardMutationStyle(mutation) {
+  const style = mutationStyle(mutation)
+  return {
+    borderColor: style.cardBorder,
+    background: style.cardBg,
+  }
 }
 
 function rarityColor(rarity) {

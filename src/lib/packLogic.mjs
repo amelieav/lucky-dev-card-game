@@ -3,6 +3,13 @@ import { BALANCE_CONFIG } from './balanceConfig.mjs'
 export const TIERS = [1, 2, 3, 4, 5, 6]
 export const RARITIES = ['common', 'rare', 'epic', 'legendary']
 export const MUTATIONS = ['none', 'foil', 'holo', 'glitched', 'prismatic']
+export const MUTATION_RANK = {
+  none: 0,
+  foil: 1,
+  holo: 2,
+  glitched: 3,
+  prismatic: 4,
+}
 export const PACK_NAMES_BY_TIER = BALANCE_CONFIG.packTierNames
 
 export const SHOP_UPGRADES = [
@@ -257,6 +264,21 @@ export function pickFromWeightedMap(weights, rng = Math.random) {
   }
 
   return entries[entries.length - 1][0]
+}
+
+export function normalizeMutation(mutation) {
+  const key = String(mutation || '').trim().toLowerCase()
+  return MUTATIONS.includes(key) ? key : 'none'
+}
+
+export function mutationRank(mutation) {
+  return Number(MUTATION_RANK[normalizeMutation(mutation)] || 0)
+}
+
+export function bestMutation(previousMutation, nextMutation) {
+  return mutationRank(nextMutation) > mutationRank(previousMutation)
+    ? normalizeMutation(nextMutation)
+    : normalizeMutation(previousMutation)
 }
 
 export function getValueMultiplier(valueLevel = 0) {

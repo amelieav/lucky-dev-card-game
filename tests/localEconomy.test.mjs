@@ -66,6 +66,37 @@ test('duplicates increase copies and level', () => {
   assert.equal(row?.level, 2)
 })
 
+test('collection tracks highest mutation received per card', () => {
+  const account = user('pack-best-mutation')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 1, term_key: 'if_statement', rarity: 'common', mutation: 'foil' },
+    nowMs: 1_000,
+  })
+
+  openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 1, term_key: 'if_statement', rarity: 'common', mutation: 'none' },
+    nowMs: 2_000,
+  })
+
+  openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 1, term_key: 'if_statement', rarity: 'common', mutation: 'prismatic' },
+    nowMs: 3_000,
+  })
+
+  const snapshot = bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 4_000 })
+  const row = snapshot.terms.find((term) => term.term_key === 'if_statement')
+
+  assert.equal(row?.best_mutation, 'prismatic')
+})
+
 test('auto opener applies draws during sync ticks', () => {
   const account = user('pack-auto')
   bootstrapLocalPlayer(account, { nowMs: 0 })

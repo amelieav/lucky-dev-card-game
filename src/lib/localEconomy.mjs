@@ -5,6 +5,7 @@ import {
   MUTATIONS,
   RARITIES,
   applyUpgrade,
+  bestMutation,
   canBuyUpgrade,
   computeCardReward,
   getAutoOpensPerSecond,
@@ -12,6 +13,7 @@ import {
   getHighestUnlockedTier,
   getMutationWeights,
   getRarityWeightsForTier,
+  normalizeMutation,
   pickFromWeightedMap,
 } from './packLogic.mjs'
 
@@ -135,6 +137,7 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
   merged.value_level = Math.max(0, Number(merged.value_level || 0))
   merged.coins = Math.max(0, Number(merged.coins || 0))
   merged.auto_unlocked = Boolean(merged.auto_unlocked)
+  merged.terms = merged.terms.map((row) => sanitizeTermRow(row))
   merged.highest_tier_unlocked = getHighestUnlockedTier(merged)
 
   return merged
@@ -173,8 +176,18 @@ function writeRecord(user, record) {
   writeRawValue(storageKey(user.id), JSON.stringify(record))
 }
 
+function sanitizeTermRow(row) {
+  return {
+    ...row,
+    term_key: String(row?.term_key || ''),
+    copies: Math.max(0, Number(row?.copies || 0)),
+    level: Math.max(1, Number(row?.level || 1)),
+    best_mutation: normalizeMutation(row?.best_mutation || row?.bestMutation || 'none'),
+  }
+}
+
 function sortTerms(terms) {
-  return [...terms].sort((a, b) => {
+  return terms.map((row) => sanitizeTermRow(row)).sort((a, b) => {
     if (b.level !== a.level) return b.level - a.level
     if (b.copies !== a.copies) return b.copies - a.copies
     return a.term_key.localeCompare(b.term_key)
@@ -233,9 +246,10 @@ function randomTermByPool(drawTier, rarity, rng = Math.random) {
   return null
 }
 
-function upsertTerm(record, termKey, copiesToAdd = 1, nowMs = Date.now()) {
+function upsertTerm(record, termKey, { copiesToAdd = 1, mutation = 'none' } = {}, nowMs = Date.now()) {
   const idx = record.terms.findIndex((term) => term.term_key === termKey)
   const timestamp = nowIso(nowMs)
+  const normalizedMutation = normalizeMutation(mutation)
 
   if (idx === -1) {
     const copies = Math.max(1, Number(copiesToAdd || 1))
@@ -243,16 +257,19 @@ function upsertTerm(record, termKey, copiesToAdd = 1, nowMs = Date.now()) {
       term_key: termKey,
       copies,
       level: calcLevel(copies),
+      best_mutation: normalizedMutation,
       updated_at: timestamp,
     })
     return
   }
 
   const nextCopies = Number(record.terms[idx].copies || 0) + Math.max(1, Number(copiesToAdd || 1))
+  const previousBestMutation = normalizeMutation(record.terms[idx].best_mutation || 'none')
   record.terms[idx] = {
     ...record.terms[idx],
     copies: nextCopies,
     level: calcLevel(nextCopies),
+    best_mutation: bestMutation(previousBestMutation, normalizedMutation),
     updated_at: timestamp,
   }
 }
@@ -367,7 +384,7 @@ function applySinglePackOpen(
     record.manual_opens += 1
   }
 
-  upsertTerm(record, chosenTerm, 1, nowMs)
+  upsertTerm(record, chosenTerm, { copiesToAdd: 1, mutation: chosenMutation }, nowMs)
   record.highest_tier_unlocked = getHighestUnlockedTier(record)
   record.updated_at = nowIso(nowMs)
 
@@ -382,6 +399,7 @@ function applySinglePackOpen(
     reward,
     copies: termRow?.copies || 1,
     level: termRow?.level || 1,
+    best_mutation: normalizeMutation(termRow?.best_mutation || chosenMutation),
     source,
     debug_applied: Boolean(debugApplied || forced),
   }
@@ -610,7 +628,10 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
     if (!TERMS_BY_KEY[action.term_key]) {
       throw new Error(`Unknown term key: ${action.term_key || ''}`)
     }
-    upsertTerm(record, action.term_key, Math.max(1, Number(action.copies || 1)), nowMs)
+    upsertTerm(record, action.term_key, {
+      copiesToAdd: Math.max(1, Number(action.copies || 1)),
+      mutation: action.best_mutation || action.mutation || 'none',
+    }, nowMs)
   } else if (actionType === 'set_next_reward') {
     validateDebugOverride(action)
     const { type: _omit, ...nextReward } = action
