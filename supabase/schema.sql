@@ -56,6 +56,88 @@ create table if not exists public.player_debug_state (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.term_catalog (
+  term_key text primary key,
+  display_name text not null,
+  tier int not null check (tier between 1 and 6),
+  rarity text not null check (rarity in ('common', 'rare', 'epic', 'legendary')),
+  base_bp int not null check (base_bp >= 0)
+);
+
+insert into public.term_catalog (term_key, display_name, tier, rarity, base_bp)
+values
+  ('if_statement', 'If Statement', 1, 'common', 50),
+  ('else_elif', 'Else / Elif', 1, 'common', 55),
+  ('for_loop', 'For Loop', 1, 'common', 60),
+  ('while_loop', 'While Loop', 1, 'common', 65),
+  ('variables', 'Variables', 1, 'common', 70),
+  ('constants', 'Constants', 1, 'rare', 75),
+  ('data_types', 'Data Types', 1, 'rare', 80),
+  ('operators', 'Operators', 1, 'rare', 85),
+  ('functions', 'Functions', 1, 'epic', 90),
+  ('return_values', 'Return Values', 1, 'epic', 95),
+
+  ('arrays', 'Arrays', 2, 'common', 90),
+  ('objects', 'Objects', 2, 'common', 97),
+  ('maps', 'Maps', 2, 'common', 104),
+  ('sets', 'Sets', 2, 'common', 111),
+  ('string_methods', 'String Methods', 2, 'rare', 118),
+  ('array_methods', 'Array Methods', 2, 'rare', 125),
+  ('scope', 'Scope', 2, 'rare', 132),
+  ('closures', 'Closures', 2, 'rare', 139),
+  ('recursion', 'Recursion', 2, 'epic', 146),
+  ('modules', 'Modules', 2, 'epic', 153),
+
+  ('callbacks', 'Callbacks', 3, 'common', 140),
+  ('promises', 'Promises', 3, 'common', 149),
+  ('async_await', 'Async/Await', 3, 'common', 158),
+  ('event_loop', 'Event Loop', 3, 'rare', 167),
+  ('http_basics', 'HTTP Basics', 3, 'rare', 176),
+  ('rest_apis', 'REST APIs', 3, 'rare', 185),
+  ('api_contracts', 'API Contracts', 3, 'rare', 194),
+  ('state_management', 'State Management', 3, 'epic', 203),
+  ('caching_basics', 'Caching Basics', 3, 'epic', 212),
+  ('error_handling', 'Error Handling', 3, 'legendary', 221),
+
+  ('git_workflow', 'Git Workflow', 4, 'rare', 210),
+  ('branching_strategy', 'Branching Strategy', 4, 'rare', 221),
+  ('pull_requests', 'Pull Requests', 4, 'rare', 232),
+  ('unit_testing', 'Unit Testing', 4, 'rare', 243),
+  ('integration_testing', 'Integration Testing', 4, 'epic', 254),
+  ('ci_pipelines', 'CI Pipelines', 4, 'epic', 265),
+  ('cd_pipelines', 'CD Pipelines', 4, 'epic', 276),
+  ('docker_basics', 'Docker Basics', 4, 'epic', 287),
+  ('observability', 'Observability', 4, 'legendary', 298),
+  ('performance_profiling', 'Performance Profiling', 4, 'legendary', 309),
+
+  ('gradient_descent', 'Gradient Descent', 5, 'rare', 300),
+  ('backpropagation', 'Backpropagation', 5, 'rare', 314),
+  ('activation_functions', 'Activation Functions', 5, 'epic', 328),
+  ('loss_functions', 'Loss Functions', 5, 'epic', 342),
+  ('optimizers', 'Optimizers (SGD/Adam)', 5, 'epic', 356),
+  ('regularization', 'Regularization', 5, 'epic', 370),
+  ('cnns', 'CNNs', 5, 'epic', 384),
+  ('rnns_lstms', 'RNNs/LSTMs', 5, 'legendary', 398),
+  ('attention', 'Attention', 5, 'legendary', 412),
+  ('transformers', 'Transformers', 5, 'legendary', 426),
+
+  ('tool_calling', 'Tool Calling', 6, 'epic', 420),
+  ('function_routing', 'Function Routing', 6, 'epic', 438),
+  ('planner_executor_agents', 'Planner-Executor Agents', 6, 'epic', 456),
+  ('multi_agent_coordination', 'Multi-Agent Coordination', 6, 'epic', 474),
+  ('reflection_loops', 'Reflection Loops', 6, 'legendary', 492),
+  ('agent_memory_architectures', 'Agent Memory Architectures', 6, 'legendary', 510),
+  ('rag_pipelines', 'RAG Pipelines', 6, 'legendary', 528),
+  ('agent_guardrails', 'Agent Guardrails', 6, 'legendary', 546),
+  ('agent_evaluation_harnesses', 'Agent Evaluation Harnesses', 6, 'legendary', 564),
+  ('autonomous_task_decomposition', 'Autonomous Task Decomposition', 6, 'legendary', 582)
+on conflict (term_key) do update
+set
+  display_name = excluded.display_name,
+  tier = excluded.tier,
+  rarity = excluded.rarity,
+  base_bp = excluded.base_bp;
+
 drop trigger if exists player_state_updated_at on public.player_state;
 create trigger player_state_updated_at
 before update on public.player_state
@@ -143,134 +225,41 @@ returns text[]
 language sql
 stable
 as $$
-  select array[
-    'if_statement','for_loop','variable_scope','function_args','array_methods',
-    'objects','recursion','async_await','api_contracts','state_management',
-    'git_workflow','unit_testing','ci_cd','docker','observability',
-    'data_prep','feature_engineering','model_training','model_eval','overfitting_control',
-    'prompt_engineering','rag','function_calling','agent_memory','multi_agent',
-    'neural_networks','transformers','reinforcement_learning','diffusion_models','distributed_training'
-  ];
+  select coalesce(array_agg(tc.term_key order by tc.tier asc, tc.term_key asc), '{}')
+  from public.term_catalog tc;
 $$;
 
 create or replace function public.term_rarity(term_key text)
 returns text
 language sql
-immutable
+stable
 as $$
-  select case term_key
-    when 'if_statement' then 'common'
-    when 'for_loop' then 'common'
-    when 'variable_scope' then 'common'
-    when 'function_args' then 'rare'
-    when 'array_methods' then 'rare'
-    when 'objects' then 'common'
-    when 'recursion' then 'rare'
-    when 'async_await' then 'rare'
-    when 'api_contracts' then 'epic'
-    when 'state_management' then 'epic'
-    when 'git_workflow' then 'common'
-    when 'unit_testing' then 'rare'
-    when 'ci_cd' then 'epic'
-    when 'docker' then 'epic'
-    when 'observability' then 'legendary'
-    when 'data_prep' then 'rare'
-    when 'feature_engineering' then 'epic'
-    when 'model_training' then 'epic'
-    when 'model_eval' then 'legendary'
-    when 'overfitting_control' then 'legendary'
-    when 'prompt_engineering' then 'rare'
-    when 'rag' then 'epic'
-    when 'function_calling' then 'epic'
-    when 'agent_memory' then 'legendary'
-    when 'multi_agent' then 'legendary'
-    when 'neural_networks' then 'epic'
-    when 'transformers' then 'legendary'
-    when 'reinforcement_learning' then 'legendary'
-    when 'diffusion_models' then 'legendary'
-    when 'distributed_training' then 'legendary'
-    else 'common'
-  end;
+  select coalesce(
+    (select tc.rarity from public.term_catalog tc where tc.term_key = $1),
+    'common'
+  );
 $$;
 
 create or replace function public.term_display_name(term_key text)
 returns text
 language sql
-immutable
+stable
 as $$
-  select case term_key
-    when 'if_statement' then 'If Statement'
-    when 'for_loop' then 'For Loop'
-    when 'variable_scope' then 'Variable Scope'
-    when 'function_args' then 'Function Args'
-    when 'array_methods' then 'Array Methods'
-    when 'objects' then 'Objects'
-    when 'recursion' then 'Recursion'
-    when 'async_await' then 'Async/Await'
-    when 'api_contracts' then 'API Contracts'
-    when 'state_management' then 'State Management'
-    when 'git_workflow' then 'Git Workflow'
-    when 'unit_testing' then 'Unit Testing'
-    when 'ci_cd' then 'CI/CD'
-    when 'docker' then 'Docker'
-    when 'observability' then 'Observability'
-    when 'data_prep' then 'Data Preprocessing'
-    when 'feature_engineering' then 'Feature Engineering'
-    when 'model_training' then 'Model Training'
-    when 'model_eval' then 'Model Evaluation'
-    when 'overfitting_control' then 'Overfitting Control'
-    when 'prompt_engineering' then 'Prompt Engineering'
-    when 'rag' then 'RAG'
-    when 'function_calling' then 'Function Calling'
-    when 'agent_memory' then 'Agent Memory'
-    when 'multi_agent' then 'Multi-Agent Systems'
-    when 'neural_networks' then 'Neural Networks'
-    when 'transformers' then 'Transformers'
-    when 'reinforcement_learning' then 'Reinforcement Learning'
-    when 'diffusion_models' then 'Diffusion Models'
-    when 'distributed_training' then 'Distributed Training'
-    else term_key
-  end;
+  select coalesce(
+    (select tc.display_name from public.term_catalog tc where tc.term_key = $1),
+    $1
+  );
 $$;
 
 create or replace function public.term_base_bp(term_key text)
 returns int
 language sql
-immutable
+stable
 as $$
-  select case term_key
-    when 'if_statement' then 55
-    when 'for_loop' then 58
-    when 'variable_scope' then 52
-    when 'function_args' then 66
-    when 'array_methods' then 72
-    when 'objects' then 70
-    when 'recursion' then 86
-    when 'async_await' then 96
-    when 'api_contracts' then 112
-    when 'state_management' then 120
-    when 'git_workflow' then 92
-    when 'unit_testing' then 110
-    when 'ci_cd' then 142
-    when 'docker' then 150
-    when 'observability' then 178
-    when 'data_prep' then 132
-    when 'feature_engineering' then 168
-    when 'model_training' then 182
-    when 'model_eval' then 210
-    when 'overfitting_control' then 220
-    when 'prompt_engineering' then 160
-    when 'rag' then 214
-    when 'function_calling' then 228
-    when 'agent_memory' then 264
-    when 'multi_agent' then 282
-    when 'neural_networks' then 240
-    when 'transformers' then 310
-    when 'reinforcement_learning' then 330
-    when 'diffusion_models' then 355
-    when 'distributed_training' then 380
-    else 0
-  end;
+  select coalesce(
+    (select tc.base_bp from public.term_catalog tc where tc.term_key = $1),
+    0
+  );
 $$;
 
 create or replace function public.luck_upgrade_cost(level int)
@@ -292,6 +281,7 @@ as $$
     when 3 then 450
     when 4 then 1800
     when 5 then 6200
+    when 6 then 22000
     else null
   end;
 $$;
@@ -302,12 +292,56 @@ language sql
 immutable
 as $$
   select case
-    when total_eggs_opened >= 95 then 5
-    when total_eggs_opened >= 55 then 4
+    when total_eggs_opened >= 100 then 6
+    when total_eggs_opened >= 70 then 5
+    when total_eggs_opened >= 45 then 4
     when total_eggs_opened >= 25 then 3
-    when total_eggs_opened >= 8 then 2
+    when total_eggs_opened >= 10 then 2
     else 1
   end;
+$$;
+
+create or replace function public.pick_mixed_tier(total_eggs_opened int)
+returns int
+language plpgsql
+volatile
+as $$
+declare
+  highest int;
+  roll numeric;
+begin
+  highest := public.max_unlocked_tier(total_eggs_opened);
+  roll := random() * 100;
+
+  if highest = 1 then
+    return 1;
+  elsif highest = 2 then
+    if roll < 85 then return 1; end if;
+    return 2;
+  elsif highest = 3 then
+    if roll < 70 then return 1; end if;
+    if roll < 90 then return 2; end if;
+    return 3;
+  elsif highest = 4 then
+    if roll < 58 then return 1; end if;
+    if roll < 80 then return 2; end if;
+    if roll < 93 then return 3; end if;
+    return 4;
+  elsif highest = 5 then
+    if roll < 46 then return 1; end if;
+    if roll < 68 then return 2; end if;
+    if roll < 84 then return 3; end if;
+    if roll < 94 then return 4; end if;
+    return 5;
+  else
+    if roll < 38 then return 1; end if;
+    if roll < 59 then return 2; end if;
+    if roll < 75 then return 3; end if;
+    if roll < 87 then return 4; end if;
+    if roll < 95 then return 5; end if;
+    return 6;
+  end if;
+end;
 $$;
 
 create or replace function public.calc_level(copies int)
@@ -488,15 +522,17 @@ declare
 begin
   case p_egg_tier
     when 1 then
-      common_w := 80; rare_w := 18; epic_w := 2; legendary_w := 0;
+      common_w := 76; rare_w := 20; epic_w := 4; legendary_w := 0;
     when 2 then
-      common_w := 65; rare_w := 25; epic_w := 9; legendary_w := 1;
+      common_w := 58; rare_w := 30; epic_w := 11; legendary_w := 1;
     when 3 then
-      common_w := 50; rare_w := 30; epic_w := 15; legendary_w := 5;
+      common_w := 46; rare_w := 33; epic_w := 16; legendary_w := 5;
     when 4 then
-      common_w := 35; rare_w := 33; epic_w := 22; legendary_w := 10;
+      common_w := 24; rare_w := 42; epic_w := 24; legendary_w := 10;
+    when 5 then
+      common_w := 8; rare_w := 30; epic_w := 42; legendary_w := 20;
     else
-      common_w := 20; rare_w := 35; epic_w := 30; legendary_w := 15;
+      common_w := 0; rare_w := 8; epic_w := 42; legendary_w := 50;
   end case;
 
   luck_bonus := least(25, greatest(0, p_luck_level));
@@ -521,53 +557,26 @@ language plpgsql
 volatile
 as $$
 declare
-  pool text[];
+  chosen_term text;
 begin
-  if p_egg_tier = 1 then
-    pool := array['if_statement'];
-  elsif p_egg_tier = 2 then
-    if p_rarity = 'common' then
-      pool := array['objects','if_statement','for_loop'];
-    elsif p_rarity = 'rare' then
-      pool := array['recursion','async_await','array_methods'];
-    elsif p_rarity = 'epic' then
-      pool := array['api_contracts','state_management'];
-    else
-      pool := array['api_contracts','state_management'];
-    end if;
-  elsif p_egg_tier = 3 then
-    if p_rarity = 'common' then
-      pool := array['git_workflow','objects'];
-    elsif p_rarity = 'rare' then
-      pool := array['unit_testing','async_await'];
-    elsif p_rarity = 'epic' then
-      pool := array['ci_cd','docker'];
-    else
-      pool := array['observability'];
-    end if;
-  elsif p_egg_tier = 4 then
-    if p_rarity = 'common' then
-      pool := array['git_workflow'];
-    elsif p_rarity = 'rare' then
-      pool := array['data_prep','unit_testing'];
-    elsif p_rarity = 'epic' then
-      pool := array['feature_engineering','model_training','ci_cd'];
-    else
-      pool := array['model_eval','overfitting_control','observability'];
-    end if;
-  else
-    if p_rarity = 'common' then
-      pool := array['data_prep'];
-    elsif p_rarity = 'rare' then
-      pool := array['prompt_engineering','feature_engineering'];
-    elsif p_rarity = 'epic' then
-      pool := array['rag','function_calling','neural_networks'];
-    else
-      pool := array['agent_memory','multi_agent','transformers','reinforcement_learning','diffusion_models','distributed_training'];
-    end if;
+  select tc.term_key
+  into chosen_term
+  from public.term_catalog tc
+  where tc.tier = p_egg_tier
+    and tc.rarity = p_rarity
+  order by random()
+  limit 1;
+
+  if chosen_term is null then
+    select tc.term_key
+    into chosen_term
+    from public.term_catalog tc
+    where tc.tier = p_egg_tier
+    order by random()
+    limit 1;
   end if;
 
-  return pool[1 + floor(random() * array_length(pool, 1))::int];
+  return chosen_term;
 end;
 $$;
 
@@ -615,7 +624,7 @@ begin
     raise exception 'Authentication required';
   end if;
 
-  if p_egg_tier < 1 or p_egg_tier > 5 then
+  if p_egg_tier < 1 or p_egg_tier > 6 then
     raise exception 'Invalid egg tier';
   end if;
 
@@ -668,6 +677,8 @@ begin
       draw_tier := coalesce((debug_next_reward ->> 'tier')::int, p_egg_tier);
       update public.player_debug_state set next_reward = null where user_id = uid;
       debug_applied := true;
+    elsif p_egg_tier = 1 then
+      draw_tier := public.pick_mixed_tier(state_row.eggs_opened);
     end if;
   end if;
 

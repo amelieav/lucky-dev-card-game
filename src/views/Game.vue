@@ -12,6 +12,23 @@
         </div>
       </div>
 
+      <div class="mt-3 rounded-xl border border-soft bg-panel-soft p-3 text-xs text-muted">
+        <p>
+          Tier {{ progression.highestTier }} unlocked.
+          <span v-if="progression.nextTier">
+            Tier {{ progression.nextTier }} unlocks at {{ progression.nextThreshold }} hatches
+            ({{ progression.remaining }} remaining).
+          </span>
+          <span v-else>Max tier unlocked.</span>
+        </p>
+        <p class="mt-1">
+          Current hatch mix:
+          <span v-for="tier in Object.keys(currentMixWeights)" :key="tier" class="mr-2">
+            T{{ tier }} {{ currentMixWeights[tier] }}%
+          </span>
+        </p>
+      </div>
+
       <div v-if="codeChicks.length === 0" class="mt-3 rounded-xl border border-dashed border-soft p-3 text-sm text-muted">
         No code-chicks yet. Buy and hatch your first egg.
       </div>
@@ -23,7 +40,7 @@
           class="min-w-[220px] rounded-xl border border-soft bg-panel-soft p-3"
         >
           <p class="text-sm font-semibold">{{ chick.name }}</p>
-          <p class="text-xs text-muted">Lv {{ chick.level }} · Copies {{ chick.copies }}</p>
+          <p class="text-xs text-muted">Tier {{ chick.tier }} · Lv {{ chick.level }} · Copies {{ chick.copies }}</p>
           <p class="mt-1 text-xs text-muted">+{{ chick.earnPerSec.toFixed(3) }}/sec</p>
         </article>
       </div>
@@ -63,7 +80,7 @@
       >
         <p class="text-xs uppercase tracking-wide text-muted">Hatch Result</p>
         <p class="mt-1 text-base font-semibold">
-          Level {{ lastHatchResult.level }} code-chick:
+          Tier {{ lastHatchResult.tier }} · Level {{ lastHatchResult.level }} code-chick:
           {{ termName(lastHatchResult.term_key) }}
         </p>
         <p class="text-xs text-muted">
@@ -78,6 +95,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useStore } from 'vuex'
 import { TERMS_BY_KEY } from '../data/terms'
+import { MIX_WEIGHTS, getProgressToNextTier } from '../lib/hatchLogic.mjs'
 
 const NORMAL_EGG_TIER = 1
 const NORMAL_EGG_PRICE = 25
@@ -95,6 +113,10 @@ const playerState = computed(() => snapshot.value?.state || null)
 const playerTerms = computed(() => snapshot.value?.terms || [])
 const gameError = computed(() => store.state.game.error)
 const lastSyncMs = computed(() => Number(store.state.game.lastSyncMs || Date.now()))
+const eggsOpened = computed(() => Number(playerState.value?.eggs_opened || 0))
+
+const progression = computed(() => getProgressToNextTier(eggsOpened.value))
+const currentMixWeights = computed(() => MIX_WEIGHTS[progression.value.highestTier] || MIX_WEIGHTS[1])
 
 const projectedCoins = computed(() => {
   const state = playerState.value
@@ -119,6 +141,7 @@ const codeChicks = computed(() => {
       return {
         termKey: row.term_key,
         name: term.name,
+        tier: term.tier,
         level,
         copies: Number(row.copies || 0),
         earnPerSec: (term.baseBp * level) / 10000,
@@ -126,6 +149,7 @@ const codeChicks = computed(() => {
     })
     .filter(Boolean)
     .sort((a, b) => {
+      if (b.tier !== a.tier) return b.tier - a.tier
       if (b.level !== a.level) return b.level - a.level
       return a.name.localeCompare(b.name)
     })
