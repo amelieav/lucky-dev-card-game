@@ -55,44 +55,62 @@
       {{ gameError }}
     </div>
 
-    <section class="card hatch-card p-6 text-center">
-      <p class="text-xs uppercase tracking-wide text-muted">Normal Egg</p>
-      <p class="mt-1 text-sm text-muted">Price: {{ NORMAL_EGG_PRICE }} coins</p>
+    <div class="grid gap-4 lg:grid-cols-3">
+      <section class="card hatch-card p-6 text-center lg:col-span-2">
+        <p class="text-xs uppercase tracking-wide text-muted">Normal Egg</p>
+        <p class="mt-1 text-sm text-muted">Price: {{ NORMAL_EGG_PRICE }} coins</p>
 
-      <div class="egg-shell mx-auto mt-6" :class="{ cracking: hatchPhase === 'cracking' }">
-        <span v-if="hatchPhase === 'revealed'" class="egg-face">🐥</span>
-        <span v-else class="egg-face">🥚</span>
-      </div>
+        <div class="egg-shell mx-auto mt-6" :class="{ cracking: hatchPhase === 'cracking' }">
+          <span v-if="hatchPhase === 'revealed'" class="egg-face">🐥</span>
+          <span v-else class="egg-face">🥚</span>
+        </div>
 
-      <p class="mt-4 text-sm text-muted" v-if="hatchPhase === 'idle'">Buy egg to start hatch.</p>
-      <p class="mt-4 text-sm text-muted" v-else-if="hatchPhase === 'cracking'">Cracking...</p>
-      <p class="mt-4 text-sm text-muted" v-else>Egg hatched.</p>
+        <p class="mt-4 text-sm text-muted" v-if="hatchPhase === 'idle'">Buy egg to start hatch.</p>
+        <p class="mt-4 text-sm text-muted" v-else-if="hatchPhase === 'cracking'">Cracking...</p>
+        <p class="mt-4 text-sm text-muted" v-else>Egg hatched.</p>
 
-      <button
-        class="btn-primary mt-4"
-        type="button"
-        :disabled="isHatching || projectedCoins < NORMAL_EGG_PRICE"
-        @click="buyAndHatch"
-      >
-        <span v-if="projectedCoins < NORMAL_EGG_PRICE">Not enough coins</span>
-        <span v-else-if="isHatching">Hatching...</span>
-        <span v-else>Buy Normal Egg</span>
-      </button>
+        <button
+          class="btn-primary mt-4"
+          type="button"
+          :disabled="isHatching || projectedCoins < NORMAL_EGG_PRICE"
+          @click="buyAndHatch"
+        >
+          <span v-if="projectedCoins < NORMAL_EGG_PRICE">Not enough coins</span>
+          <span v-else-if="isHatching">Hatching...</span>
+          <span v-else>Buy Normal Egg</span>
+        </button>
 
-      <div
-        v-if="lastHatchResult"
-        class="mx-auto mt-4 max-w-md rounded-xl border border-soft bg-panel-soft p-3 text-left"
-      >
-        <p class="text-xs uppercase tracking-wide text-muted">Hatch Result</p>
-        <p class="mt-1 text-base font-semibold">
-          Tier {{ lastHatchResult.tier }} · Level {{ lastHatchResult.level }} code-chick:
-          {{ termName(lastHatchResult.term_key) }}
-        </p>
-        <p class="text-xs text-muted">
-          Copies: {{ lastHatchResult.copies }} · Earning goes up with each duplicate.
-        </p>
-      </div>
-    </section>
+        <div
+          v-if="lastHatchResult"
+          class="mx-auto mt-4 max-w-md rounded-xl border border-soft bg-panel-soft p-3 text-left"
+        >
+          <p class="text-xs uppercase tracking-wide text-muted">Hatch Result</p>
+          <p class="mt-1 text-base font-semibold">
+            Tier {{ lastHatchResult.tier }} · Level {{ lastHatchResult.level }} code-chick:
+            {{ termName(lastHatchResult.term_key) }}
+          </p>
+          <p class="text-xs text-muted">
+            Copies: {{ lastHatchResult.copies }} · Earning goes up with each duplicate.
+          </p>
+        </div>
+      </section>
+
+      <aside class="card p-4 text-sm">
+        <p class="text-xs uppercase tracking-wide text-muted">Hatch Rates</p>
+        <p class="mt-1 text-xs text-muted">Current Normal Egg tier chances</p>
+
+        <div class="mt-3 space-y-2">
+          <div
+            v-for="rate in hatchRates"
+            :key="rate.tier"
+            class="flex items-center justify-between rounded-lg border border-soft bg-panel-soft px-3 py-2"
+          >
+            <span class="font-medium">Tier {{ rate.tier }}</span>
+            <span class="text-muted">{{ rate.percent }}%</span>
+          </div>
+        </div>
+      </aside>
+    </div>
   </section>
 </template>
 
@@ -123,6 +141,11 @@ const eggsOpened = computed(() => Number(playerState.value?.eggs_opened || 0))
 
 const progression = computed(() => getProgressToNextTier(eggsOpened.value))
 const currentMixWeights = computed(() => MIX_WEIGHTS[progression.value.highestTier] || MIX_WEIGHTS[1])
+const hatchRates = computed(() => {
+  return Object.entries(currentMixWeights.value)
+    .map(([tier, percent]) => ({ tier: Number(tier), percent: Number(percent) }))
+    .sort((a, b) => a.tier - b.tier)
+})
 
 const projectedCoins = computed(() => {
   const state = playerState.value
