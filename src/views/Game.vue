@@ -33,16 +33,21 @@
         No code-chicks yet. Buy and hatch your first egg.
       </div>
 
-      <div v-else class="mt-3 flex gap-2 overflow-x-auto pb-1">
-        <article
-          v-for="chick in codeChicks"
-          :key="chick.termKey"
-          class="min-w-[220px] rounded-xl border border-soft bg-panel-soft p-3"
-        >
-          <p class="text-sm font-semibold">{{ chick.name }}</p>
-          <p class="text-xs text-muted">Tier {{ chick.tier }} · Lv {{ chick.level }} · Copies {{ chick.copies }}</p>
-          <p class="mt-1 text-xs text-muted">+{{ chick.earnPerSec.toFixed(3) }}/sec</p>
-        </article>
+      <div v-else class="mt-3 space-y-3">
+        <div v-for="tier in tierOrder" :key="tier" v-show="codeChicksByTier[tier]?.length">
+          <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Tier {{ tier }}</p>
+          <div class="flex gap-2 overflow-x-auto pb-1">
+            <article
+              v-for="chick in codeChicksByTier[tier]"
+              :key="chick.termKey"
+              class="min-w-[220px] rounded-xl border border-soft bg-panel-soft p-3"
+            >
+              <p class="text-sm font-semibold">{{ chick.name }}</p>
+              <p class="text-xs text-muted">Lv {{ chick.level }} · Copies {{ chick.copies }}</p>
+              <p class="mt-1 text-xs text-muted">+{{ chick.earnPerSec.toFixed(3) }}/sec</p>
+            </article>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -155,6 +160,16 @@ const codeChicks = computed(() => {
       return a.name.localeCompare(b.name)
     })
 })
+
+const codeChicksByTier = computed(() => {
+  const grouped = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }
+  for (const chick of codeChicks.value) {
+    grouped[chick.tier].push(chick)
+  }
+  return grouped
+})
+
+const tierOrder = [1, 2, 3, 4, 5, 6]
 
 watch(
   playerTerms,

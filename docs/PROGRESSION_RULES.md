@@ -10,11 +10,11 @@
 
 ## Normal egg hatch mix once unlocked
 - Highest unlocked Tier 1: T1 100%
-- Highest unlocked Tier 2: T1 85%, T2 15%
-- Highest unlocked Tier 3: T1 70%, T2 20%, T3 10%
-- Highest unlocked Tier 4: T1 58%, T2 22%, T3 13%, T4 7%
-- Highest unlocked Tier 5: T1 46%, T2 22%, T3 16%, T4 10%, T5 6%
-- Highest unlocked Tier 6: T1 38%, T2 21%, T3 16%, T4 12%, T5 8%, T6 5%
+- Highest unlocked Tier 2: T1 95%, T2 5%
+- Highest unlocked Tier 3: T1 82%, T2 8%, T3 10%
+- Highest unlocked Tier 4: T1 72%, T2 8%, T3 14%, T4 6%
+- Highest unlocked Tier 5: T1 60%, T2 7%, T3 16%, T4 11%, T5 6%
+- Highest unlocked Tier 6: T1 50%, T2 6%, T3 18%, T4 13%, T5 8%, T6 5%
 
 ## Notes
 - Players always buy the Normal Egg in the simplified UI.

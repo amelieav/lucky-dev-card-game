@@ -316,27 +316,27 @@ begin
   if highest = 1 then
     return 1;
   elsif highest = 2 then
-    if roll < 85 then return 1; end if;
+    if roll < 95 then return 1; end if;
     return 2;
   elsif highest = 3 then
-    if roll < 70 then return 1; end if;
+    if roll < 82 then return 1; end if;
     if roll < 90 then return 2; end if;
     return 3;
   elsif highest = 4 then
-    if roll < 58 then return 1; end if;
+    if roll < 72 then return 1; end if;
     if roll < 80 then return 2; end if;
-    if roll < 93 then return 3; end if;
+    if roll < 94 then return 3; end if;
     return 4;
   elsif highest = 5 then
-    if roll < 46 then return 1; end if;
-    if roll < 68 then return 2; end if;
-    if roll < 84 then return 3; end if;
+    if roll < 60 then return 1; end if;
+    if roll < 67 then return 2; end if;
+    if roll < 83 then return 3; end if;
     if roll < 94 then return 4; end if;
     return 5;
   else
-    if roll < 38 then return 1; end if;
-    if roll < 59 then return 2; end if;
-    if roll < 75 then return 3; end if;
+    if roll < 50 then return 1; end if;
+    if roll < 56 then return 2; end if;
+    if roll < 74 then return 3; end if;
     if roll < 87 then return 4; end if;
     if roll < 95 then return 5; end if;
     return 6;

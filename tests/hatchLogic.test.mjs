@@ -30,8 +30,8 @@ test('mixed tier roll uses weighted boundaries', () => {
   const tier2Opened = TIER_UNLOCK_THRESHOLDS[2]
 
   assert.equal(pickMixedTier(tier2Opened, () => 0.0), 1)
-  assert.equal(pickMixedTier(tier2Opened, () => 0.849), 1)
-  assert.equal(pickMixedTier(tier2Opened, () => 0.851), 2)
+  assert.equal(pickMixedTier(tier2Opened, () => 0.949), 1)
+  assert.equal(pickMixedTier(tier2Opened, () => 0.951), 2)
 
   const tier6Opened = TIER_UNLOCK_THRESHOLDS[6]
   assert.equal(pickMixedTier(tier6Opened, () => 0.99), 6)
