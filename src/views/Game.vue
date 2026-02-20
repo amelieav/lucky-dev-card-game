@@ -92,9 +92,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
-import { TERMS_BY_KEY } from '../data/terms'
+import { BASE_BP_MULTIPLIER, TERMS_BY_KEY } from '../data/terms'
 import { MIX_WEIGHTS, getProgressToNextTier } from '../lib/hatchLogic.mjs'
 
 const NORMAL_EGG_TIER = 1
@@ -106,6 +106,7 @@ const nowMs = ref(Date.now())
 const hatchPhase = ref('idle')
 const isHatching = ref(false)
 const lastHatchResult = ref(null)
+const displayedTerms = ref([])
 let timer = null
 
 const snapshot = computed(() => store.state.game.snapshot)
@@ -132,7 +133,7 @@ const projectedCoins = computed(() => {
 })
 
 const codeChicks = computed(() => {
-  return playerTerms.value
+  return displayedTerms.value
     .map((row) => {
       const term = TERMS_BY_KEY[row.term_key]
       if (!term) return null
@@ -144,7 +145,7 @@ const codeChicks = computed(() => {
         tier: term.tier,
         level,
         copies: Number(row.copies || 0),
-        earnPerSec: (term.baseBp * level) / 10000,
+        earnPerSec: ((term.baseBp * BASE_BP_MULTIPLIER) * level) / 10000,
       }
     })
     .filter(Boolean)
@@ -154,6 +155,17 @@ const codeChicks = computed(() => {
       return a.name.localeCompare(b.name)
     })
 })
+
+watch(
+  playerTerms,
+  (nextTerms) => {
+    // Keep top-row reveal in sync normally, but freeze updates while cracking.
+    if (!isHatching.value && hatchPhase.value !== 'cracking') {
+      displayedTerms.value = Array.isArray(nextTerms) ? [...nextTerms] : []
+    }
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   await store.dispatch('auth/initAuth')
@@ -187,8 +199,11 @@ async function buyAndHatch() {
     const draw = store.state.game.openResult
     if (draw) {
       lastHatchResult.value = draw
+      // Reveal new/updated code-chicks only after hatch animation completes.
+      displayedTerms.value = [...playerTerms.value]
       hatchPhase.value = 'revealed'
     } else {
+      displayedTerms.value = [...playerTerms.value]
       hatchPhase.value = 'idle'
     }
   } finally {

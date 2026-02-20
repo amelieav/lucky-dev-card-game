@@ -257,7 +257,7 @@ language sql
 stable
 as $$
   select coalesce(
-    (select tc.base_bp from public.term_catalog tc where tc.term_key = $1),
+    (select tc.base_bp * 100 from public.term_catalog tc where tc.term_key = $1),
     0
   );
 $$;
@@ -413,7 +413,7 @@ begin
   from public.player_state
   where user_id = p_user_id;
 
-  total_bp := coalesce(total_bp, 0) + (coalesce(user_luck, 0) * 35);
+  total_bp := coalesce(total_bp, 0) + (coalesce(user_luck, 0) * 3500);
 
   update public.player_state
   set passive_rate_bp = total_bp,

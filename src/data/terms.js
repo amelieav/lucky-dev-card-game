@@ -66,6 +66,8 @@ export const TERMS = [
   { key: 'autonomous_task_decomposition', name: 'Autonomous Task Decomposition', tier: 6, rarity: 'legendary', baseBp: 582 },
 ]
 
+export const BASE_BP_MULTIPLIER = 100
+
 export const TERMS_BY_KEY = TERMS.reduce((acc, term) => {
   acc[term.key] = term
   return acc
