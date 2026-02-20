@@ -107,6 +107,18 @@
             None {{ percent(mutationWeights.none) }} · Foil {{ percent(mutationWeights.foil) }} · Holo {{ percent(mutationWeights.holo) }}
             · Glitched {{ percent(mutationWeights.glitched) }} · Prismatic {{ percent(mutationWeights.prismatic) }}
           </div>
+          <div class="rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
+            <p class="mb-1 font-semibold text-main">Mutation coin multiplier</p>
+            <p>
+              <span
+                v-for="entry in mutationMultiplierRows"
+                :key="entry.mutation"
+                class="mr-2 inline-block"
+              >
+                {{ entry.label }} x{{ entry.multiplier.toFixed(2) }}
+              </span>
+            </p>
+          </div>
         </div>
 
         <details class="mt-3 rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
@@ -293,6 +305,13 @@ const autoRateLabel = computed(() => (autoRate.value > 0 ? `${autoRate.value.toF
 const progression = computed(() => getProgressToNextTier(playerState.value || {}))
 const tierWeights = computed(() => getEffectiveTierWeights(playerState.value || {}))
 const mutationWeights = computed(() => getMutationWeights(playerState.value?.mutation_level || 0))
+const mutationMultiplierRows = computed(() => {
+  return MUTATION_ORDER.map((mutation) => ({
+    mutation,
+    label: mutationLabel(mutation),
+    multiplier: Number(BALANCE_CONFIG.mutationRewardMultipliers?.[mutation] || 1),
+  }))
+})
 
 const tierRows = computed(() => {
   return Object.entries(tierWeights.value)
