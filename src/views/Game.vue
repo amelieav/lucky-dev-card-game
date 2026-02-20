@@ -118,10 +118,11 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import { BASE_BP_MULTIPLIER, TERMS_BY_KEY } from '../data/terms'
+import { BALANCE_CONFIG } from '../lib/balanceConfig.mjs'
 import { MIX_WEIGHTS, getProgressToNextTier } from '../lib/hatchLogic.mjs'
 
 const NORMAL_EGG_TIER = 1
-const NORMAL_EGG_PRICE = 25
+const NORMAL_EGG_PRICE = Number(BALANCE_CONFIG.eggCosts[NORMAL_EGG_TIER] || 25)
 const HATCH_DURATION_MS = 2400
 
 const store = useStore()

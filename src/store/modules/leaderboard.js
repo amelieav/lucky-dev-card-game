@@ -1,6 +1,7 @@
 import { fetchLeaderboard } from '../../services/gameApi'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
+const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 
 export default {
   namespaced: true,
@@ -29,7 +30,7 @@ export default {
     },
   },
   actions: {
-    async fetch({ state, commit }, { force = false, limit = 50 } = {}) {
+    async fetch({ state, commit, rootState }, { force = false, limit = 50 } = {}) {
       const freshEnough = Date.now() - state.lastFetchedAt < CACHE_TTL_MS
       if (!force && freshEnough && state.rows.length > 0) {
         return
@@ -39,7 +40,27 @@ export default {
       commit('setError', null)
 
       try {
-        const rows = await fetchLeaderboard(limit)
+        let rows
+
+        if (LOCAL_ECONOMY_ENABLED) {
+          const snapshot = rootState.game.snapshot
+          const stateRow = snapshot?.state
+          const profile = snapshot?.profile
+          const score = (Number(stateRow?.coins || 0) + Math.floor((Number(stateRow?.passive_rate_bp || 0) / 10000) * 3600))
+          rows = stateRow
+            ? [{
+                rank: 1,
+                display_name: profile?.display_name || 'Local Player',
+                score,
+                luck_level: Number(stateRow.luck_level || 0),
+                highest_tier_unlocked: Number(stateRow.highest_tier_unlocked || 1),
+                updated_at: stateRow.updated_at,
+              }]
+            : []
+        } else {
+          rows = await fetchLeaderboard(limit)
+        }
+
         commit('setRows', rows)
       } catch (error) {
         commit('setError', error.message || 'Unable to load leaderboard.')

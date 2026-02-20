@@ -46,6 +46,24 @@ To allow a production account:
 insert into public.debug_allowlist(email) values ('you@example.com');
 ```
 
+## Local balance mode (no schema reruns)
+Use this when you want to tune prices/chances/luck quickly in frontend code first.
+
+1. Set in `.env`:
+```bash
+VITE_LOCAL_ECONOMY=1
+```
+2. Restart `npm run dev`.
+3. Tune values in:
+- `src/lib/balanceConfig.mjs` (egg costs, unlock thresholds, hatch mix weights, rarity weights, luck bonus)
+- `src/data/terms.js` (`baseBp` values per code-chick)
+
+Notes:
+- Auth still works with Supabase magic links.
+- Game economy runs from local storage per signed-in user.
+- Leaderboard becomes local-only while this mode is enabled.
+- Set `VITE_LOCAL_ECONOMY=0` to switch back to server-authoritative RPC economy.
+
 ## Deploy
 GitHub Pages workflow is in `.github/workflows/deploy.yml`.
 

@@ -5,6 +5,15 @@ import {
   updateNickname as apiUpdateNickname,
   upgradeLuck as apiUpgradeLuck,
 } from '../../services/gameApi'
+import {
+  bootstrapLocalPlayer,
+  debugApplyLocal,
+  openLocalEgg,
+  updateLocalNickname,
+  upgradeLocalLuck,
+} from '../../lib/localEconomy.mjs'
+
+const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 
 function normalizeSnapshot(data) {
   if (!data) return null
@@ -67,12 +76,15 @@ export default {
     },
   },
   actions: {
-    async bootstrapPlayer({ commit }) {
+    async bootstrapPlayer({ commit, rootState }) {
       commit('setLoading', true)
       commit('setError', null)
 
       try {
-        const data = await apiBootstrapPlayer()
+        const user = rootState.auth.user
+        const data = LOCAL_ECONOMY_ENABLED
+          ? bootstrapLocalPlayer(user, { debugAllowed: rootState.debug.enabled })
+          : await apiBootstrapPlayer()
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
       } catch (error) {
@@ -87,8 +99,15 @@ export default {
       commit('setError', null)
 
       try {
+        const user = rootState.auth.user
         const override = rootState.debug.enabled ? debugOverride : null
-        const data = await apiOpenEgg(tier, override)
+        const data = LOCAL_ECONOMY_ENABLED
+          ? openLocalEgg(user, {
+              tier,
+              debugOverride: override,
+              debugAllowed: rootState.debug.enabled,
+            })
+          : await apiOpenEgg(tier, override)
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
         commit('setOpenResult', data?.draw || null)
@@ -99,12 +118,15 @@ export default {
       }
     },
 
-    async upgradeLuck({ commit }) {
+    async upgradeLuck({ commit, rootState }) {
       commit('setActionLoading', true)
       commit('setError', null)
 
       try {
-        const data = await apiUpgradeLuck()
+        const user = rootState.auth.user
+        const data = LOCAL_ECONOMY_ENABLED
+          ? upgradeLocalLuck(user, { debugAllowed: rootState.debug.enabled })
+          : await apiUpgradeLuck()
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
       } catch (error) {
@@ -114,12 +136,15 @@ export default {
       }
     },
 
-    async updateNickname({ commit }, parts) {
+    async updateNickname({ commit, rootState }, parts) {
       commit('setActionLoading', true)
       commit('setError', null)
 
       try {
-        const data = await apiUpdateNickname(parts)
+        const user = rootState.auth.user
+        const data = LOCAL_ECONOMY_ENABLED
+          ? updateLocalNickname(user, parts, { debugAllowed: rootState.debug.enabled })
+          : await apiUpdateNickname(parts)
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
       } catch (error) {
@@ -130,13 +155,16 @@ export default {
       }
     },
 
-    async debugApply({ commit }, action) {
+    async debugApply({ commit, rootState }, action) {
       commit('setActionLoading', true)
       commit('setError', null)
       commit('debug/setLastError', null, { root: true })
 
       try {
-        const data = await apiDebugApply(action)
+        const user = rootState.auth.user
+        const data = LOCAL_ECONOMY_ENABLED
+          ? debugApplyLocal(user, action, { debugAllowed: rootState.debug.enabled })
+          : await apiDebugApply(action)
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
         commit('setOpenResult', data?.draw || null)

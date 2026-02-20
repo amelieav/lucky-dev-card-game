@@ -1,20 +1,7 @@
-export const TIER_UNLOCK_THRESHOLDS = {
-  1: 0,
-  2: 10,
-  3: 25,
-  4: 45,
-  5: 70,
-  6: 100,
-}
+import { BALANCE_CONFIG } from './balanceConfig.mjs'
 
-export const MIX_WEIGHTS = {
-  1: { 1: 100 },
-  2: { 1: 95, 2: 5 },
-  3: { 1: 82, 2: 8, 3: 10 },
-  4: { 1: 72, 2: 8, 3: 14, 4: 6 },
-  5: { 1: 60, 2: 7, 3: 16, 4: 11, 5: 6 },
-  6: { 1: 50, 2: 6, 3: 18, 4: 13, 5: 8, 6: 5 },
-}
+export const TIER_UNLOCK_THRESHOLDS = BALANCE_CONFIG.tierUnlockThresholds
+export const MIX_WEIGHTS = BALANCE_CONFIG.mixedTierWeights
 
 export function getHighestUnlockedTier(eggsOpened) {
   const opened = Number(eggsOpened || 0)
