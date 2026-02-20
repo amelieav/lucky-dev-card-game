@@ -1,11 +1,36 @@
 import { NICK_PARTS_A, NICK_PARTS_B, NICK_PARTS_C } from '../data/nicknameParts.mjs'
 import { TERMS, TERMS_BY_KEY } from '../data/terms.mjs'
-import { BALANCE_CONFIG, luckUpgradeCost } from './balanceConfig.mjs'
-import { getHighestUnlockedTier, pickMixedTier } from './hatchLogic.mjs'
+import { BALANCE_CONFIG } from './balanceConfig.mjs'
+import {
+  MUTATIONS,
+  RARITIES,
+  applyUpgrade,
+  canBuyUpgrade,
+  computeCardReward,
+  getAutoOpensPerSecond,
+  getEffectiveTierWeights,
+  getHighestUnlockedTier,
+  getMutationWeights,
+  getRarityWeightsForTier,
+  pickFromWeightedMap,
+} from './packLogic.mjs'
 
-const STORAGE_PREFIX = 'lucky_agent_local_economy_v1'
+const STORAGE_PREFIX = 'lucky_agent_local_pack_economy_v1'
+const LEGACY_STORAGE_PREFIX = 'lucky_agent_local_economy_v1'
 const memoryStorage = new Map()
-const RARITIES = ['common', 'rare', 'epic', 'legendary']
+
+const TERMS_BY_TIER = TERMS.reduce((acc, term) => {
+  if (!acc[term.tier]) acc[term.tier] = []
+  acc[term.tier].push(term)
+  return acc
+}, {})
+
+const TERMS_BY_TIER_AND_RARITY = TERMS.reduce((acc, term) => {
+  const key = `${term.tier}:${term.rarity}`
+  if (!acc[key]) acc[key] = []
+  acc[key].push(term)
+  return acc
+}, {})
 
 function nowIso(nowMs = Date.now()) {
   return new Date(nowMs).toISOString()
@@ -25,6 +50,10 @@ function storageKey(userId) {
   return `${STORAGE_PREFIX}:${userId}`
 }
 
+function legacyStorageKey(userId) {
+  return `${LEGACY_STORAGE_PREFIX}:${userId}`
+}
+
 function readRawValue(key) {
   if (typeof window !== 'undefined' && window.localStorage) {
     return window.localStorage.getItem(key)
@@ -40,19 +69,29 @@ function writeRawValue(key, value) {
   memoryStorage.set(key, value)
 }
 
-function buildDefaultRecord(user, rng = Math.random) {
+function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
   const partA = chooseRandom(NICK_PARTS_A, rng)
   const partB = chooseRandom(NICK_PARTS_B, rng)
   const partC = chooseRandom(NICK_PARTS_C, rng)
-  const timestamp = nowIso()
+  const timestamp = nowIso(nowMs)
 
   return {
     coins: BALANCE_CONFIG.initialCoins,
     luck_level: 0,
-    passive_rate_bp: 0,
+    mutation_level: 0,
+    value_level: 0,
+    tier_boost_level: 0,
+    auto_unlocked: false,
+    auto_speed_level: 0,
     highest_tier_unlocked: 1,
+    packs_opened: 0,
     eggs_opened: 0,
+    manual_opens: 0,
+    auto_opens: 0,
+    auto_open_progress: 0,
+    passive_rate_bp: 0,
     last_tick_at: timestamp,
+    created_at: timestamp,
     updated_at: timestamp,
     terms: [],
     profile: {
@@ -66,42 +105,68 @@ function buildDefaultRecord(user, rng = Math.random) {
   }
 }
 
-function sanitizeRecord(record, user, rng = Math.random) {
-  if (!record || typeof record !== 'object') {
-    return buildDefaultRecord(user, rng)
-  }
+function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
+  const fallback = buildDefaultRecord(user, rng, nowMs)
+  if (!record || typeof record !== 'object') return fallback
 
-  const fallback = buildDefaultRecord(user, rng)
-
-  return {
+  const merged = {
     ...fallback,
     ...record,
-    terms: Array.isArray(record.terms) ? record.terms : [],
     profile: {
       ...fallback.profile,
       ...(record.profile || {}),
     },
+    terms: Array.isArray(record.terms) ? record.terms : [],
+  }
+
+  if (merged.packs_opened == null && merged.eggs_opened != null) {
+    merged.packs_opened = Number(merged.eggs_opened || 0)
+  }
+
+  merged.packs_opened = Math.max(0, Number(merged.packs_opened || 0))
+  merged.eggs_opened = merged.packs_opened
+  merged.manual_opens = Math.max(0, Number(merged.manual_opens || 0))
+  merged.auto_opens = Math.max(0, Number(merged.auto_opens || 0))
+  merged.auto_open_progress = Math.max(0, Number(merged.auto_open_progress || 0))
+  merged.auto_speed_level = Math.max(0, Number(merged.auto_speed_level || 0))
+  merged.tier_boost_level = Math.max(0, Number(merged.tier_boost_level || 0))
+  merged.luck_level = Math.max(0, Number(merged.luck_level || 0))
+  merged.mutation_level = Math.max(0, Number(merged.mutation_level || 0))
+  merged.value_level = Math.max(0, Number(merged.value_level || 0))
+  merged.coins = Math.max(0, Number(merged.coins || 0))
+  merged.auto_unlocked = Boolean(merged.auto_unlocked)
+  merged.highest_tier_unlocked = getHighestUnlockedTier(merged)
+
+  return merged
+}
+
+function parseStored(raw, user, rng = Math.random, nowMs = Date.now()) {
+  try {
+    return sanitizeRecord(JSON.parse(raw), user, rng, nowMs)
+  } catch (_) {
+    return null
   }
 }
 
-function readRecord(user, rng = Math.random) {
-  const key = storageKey(user.id)
-  const raw = readRawValue(key)
-
-  if (!raw) {
-    const created = buildDefaultRecord(user, rng)
-    writeRawValue(key, JSON.stringify(created))
-    return created
+function readRecord(user, rng = Math.random, nowMs = Date.now()) {
+  const currentRaw = readRawValue(storageKey(user.id))
+  if (currentRaw) {
+    const parsed = parseStored(currentRaw, user, rng, nowMs)
+    if (parsed) return parsed
   }
 
-  try {
-    const parsed = JSON.parse(raw)
-    return sanitizeRecord(parsed, user, rng)
-  } catch (_) {
-    const recreated = buildDefaultRecord(user, rng)
-    writeRawValue(key, JSON.stringify(recreated))
-    return recreated
+  const legacyRaw = readRawValue(legacyStorageKey(user.id))
+  if (legacyRaw) {
+    const migrated = parseStored(legacyRaw, user, rng, nowMs)
+    if (migrated) {
+      writeRawValue(storageKey(user.id), JSON.stringify(migrated))
+      return migrated
+    }
   }
+
+  const created = buildDefaultRecord(user, rng, nowMs)
+  writeRawValue(storageKey(user.id), JSON.stringify(created))
+  return created
 }
 
 function writeRecord(user, record) {
@@ -121,9 +186,18 @@ function toSnapshot(record, debugAllowed, nowMs = Date.now()) {
     state: {
       coins: record.coins,
       luck_level: record.luck_level,
-      passive_rate_bp: record.passive_rate_bp,
+      mutation_level: record.mutation_level,
+      value_level: record.value_level,
+      tier_boost_level: record.tier_boost_level,
+      auto_unlocked: record.auto_unlocked,
+      auto_speed_level: record.auto_speed_level,
       highest_tier_unlocked: record.highest_tier_unlocked,
-      eggs_opened: record.eggs_opened,
+      packs_opened: record.packs_opened,
+      eggs_opened: record.packs_opened,
+      manual_opens: record.manual_opens,
+      auto_opens: record.auto_opens,
+      passive_rate_bp: 0,
+      auto_open_progress: record.auto_open_progress,
       last_tick_at: record.last_tick_at,
       updated_at: record.updated_at,
     },
@@ -141,77 +215,19 @@ function calcLevel(copies) {
   return Math.max(1, Math.floor(Math.sqrt(Math.max(1, Number(copies || 1)))))
 }
 
-function applyIdleIncome(record, nowMs = Date.now()) {
-  const lastTickMs = Date.parse(record.last_tick_at || nowIso())
-  const elapsedSeconds = Math.max(0, Math.floor((nowMs - lastTickMs) / 1000))
-  const cappedSeconds = Math.min(BALANCE_CONFIG.idleIncomeCapSeconds, elapsedSeconds)
-  const gained = Math.floor((cappedSeconds * record.passive_rate_bp) / 10000)
-  const timestamp = nowIso(nowMs)
-
-  record.coins += gained
-  record.last_tick_at = timestamp
-  record.updated_at = timestamp
-
-  return gained
-}
-
-function recomputePassiveRateBp(record) {
-  const termBp = record.terms.reduce((sum, row) => {
-    const term = TERMS_BY_KEY[row.term_key]
-    if (!term) return sum
-    return sum + ((term.baseBp * BALANCE_CONFIG.baseBpMultiplier) * Math.max(1, Number(row.level || 1)))
-  }, 0)
-
-  record.passive_rate_bp = termBp + (Math.max(0, Number(record.luck_level || 0)) * BALANCE_CONFIG.luckPassiveBpBonus)
-}
-
-function ensureUnlockedTier(record) {
-  record.highest_tier_unlocked = Math.max(
-    Number(record.highest_tier_unlocked || 1),
-    getHighestUnlockedTier(record.eggs_opened),
-  )
-}
-
-function termRarity(termKey) {
-  return TERMS_BY_KEY[termKey]?.rarity || 'common'
-}
-
-function termName(termKey) {
-  return TERMS_BY_KEY[termKey]?.name || termKey
-}
-
-function rollRarity(eggTier, luckLevel, rng = Math.random) {
-  const tierWeights = BALANCE_CONFIG.rarityWeightsByTier[eggTier] || BALANCE_CONFIG.rarityWeightsByTier[6]
-  let commonW = Number(tierWeights.common || 0)
-  let rareW = Number(tierWeights.rare || 0)
-  let epicW = Number(tierWeights.epic || 0)
-  let legendaryW = Number(tierWeights.legendary || 0)
-
-  const luckBonus = Math.min(BALANCE_CONFIG.luckRarityShiftCap, Math.max(0, Number(luckLevel || 0)))
-
-  commonW = Math.max(5, commonW - luckBonus)
-  rareW += Math.floor(luckBonus * 0.5)
-  epicW += Math.floor(luckBonus * 0.3)
-  legendaryW += (luckBonus - Math.floor(luckBonus * 0.5) - Math.floor(luckBonus * 0.3))
-
-  const totalW = commonW + rareW + epicW + legendaryW
-  const roll = rng() * totalW
-
-  if (roll < commonW) return 'common'
-  if (roll < commonW + rareW) return 'rare'
-  if (roll < commonW + rareW + epicW) return 'epic'
-  return 'legendary'
+function getTermPool(drawTier, rarity) {
+  return TERMS_BY_TIER_AND_RARITY[`${drawTier}:${rarity}`] || []
 }
 
 function randomTermByPool(drawTier, rarity, rng = Math.random) {
-  const exactPool = TERMS.filter((term) => term.tier === drawTier && term.rarity === rarity)
-  if (exactPool.length > 0) {
-    return chooseRandom(exactPool, rng).key
+  const exact = getTermPool(drawTier, rarity)
+  if (exact.length > 0) {
+    return chooseRandom(exact, rng).key
   }
 
-  const fallbackPool = TERMS.filter((term) => term.tier === drawTier)
-  if (fallbackPool.length > 0) {
-    return chooseRandom(fallbackPool, rng).key
+  const fallback = TERMS_BY_TIER[drawTier] || []
+  if (fallback.length > 0) {
+    return chooseRandom(fallback, rng).key
   }
 
   return null
@@ -245,11 +261,6 @@ function getTermRow(record, termKey) {
   return record.terms.find((term) => term.term_key === termKey)
 }
 
-function getEggCost(tier) {
-  const cost = BALANCE_CONFIG.eggCosts[tier]
-  return typeof cost === 'number' ? cost : null
-}
-
 function validateNicknameParts(parts) {
   if (!NICK_PARTS_A.includes(parts.partA)) throw new Error('Invalid nickname part A')
   if (!NICK_PARTS_B.includes(parts.partB)) throw new Error('Invalid nickname part B')
@@ -258,89 +269,76 @@ function validateNicknameParts(parts) {
 
 function validateDebugOverride(override) {
   if (!override || typeof override !== 'object') return
+
   if (override.term_key && !TERMS_BY_KEY[override.term_key]) {
     throw new Error(`Unknown term key: ${override.term_key}`)
   }
+
   if (override.rarity && !RARITIES.includes(override.rarity)) {
     throw new Error(`Unknown rarity: ${override.rarity}`)
   }
+
+  if (override.mutation && !MUTATIONS.includes(override.mutation)) {
+    throw new Error(`Unknown mutation: ${override.mutation}`)
+  }
+
   if (override.tier && (Number(override.tier) < 1 || Number(override.tier) > 6)) {
-    throw new Error('Invalid egg tier')
+    throw new Error('Invalid pack tier')
   }
 }
 
-export function bootstrapLocalPlayer(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
-  assertAuthenticatedUser(user)
-
-  const record = readRecord(user, rng)
-  applyIdleIncome(record, nowMs)
-  ensureUnlockedTier(record)
-  recomputePassiveRateBp(record)
-  writeRecord(user, record)
-
-  return toSnapshot(record, debugAllowed, nowMs)
-}
-
-export function openLocalEgg(
-  user,
-  { tier, debugOverride = null, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
+function applySinglePackOpen(
+  record,
+  { source = 'manual', debugOverride = null, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
 ) {
-  assertAuthenticatedUser(user)
-  const selectedTier = Number(tier)
-
-  if (selectedTier < 1 || selectedTier > 6) {
-    throw new Error('Invalid egg tier')
-  }
-
-  const record = readRecord(user, rng)
-  applyIdleIncome(record, nowMs)
-  ensureUnlockedTier(record)
-
-  if (selectedTier > record.highest_tier_unlocked) {
-    throw new Error(`Tier ${selectedTier} is locked`)
-  }
-
-  const cost = getEggCost(selectedTier)
-  if (cost == null) {
-    throw new Error('Invalid egg tier')
-  }
-
-  if (record.coins < cost) {
-    throw new Error('Not enough coins')
-  }
-
   validateDebugOverride(debugOverride)
 
-  let drawTier = selectedTier
-  let chosenTerm = null
-  let chosenRarity = null
+  let forced = debugOverride
   let debugApplied = false
 
-  if (debugOverride) {
-    if (!debugAllowed) {
-      throw new Error('Debug override not allowed for this account')
-    }
-    chosenTerm = debugOverride.term_key || null
-    chosenRarity = debugOverride.rarity || null
-    drawTier = Number(debugOverride.tier || selectedTier)
-    debugApplied = true
-  } else if (record.next_reward && debugAllowed) {
-    validateDebugOverride(record.next_reward)
-    chosenTerm = record.next_reward.term_key || null
-    chosenRarity = record.next_reward.rarity || null
-    drawTier = Number(record.next_reward.tier || selectedTier)
+  if (forced && !debugAllowed) {
+    throw new Error('Debug override not allowed for this account')
+  }
+
+  if (!forced && record.next_reward && debugAllowed) {
+    forced = record.next_reward
     record.next_reward = null
     debugApplied = true
-  } else if (selectedTier === 1) {
-    drawTier = pickMixedTier(record.eggs_opened, rng)
   }
+
+  const explicitTier = Number(forced?.tier || 0) || null
+  const explicitTerm = forced?.term_key || null
+
+  let drawTier = explicitTier
+  let chosenTerm = explicitTerm
+  let chosenRarity = forced?.rarity || null
+  let chosenMutation = forced?.mutation || null
 
   if (chosenTerm && !TERMS_BY_KEY[chosenTerm]) {
     throw new Error(`Unknown term key: ${chosenTerm}`)
   }
 
+  if (!drawTier) {
+    const tierWeights = getEffectiveTierWeights(record)
+    drawTier = Number(pickFromWeightedMap(tierWeights, rng) || 1)
+  }
+
+  if (chosenTerm && !explicitTier) {
+    drawTier = TERMS_BY_KEY[chosenTerm].tier
+  }
+
   if (!chosenRarity) {
-    chosenRarity = chosenTerm ? termRarity(chosenTerm) : rollRarity(selectedTier, record.luck_level, rng)
+    if (chosenTerm) {
+      chosenRarity = TERMS_BY_KEY[chosenTerm].rarity
+    } else {
+      const rarityWeights = getRarityWeightsForTier(drawTier, record.luck_level)
+      chosenRarity = pickFromWeightedMap(rarityWeights, rng) || 'common'
+    }
+  }
+
+  if (!chosenMutation) {
+    const mutationWeights = getMutationWeights(record.mutation_level)
+    chosenMutation = pickFromWeightedMap(mutationWeights, rng) || 'none'
   }
 
   if (!chosenTerm) {
@@ -351,59 +349,214 @@ export function openLocalEgg(
     throw new Error('Unable to resolve draw term')
   }
 
-  record.coins -= cost
-  record.eggs_opened += 1
-  record.highest_tier_unlocked = Math.max(record.highest_tier_unlocked, getHighestUnlockedTier(record.eggs_opened))
-  record.updated_at = nowIso(nowMs)
+  const term = TERMS_BY_KEY[chosenTerm]
+  const reward = computeCardReward({
+    baseBp: term.baseBp,
+    rarity: chosenRarity,
+    mutation: chosenMutation,
+    valueLevel: record.value_level,
+  })
+
+  record.coins += reward
+  record.packs_opened += 1
+  record.eggs_opened = record.packs_opened
+
+  if (source === 'auto') {
+    record.auto_opens += 1
+  } else {
+    record.manual_opens += 1
+  }
 
   upsertTerm(record, chosenTerm, 1, nowMs)
-  recomputePassiveRateBp(record)
-  writeRecord(user, record)
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+  record.updated_at = nowIso(nowMs)
 
   const termRow = getTermRow(record, chosenTerm)
 
   return {
-    snapshot: toSnapshot(record, debugAllowed, nowMs),
-    draw: {
-      term_key: chosenTerm,
-      term_name: termName(chosenTerm),
-      rarity: chosenRarity,
-      tier: drawTier,
-      copies: termRow?.copies || 1,
-      level: termRow?.level || 1,
-      debug_applied: debugApplied,
-    },
+    term_key: chosenTerm,
+    term_name: term.name,
+    rarity: chosenRarity,
+    mutation: chosenMutation,
+    tier: drawTier,
+    reward,
+    copies: termRow?.copies || 1,
+    level: termRow?.level || 1,
+    source,
+    debug_applied: Boolean(debugApplied || forced),
   }
 }
 
-export function upgradeLocalLuck(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
-  assertAuthenticatedUser(user)
+function applyAutoProgress(record, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+  const lastTick = Date.parse(record.last_tick_at || nowIso(nowMs))
+  const elapsedSeconds = Math.max(0, Math.floor((nowMs - lastTick) / 1000))
+  const cappedSeconds = Math.min(BALANCE_CONFIG.idleIncomeCapSeconds, elapsedSeconds)
 
-  const record = readRecord(user, rng)
-  applyIdleIncome(record, nowMs)
+  let drawsApplied = 0
+  let lastDraw = null
+  let maxTierDrawn = 0
 
-  const cost = luckUpgradeCost(record.luck_level)
-  if (record.coins < cost) {
-    throw new Error('Not enough coins to upgrade luck')
+  if (record.auto_unlocked && cappedSeconds > 0) {
+    const openings = record.auto_open_progress + (cappedSeconds * getAutoOpensPerSecond(record))
+    const wholeOpens = Math.max(0, Math.floor(openings))
+    record.auto_open_progress = openings - wholeOpens
+
+    for (let i = 0; i < wholeOpens; i += 1) {
+      lastDraw = applySinglePackOpen(record, {
+        source: 'auto',
+        debugOverride: null,
+        debugAllowed,
+        rng,
+        nowMs,
+      })
+      drawsApplied += 1
+      maxTierDrawn = Math.max(maxTierDrawn, Number(lastDraw?.tier || 0))
+    }
   }
 
-  record.coins -= cost
-  record.luck_level += 1
-  record.updated_at = nowIso(nowMs)
+  record.last_tick_at = nowIso(nowMs)
+  if (drawsApplied === 0) {
+    record.updated_at = nowIso(nowMs)
+  }
 
-  recomputePassiveRateBp(record)
+  return {
+    drawsApplied,
+    lastDraw,
+    maxTierDrawn,
+  }
+}
+
+function resetProgress(record, nowMs = Date.now()) {
+  record.coins = BALANCE_CONFIG.initialCoins
+  record.luck_level = 0
+  record.mutation_level = 0
+  record.value_level = 0
+  record.tier_boost_level = 0
+  record.auto_unlocked = false
+  record.auto_speed_level = 0
+  record.highest_tier_unlocked = 1
+  record.packs_opened = 0
+  record.eggs_opened = 0
+  record.manual_opens = 0
+  record.auto_opens = 0
+  record.auto_open_progress = 0
+  record.passive_rate_bp = 0
+  record.last_tick_at = nowIso(nowMs)
+  record.updated_at = nowIso(nowMs)
+  record.terms = []
+  record.next_reward = null
+}
+
+export function bootstrapLocalPlayer(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+  assertAuthenticatedUser(user)
+
+  const record = readRecord(user, rng, nowMs)
+  applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+  writeRecord(user, record)
+
+  return toSnapshot(record, debugAllowed, nowMs)
+}
+
+export function syncLocalPlayer(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+  assertAuthenticatedUser(user)
+
+  const record = readRecord(user, rng, nowMs)
+  const { drawsApplied, lastDraw, maxTierDrawn } = applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
   writeRecord(user, record)
 
   return {
     snapshot: toSnapshot(record, debugAllowed, nowMs),
+    draws_applied: drawsApplied,
+    draw: lastDraw,
+    draw_max_tier: maxTierDrawn,
   }
+}
+
+export function openLocalPack(
+  user,
+  { source = 'manual', debugOverride = null, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
+) {
+  assertAuthenticatedUser(user)
+
+  const record = readRecord(user, rng, nowMs)
+  applyAutoProgress(record, { debugAllowed, rng, nowMs })
+
+  const draw = applySinglePackOpen(record, {
+    source,
+    debugOverride,
+    debugAllowed,
+    rng,
+    nowMs,
+  })
+
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+  writeRecord(user, record)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    draw,
+  }
+}
+
+export function buyLocalUpgrade(
+  user,
+  { upgradeKey, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
+) {
+  assertAuthenticatedUser(user)
+
+  const record = readRecord(user, rng, nowMs)
+  applyAutoProgress(record, { debugAllowed, rng, nowMs })
+
+  if (!canBuyUpgrade(record, upgradeKey)) {
+    throw new Error('Upgrade unavailable or not enough coins')
+  }
+
+  const purchase = applyUpgrade(record, upgradeKey)
+  record.updated_at = nowIso(nowMs)
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+  writeRecord(user, record)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    purchase,
+  }
+}
+
+// Backward-compatible aliases.
+export function openLocalEgg(
+  user,
+  { tier = 1, debugOverride = null, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
+) {
+  const override = debugOverride ? { ...debugOverride } : {}
+  if (override.tier == null) {
+    override.tier = tier
+  }
+
+  return openLocalPack(user, {
+    source: 'manual',
+    debugOverride: override,
+    debugAllowed,
+    rng,
+    nowMs,
+  })
+}
+
+export function upgradeLocalLuck(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+  return buyLocalUpgrade(user, {
+    upgradeKey: 'luck_engine',
+    debugAllowed,
+    rng,
+    nowMs,
+  })
 }
 
 export function updateLocalNickname(user, parts, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
   assertAuthenticatedUser(user)
   validateNicknameParts(parts)
 
-  const record = readRecord(user, rng)
+  const record = readRecord(user, rng, nowMs)
   const timestamp = nowIso(nowMs)
 
   record.profile = {
@@ -434,8 +587,8 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
     throw new Error('Missing debug action type')
   }
 
-  const record = readRecord(user, rng)
-  applyIdleIncome(record, nowMs)
+  const record = readRecord(user, rng, nowMs)
+  applyAutoProgress(record, { debugAllowed, rng, nowMs })
 
   if (actionType === 'add_coins') {
     record.coins += Math.max(0, Number(action.amount || 0))
@@ -443,6 +596,16 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
     record.coins = Math.max(0, Number(action.amount || 0))
   } else if (actionType === 'set_luck_level') {
     record.luck_level = Math.max(0, Number(action.level || 0))
+  } else if (actionType === 'set_mutation_level') {
+    record.mutation_level = Math.max(0, Number(action.level || 0))
+  } else if (actionType === 'set_tier_boost_level') {
+    record.tier_boost_level = Math.max(0, Number(action.level || 0))
+  } else if (actionType === 'set_auto_speed_level') {
+    record.auto_speed_level = Math.max(0, Number(action.level || 0))
+  } else if (actionType === 'set_value_level') {
+    record.value_level = Math.max(0, Number(action.level || 0))
+  } else if (actionType === 'set_auto_unlocked') {
+    record.auto_unlocked = Boolean(action.enabled)
   } else if (actionType === 'grant_term') {
     if (!TERMS_BY_KEY[action.term_key]) {
       throw new Error(`Unknown term key: ${action.term_key || ''}`)
@@ -452,24 +615,23 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
     validateDebugOverride(action)
     const { type: _omit, ...nextReward } = action
     record.next_reward = nextReward
+  } else if (actionType === 'buy_upgrade') {
+    const key = String(action.upgrade_key || '')
+    if (!key) {
+      throw new Error('Missing upgrade_key')
+    }
+    if (!canBuyUpgrade(record, key)) {
+      throw new Error('Upgrade unavailable or not enough coins')
+    }
+    applyUpgrade(record, key)
   } else if (actionType === 'reset_account') {
-    record.coins = BALANCE_CONFIG.initialCoins
-    record.luck_level = 0
-    record.passive_rate_bp = 0
-    record.highest_tier_unlocked = 1
-    record.eggs_opened = 0
-    record.last_tick_at = nowIso(nowMs)
-    record.terms = []
-    record.next_reward = null
+    resetProgress(record, nowMs)
   } else {
     throw new Error(`Unsupported debug action type: ${actionType}`)
   }
 
-  if (['set_luck_level', 'grant_term', 'reset_account'].includes(actionType)) {
-    recomputePassiveRateBp(record)
-  }
-
-  ensureUnlockedTier(record)
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+  record.eggs_opened = record.packs_opened
   record.updated_at = nowIso(nowMs)
   writeRecord(user, record)
 

@@ -8,19 +8,76 @@ function unwrap(result) {
   return result.data
 }
 
+function isMissingRpcError(error, functionName) {
+  if (!error) return false
+  const code = String(error.code || '')
+  const message = String(error.message || '').toLowerCase()
+
+  if (code === 'PGRST202' || code === '42883') return true
+  return message.includes('function') && message.includes(functionName)
+}
+
 export async function bootstrapPlayer() {
   return unwrap(await supabase.rpc('bootstrap_player'))
 }
 
-export async function openEgg(tier, debugOverride = null) {
+export async function openPack({ source = 'manual', debugOverride = null } = {}) {
+  const primary = await supabase.rpc('open_pack', {
+    p_source: source,
+    p_debug_override: debugOverride,
+  })
+
+  if (!primary.error) {
+    return primary.data
+  }
+
+  if (!isMissingRpcError(primary.error, 'open_pack')) {
+    throw primary.error
+  }
+
+  const fallbackTier = Number(debugOverride?.tier || 1)
   return unwrap(await supabase.rpc('open_egg', {
-    p_egg_tier: tier,
+    p_egg_tier: Math.max(1, Math.min(6, fallbackTier)),
     p_debug_override: debugOverride,
   }))
 }
 
+export async function buyUpgrade({ upgradeKey } = {}) {
+  const primary = await supabase.rpc('buy_upgrade', {
+    p_upgrade_key: upgradeKey,
+  })
+
+  if (!primary.error) {
+    return primary.data
+  }
+
+  if (!isMissingRpcError(primary.error, 'buy_upgrade')) {
+    throw primary.error
+  }
+
+  if (upgradeKey === 'luck_engine') {
+    return unwrap(await supabase.rpc('upgrade_luck'))
+  }
+
+  throw new Error('buy_upgrade RPC is not available on this backend yet')
+}
+
+// Backward-compatible wrappers for older callers.
+export async function openEgg(tier, debugOverride = null) {
+  const normalizedTier = Math.max(1, Math.min(6, Number(tier || 1)))
+  const override = {
+    ...(debugOverride || {}),
+  }
+
+  if (override.tier == null) {
+    override.tier = normalizedTier
+  }
+
+  return openPack({ source: 'manual', debugOverride: override })
+}
+
 export async function upgradeLuck() {
-  return unwrap(await supabase.rpc('upgrade_luck'))
+  return buyUpgrade({ upgradeKey: 'luck_engine' })
 }
 
 export async function updateNickname(parts) {

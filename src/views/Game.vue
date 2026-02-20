@@ -1,53 +1,38 @@
 <template>
   <section class="space-y-4">
     <div class="card p-4">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p class="text-xs uppercase tracking-wide text-muted">Code-Chicks Unlocked</p>
-          <p class="text-xs text-muted">Duplicates increase each chick's earning rate.</p>
-        </div>
-        <div class="text-right">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Coins</p>
-          <p class="text-2xl font-semibold">{{ formatNumber(projectedCoins) }}</p>
-        </div>
+          <p class="text-2xl font-semibold">{{ formatNumber(playerCoins) }}</p>
+        </article>
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs text-muted">Packs Opened</p>
+          <p class="text-xl font-semibold">{{ formatNumber(playerPacksOpened) }}</p>
+        </article>
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs text-muted">Manual / Auto</p>
+          <p class="text-xl font-semibold">{{ formatNumber(playerManualOpens) }} / {{ formatNumber(playerAutoOpens) }}</p>
+        </article>
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs text-muted">Highest Tier</p>
+          <p class="text-xl font-semibold">Tier {{ highestTierUnlocked }}</p>
+        </article>
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs text-muted">Auto Rate</p>
+          <p class="text-xl font-semibold">{{ autoRateLabel }}</p>
+        </article>
       </div>
 
       <div class="mt-3 rounded-xl border border-soft bg-panel-soft p-3 text-xs text-muted">
         <p>
-          Tier {{ progression.highestTier }} unlocked.
+          Next unlock:
           <span v-if="progression.nextTier">
-            Tier {{ progression.nextTier }} unlocks at {{ progression.nextThreshold }} hatches
-            ({{ progression.remaining }} remaining).
+            Tier {{ progression.nextTier }} requires {{ progression.requirement?.packsOpened }} packs and Tier Boost Lv {{ progression.requirement?.tierBoostLevel }}.
+            Remaining: {{ progression.remainingPacks }} packs, {{ progression.remainingTierBoost }} Tier Boost.
           </span>
-          <span v-else>Max tier unlocked.</span>
+          <span v-else>All tiers unlocked.</span>
         </p>
-        <p class="mt-1">
-          Current hatch mix:
-          <span v-for="tier in Object.keys(currentMixWeights)" :key="tier" class="mr-2">
-            T{{ tier }} {{ currentMixWeights[tier] }}%
-          </span>
-        </p>
-      </div>
-
-      <div v-if="codeChicks.length === 0" class="mt-3 rounded-xl border border-dashed border-soft p-3 text-sm text-muted">
-        No code-chicks yet. Buy and hatch your first egg.
-      </div>
-
-      <div v-else class="mt-3 space-y-3">
-        <div v-for="tier in tierOrder" :key="tier" v-show="codeChicksByTier[tier]?.length">
-          <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Tier {{ tier }}</p>
-          <div class="flex gap-2 overflow-x-auto pb-1">
-            <article
-              v-for="chick in codeChicksByTier[tier]"
-              :key="chick.termKey"
-              class="min-w-[220px] rounded-xl border border-soft bg-panel-soft p-3"
-            >
-              <p class="text-sm font-semibold">{{ chick.name }}</p>
-              <p class="text-xs text-muted">Lv {{ chick.level }} · Copies {{ chick.copies }}</p>
-              <p class="mt-1 text-xs text-muted">+{{ chick.earnPerSec.toFixed(3) }}/sec</p>
-            </article>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -56,125 +41,241 @@
     </div>
 
     <div class="grid gap-4 lg:grid-cols-3">
-      <section class="card hatch-card p-6 text-center lg:col-span-2">
-        <p class="text-xs uppercase tracking-wide text-muted">Normal Egg</p>
-        <p class="mt-1 text-sm text-muted">Price: {{ NORMAL_EGG_PRICE }} coins</p>
-
-        <div class="egg-shell mx-auto mt-6" :class="{ cracking: hatchPhase === 'cracking' }">
-          <span v-if="hatchPhase === 'revealed'" class="egg-face">🐥</span>
-          <span v-else class="egg-face">🥚</span>
+      <section class="card p-6 lg:col-span-2">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="text-xs uppercase tracking-wide text-muted">Manual Open</p>
+            <h1 class="mt-1 text-xl font-semibold">Starter Card Pack</h1>
+            <p class="mt-1 text-sm text-muted">
+              Free to open. Rolls tier, rarity, mutation, then rewards coins.
+            </p>
+          </div>
+          <div class="text-right">
+            <p class="text-xs text-muted">Manual Cadence</p>
+            <p class="text-sm font-semibold">1 pack / 1.2s</p>
+          </div>
         </div>
-
-        <p class="mt-4 text-sm text-muted" v-if="hatchPhase === 'idle'">Buy egg to start hatch.</p>
-        <p class="mt-4 text-sm text-muted" v-else-if="hatchPhase === 'cracking'">Cracking...</p>
-        <p class="mt-4 text-sm text-muted" v-else>Egg hatched.</p>
 
         <button
           class="btn-primary mt-4"
           type="button"
-          :disabled="isHatching || projectedCoins < NORMAL_EGG_PRICE"
-          @click="buyAndHatch"
+          :disabled="!canOpenManual"
+          @click="openManualPack"
         >
-          <span v-if="projectedCoins < NORMAL_EGG_PRICE">Not enough coins</span>
-          <span v-else-if="isHatching">Hatching...</span>
-          <span v-else>Buy Normal Egg</span>
+          <span v-if="actionLoading">Opening...</span>
+          <span v-else-if="manualCooldownRemainingMs > 0">Cooldown {{ (manualCooldownRemainingMs / 1000).toFixed(1) }}s</span>
+          <span v-else>Open Pack</span>
         </button>
 
-        <div
-          v-if="lastHatchResult"
-          class="mx-auto mt-4 max-w-md rounded-xl border border-soft bg-panel-soft p-3 text-left"
-        >
-          <p class="text-xs uppercase tracking-wide text-muted">Hatch Result</p>
+        <div v-if="lastDraw" class="mt-4 rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs uppercase tracking-wide text-muted">Latest Draw</p>
           <p class="mt-1 text-base font-semibold">
-            Tier {{ lastHatchResult.tier }} · Level {{ lastHatchResult.level }} code-chick:
-            {{ termName(lastHatchResult.term_key) }}
+            {{ packName(lastDraw.tier) }} · {{ termName(lastDraw.term_key) }}
           </p>
-          <p class="text-xs text-muted">
-            Copies: {{ lastHatchResult.copies }} · Earning goes up with each duplicate.
+          <p class="mt-1 text-xs text-muted">
+            {{ lastDraw.rarity }} · {{ lastDraw.mutation }} · +{{ formatNumber(lastDraw.reward) }} coins
           </p>
+          <p class="mt-1 text-xs text-muted">Copies {{ lastDraw.copies }} · Level {{ lastDraw.level }} · {{ lastDraw.source }}</p>
         </div>
       </section>
 
       <aside class="card p-4 text-sm">
-        <p class="text-xs uppercase tracking-wide text-muted">Hatch Rates</p>
-        <p class="mt-1 text-xs text-muted">Current Normal Egg tier chances</p>
+        <p class="text-xs uppercase tracking-wide text-muted">Pack Odds</p>
+        <p class="mt-1 text-xs text-muted">Current calculated rates</p>
 
         <div class="mt-3 space-y-2">
-          <div
-            v-for="rate in hatchRates"
-            :key="rate.tier"
-            class="flex items-center justify-between rounded-lg border border-soft bg-panel-soft px-3 py-2"
-          >
-            <span class="font-medium">Tier {{ rate.tier }}</span>
-            <span class="text-muted">{{ rate.percent }}%</span>
+          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Tier</p>
+          <div v-for="tier in tierRows" :key="`tier-${tier.tier}`" class="flex items-center justify-between rounded-lg border border-soft bg-panel-soft px-3 py-2">
+            <span>{{ packName(tier.tier) }}</span>
+            <span>{{ percent(tier.weight) }}</span>
           </div>
         </div>
+
+        <div class="mt-3 space-y-2">
+          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Rarity by Draw Tier</p>
+          <div v-for="rarityRow in rarityRows" :key="`rarity-${rarityRow.tier}`" class="rounded-lg border border-soft bg-panel-soft p-2">
+            <p class="text-xs font-semibold">{{ packName(rarityRow.tier) }}</p>
+            <p class="text-xs text-muted">
+              C {{ percent(rarityRow.weights.common) }} · R {{ percent(rarityRow.weights.rare) }} · E {{ percent(rarityRow.weights.epic) }} · L {{ percent(rarityRow.weights.legendary) }}
+            </p>
+          </div>
+        </div>
+
+        <div class="mt-3 space-y-2">
+          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Mutation</p>
+          <div class="rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
+            None {{ percent(mutationWeights.none) }} · Foil {{ percent(mutationWeights.foil) }} · Holo {{ percent(mutationWeights.holo) }}
+            · Glitched {{ percent(mutationWeights.glitched) }} · Prismatic {{ percent(mutationWeights.prismatic) }}
+          </div>
+        </div>
+
+        <details class="mt-3 rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
+          <summary class="cursor-pointer font-semibold">Why these odds?</summary>
+          <p class="mt-2">Luck Lv {{ playerState?.luck_level || 0 }} shifts rarity. Mutation Lv {{ playerState?.mutation_level || 0 }} shifts mutation quality.</p>
+          <p class="mt-1">Tier odds come from Tier Boost Lv {{ playerState?.tier_boost_level || 0 }} with lock redistribution to unlocked tiers.</p>
+        </details>
       </aside>
     </div>
+
+    <section class="card p-5">
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Shop</h2>
+          <p class="text-xs text-muted">Spend coins to improve auto opening, odds, and value.</p>
+        </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <article v-for="upgrade in shopRows" :key="upgrade.key" class="rounded-xl border border-soft bg-panel-soft p-4">
+          <p class="text-xs text-muted">{{ upgrade.label }}</p>
+          <p class="mt-1 text-xs text-muted">{{ upgrade.description }}</p>
+
+          <p class="mt-2 text-sm"><span class="font-semibold">Current:</span> {{ upgrade.currentEffect }}</p>
+          <p class="text-sm text-muted"><span class="font-semibold text-main">Next:</span> {{ upgrade.nextEffect || 'Maxed' }}</p>
+
+          <div class="mt-3 flex items-center justify-between">
+            <p class="text-sm font-semibold">{{ upgrade.cost == null ? 'MAX' : `${formatNumber(upgrade.cost)} coins` }}</p>
+            <button class="btn-primary" type="button" :disabled="!upgrade.canBuy || actionLoading" @click="buyUpgrade(upgrade.key)">
+              {{ upgrade.cost == null ? 'Maxed' : 'Buy' }}
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="card p-5">
+      <div class="mb-4 flex items-center justify-between">
+        <h2 class="text-lg font-semibold">Card Collection</h2>
+        <p class="text-xs text-muted">Collection is secondary; cards are your reward generator.</p>
+      </div>
+
+      <div v-if="cards.length === 0" class="rounded-xl border border-dashed border-soft p-6 text-sm text-muted">
+        No cards yet. Open your first pack.
+      </div>
+
+      <div v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <article
+          v-for="item in cards"
+          :key="item.termKey"
+          class="rounded-xl border border-soft bg-white p-4"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <h3 class="text-sm font-semibold">{{ item.name }}</h3>
+            <span class="rounded-full px-2 py-0.5 text-xs text-white" :style="{ background: rarityColor(item.rarity) }">{{ item.rarity }}</span>
+          </div>
+
+          <p class="mt-1 text-xs text-muted">{{ packName(item.tier) }}</p>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <p class="text-xs text-muted">Copies</p>
+              <p class="font-medium">{{ item.copies }}</p>
+            </div>
+            <div>
+              <p class="text-xs text-muted">Level</p>
+              <p class="font-medium">Lv {{ item.level }}</p>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <debug-panel
+      v-if="debugEnabled"
+      :open="debugPanelOpen"
+      :loading="actionLoading"
+      :debug-allowed="debugAllowed"
+      :term-options="termOptions"
+      :last-error="debugLastError"
+      :last-result="debugLastResult"
+      @toggle="toggleDebugPanel"
+      @apply="applyDebugAction"
+    />
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useStore } from 'vuex'
-import { BASE_BP_MULTIPLIER, TERMS_BY_KEY } from '../data/terms'
+import DebugPanel from '../components/game/DebugPanel.vue'
+import { RARITY_COLORS, TERMS, TERMS_BY_KEY } from '../data/terms'
 import { BALANCE_CONFIG } from '../lib/balanceConfig.mjs'
-import { MIX_WEIGHTS, getProgressToNextTier } from '../lib/hatchLogic.mjs'
+import {
+  PACK_NAMES_BY_TIER,
+  SHOP_UPGRADES,
+  canBuyUpgrade,
+  getAutoOpensPerSecond,
+  getEffectiveTierWeights,
+  getMutationWeights,
+  getProgressToNextTier,
+  getRarityWeightsForTier,
+  getUpgradeCost,
+  getUpgradePreview,
+} from '../lib/packLogic.mjs'
 
-const NORMAL_EGG_TIER = 1
-const NORMAL_EGG_PRICE = Number(BALANCE_CONFIG.eggCosts[NORMAL_EGG_TIER] || 25)
-const HATCH_DURATION_MS = 2400
+const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY !== '0'
 
 const store = useStore()
 const nowMs = ref(Date.now())
-const hatchPhase = ref('idle')
-const isHatching = ref(false)
-const lastHatchResult = ref(null)
-const displayedTerms = ref([])
-let timer = null
+const manualLockedUntilMs = ref(0)
+
+let clockTimer = null
+let syncTimer = null
 
 const snapshot = computed(() => store.state.game.snapshot)
 const playerState = computed(() => snapshot.value?.state || null)
 const playerTerms = computed(() => snapshot.value?.terms || [])
 const gameError = computed(() => store.state.game.error)
-const lastSyncMs = computed(() => Number(store.state.game.lastSyncMs || Date.now()))
-const eggsOpened = computed(() => Number(playerState.value?.eggs_opened || 0))
+const actionLoading = computed(() => store.state.game.actionLoading)
+const lastDraw = computed(() => store.state.game.openResult)
 
-const progression = computed(() => getProgressToNextTier(eggsOpened.value))
-const currentMixWeights = computed(() => MIX_WEIGHTS[progression.value.highestTier] || MIX_WEIGHTS[1])
-const hatchRates = computed(() => {
-  return Object.entries(currentMixWeights.value)
-    .map(([tier, percent]) => ({ tier: Number(tier), percent: Number(percent) }))
+const debugEnabled = computed(() => store.state.debug.enabled)
+const debugPanelOpen = computed(() => store.state.debug.panelOpen)
+const debugLastError = computed(() => store.state.debug.lastError)
+const debugLastResult = computed(() => store.state.debug.lastResult)
+const debugAllowed = computed(() => store.state.game.debugAllowed)
+
+const playerCoins = computed(() => Number(playerState.value?.coins || 0))
+const playerPacksOpened = computed(() => Number(playerState.value?.packs_opened || 0))
+const playerManualOpens = computed(() => Number(playerState.value?.manual_opens || 0))
+const playerAutoOpens = computed(() => Number(playerState.value?.auto_opens || 0))
+const highestTierUnlocked = computed(() => Number(playerState.value?.highest_tier_unlocked || 1))
+
+const autoRate = computed(() => getAutoOpensPerSecond(playerState.value || {}))
+const autoRateLabel = computed(() => (autoRate.value > 0 ? `${autoRate.value.toFixed(2)} packs/sec` : 'Locked'))
+
+const progression = computed(() => getProgressToNextTier(playerState.value || {}))
+const tierWeights = computed(() => getEffectiveTierWeights(playerState.value || {}))
+const mutationWeights = computed(() => getMutationWeights(playerState.value?.mutation_level || 0))
+
+const tierRows = computed(() => {
+  return Object.entries(tierWeights.value)
+    .map(([tier, weight]) => ({ tier: Number(tier), weight: Number(weight) }))
     .sort((a, b) => a.tier - b.tier)
 })
 
-const projectedCoins = computed(() => {
-  const state = playerState.value
-  if (!state) return 0
-
-  const baseCoins = Number(state.coins || 0)
-  const passiveBp = Number(state.passive_rate_bp || 0)
-  const elapsedSeconds = Math.max(0, Math.floor((nowMs.value - lastSyncMs.value) / 1000))
-  const cappedSeconds = Math.min(12 * 60 * 60, elapsedSeconds)
-  const projectedGain = Math.floor((cappedSeconds * passiveBp) / 10000)
-
-  return baseCoins + projectedGain
+const rarityRows = computed(() => {
+  const rows = []
+  for (let tier = 1; tier <= highestTierUnlocked.value; tier += 1) {
+    rows.push({
+      tier,
+      weights: getRarityWeightsForTier(tier, playerState.value?.luck_level || 0),
+    })
+  }
+  return rows
 })
 
-const codeChicks = computed(() => {
-  return displayedTerms.value
+const cards = computed(() => {
+  return playerTerms.value
     .map((row) => {
       const term = TERMS_BY_KEY[row.term_key]
       if (!term) return null
-
-      const level = Number(row.level || 1)
       return {
         termKey: row.term_key,
         name: term.name,
         tier: term.tier,
-        level,
+        rarity: term.rarity,
         copies: Number(row.copies || 0),
-        earnPerSec: ((term.baseBp * BASE_BP_MULTIPLIER) * level) / 10000,
+        level: Number(row.level || 1),
       }
     })
     .filter(Boolean)
@@ -185,26 +286,29 @@ const codeChicks = computed(() => {
     })
 })
 
-const codeChicksByTier = computed(() => {
-  const grouped = { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] }
-  for (const chick of codeChicks.value) {
-    grouped[chick.tier].push(chick)
-  }
-  return grouped
+const shopRows = computed(() => {
+  const state = playerState.value || {}
+
+  return SHOP_UPGRADES.map((upgrade) => {
+    const preview = getUpgradePreview(state, upgrade.key)
+    const cost = getUpgradeCost(state, upgrade.key)
+
+    return {
+      ...upgrade,
+      cost,
+      currentEffect: preview.current,
+      nextEffect: preview.next,
+      canBuy: canBuyUpgrade(state, upgrade.key),
+    }
+  })
 })
 
-const tierOrder = [1, 2, 3, 4, 5, 6]
+const manualCooldownRemainingMs = computed(() => Math.max(0, manualLockedUntilMs.value - nowMs.value))
+const canOpenManual = computed(() => {
+  return !!playerState.value && !actionLoading.value && manualCooldownRemainingMs.value <= 0
+})
 
-watch(
-  playerTerms,
-  (nextTerms) => {
-    // Keep top-row reveal in sync normally, but freeze updates while cracking.
-    if (!isHatching.value && hatchPhase.value !== 'cracking') {
-      displayedTerms.value = Array.isArray(nextTerms) ? [...nextTerms] : []
-    }
-  },
-  { immediate: true },
-)
+const termOptions = TERMS.map((term) => ({ key: term.key, name: term.name }))
 
 onMounted(async () => {
   await store.dispatch('auth/initAuth')
@@ -212,97 +316,65 @@ onMounted(async () => {
     await store.dispatch('game/bootstrapPlayer')
   }
 
-  timer = window.setInterval(() => {
+  clockTimer = window.setInterval(() => {
     nowMs.value = Date.now()
-  }, 1000)
+  }, 120)
+
+  if (LOCAL_ECONOMY_ENABLED) {
+    syncTimer = window.setInterval(async () => {
+      if (!store.state.game.actionLoading) {
+        await store.dispatch('game/syncPlayer')
+      }
+    }, 1000)
+  }
 })
 
 onUnmounted(() => {
-  if (timer) {
-    window.clearInterval(timer)
+  if (clockTimer) {
+    window.clearInterval(clockTimer)
+  }
+
+  if (syncTimer) {
+    window.clearInterval(syncTimer)
   }
 })
 
-async function buyAndHatch() {
-  if (isHatching.value || projectedCoins.value < NORMAL_EGG_PRICE) return
+async function openManualPack() {
+  if (!canOpenManual.value) return
 
-  isHatching.value = true
-  hatchPhase.value = 'cracking'
-  lastHatchResult.value = null
+  manualLockedUntilMs.value = Date.now() + BALANCE_CONFIG.manualOpenCooldownMs
+  await store.dispatch('game/openPack', { source: 'manual' })
+}
 
-  try {
-    const hatchDelay = new Promise((resolve) => window.setTimeout(resolve, HATCH_DURATION_MS))
-    const openRequest = store.dispatch('game/openEgg', { tier: NORMAL_EGG_TIER })
-    await Promise.all([openRequest, hatchDelay])
+async function buyUpgrade(upgradeKey) {
+  await store.dispatch('game/buyUpgrade', { upgradeKey })
+}
 
-    const draw = store.state.game.openResult
-    if (draw) {
-      lastHatchResult.value = draw
-      // Reveal new/updated code-chicks only after hatch animation completes.
-      displayedTerms.value = [...playerTerms.value]
-      hatchPhase.value = 'revealed'
-    } else {
-      displayedTerms.value = [...playerTerms.value]
-      hatchPhase.value = 'idle'
-    }
-  } finally {
-    isHatching.value = false
-    window.setTimeout(() => {
-      if (!isHatching.value) {
-        hatchPhase.value = 'idle'
-      }
-    }, 1200)
-  }
+async function toggleDebugPanel() {
+  await store.dispatch('debug/togglePanel')
+}
+
+async function applyDebugAction(action) {
+  await store.dispatch('game/debugApply', action)
+}
+
+function packName(tier) {
+  return PACK_NAMES_BY_TIER[Number(tier)] || `Tier ${tier} Pack`
+}
+
+function termName(termKey) {
+  return TERMS_BY_KEY[termKey]?.name || termKey
+}
+
+function percent(value) {
+  return `${Number(value || 0).toFixed(2)}%`
 }
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString()
 }
 
-function termName(termKey) {
-  return TERMS_BY_KEY[termKey]?.name || termKey
+function rarityColor(rarity) {
+  return RARITY_COLORS[rarity] || 'var(--rarity-common)'
 }
 </script>
-
-<style scoped>
-.hatch-card {
-  min-height: 360px;
-}
-
-.egg-shell {
-  width: 112px;
-  height: 112px;
-  border-radius: 9999px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(160deg, #ffffff, #dce4ff);
-  border: 1px solid var(--border-soft);
-  box-shadow: 0 10px 22px rgba(34, 53, 107, 0.16);
-}
-
-.egg-face {
-  font-size: 3rem;
-}
-
-.egg-shell.cracking {
-  animation: crack 0.35s linear infinite;
-}
-
-@keyframes crack {
-  0% {
-    transform: rotate(0deg) translateX(0px);
-  }
-  25% {
-    transform: rotate(4deg) translateX(2px);
-  }
-  50% {
-    transform: rotate(-4deg) translateX(-2px);
-  }
-  75% {
-    transform: rotate(3deg) translateX(2px);
-  }
-  100% {
-    transform: rotate(0deg) translateX(0px);
-  }
-}
-</style>

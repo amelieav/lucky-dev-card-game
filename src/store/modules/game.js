@@ -1,19 +1,20 @@
 import {
   bootstrapPlayer as apiBootstrapPlayer,
+  buyUpgrade as apiBuyUpgrade,
   debugApply as apiDebugApply,
-  openEgg as apiOpenEgg,
+  openPack as apiOpenPack,
   updateNickname as apiUpdateNickname,
-  upgradeLuck as apiUpgradeLuck,
 } from '../../services/gameApi'
 import {
   bootstrapLocalPlayer,
+  buyLocalUpgrade,
   debugApplyLocal,
-  openLocalEgg,
+  openLocalPack,
+  syncLocalPlayer,
   updateLocalNickname,
-  upgradeLocalLuck,
 } from '../../lib/localEconomy.mjs'
 
-const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
+const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY !== '0'
 
 function normalizeSnapshot(data) {
   if (!data) return null
@@ -35,6 +36,7 @@ export default {
     lastSyncMs: 0,
     openResult: null,
     debugAllowed: false,
+    economyMode: LOCAL_ECONOMY_ENABLED ? 'local' : 'server',
   }),
   getters: {
     playerState(state) {
@@ -94,7 +96,26 @@ export default {
       }
     },
 
-    async openEgg({ commit, rootState }, { tier, debugOverride = null }) {
+    async syncPlayer({ commit, rootState }) {
+      if (!LOCAL_ECONOMY_ENABLED) return
+
+      try {
+        const user = rootState.auth.user
+        if (!user?.id) return
+
+        const data = syncLocalPlayer(user, { debugAllowed: rootState.debug.enabled })
+        const snapshot = normalizeSnapshot(data)
+        commit('applySnapshot', snapshot)
+
+        if (data?.draw) {
+          commit('setOpenResult', data.draw)
+        }
+      } catch (error) {
+        commit('setError', error.message || 'Unable to sync player state.')
+      }
+    },
+
+    async openPack({ commit, rootState }, { source = 'manual', debugOverride = null } = {}) {
       commit('setActionLoading', true)
       commit('setError', null)
 
@@ -102,38 +123,57 @@ export default {
         const user = rootState.auth.user
         const override = rootState.debug.enabled ? debugOverride : null
         const data = LOCAL_ECONOMY_ENABLED
-          ? openLocalEgg(user, {
-              tier,
+          ? openLocalPack(user, {
+              source,
               debugOverride: override,
               debugAllowed: rootState.debug.enabled,
             })
-          : await apiOpenEgg(tier, override)
+          : await apiOpenPack({ source, debugOverride: override })
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
         commit('setOpenResult', data?.draw || null)
       } catch (error) {
-        commit('setError', error.message || 'Unable to open egg.')
+        commit('setError', error.message || 'Unable to open pack.')
       } finally {
         commit('setActionLoading', false)
       }
     },
 
-    async upgradeLuck({ commit, rootState }) {
+    async buyUpgrade({ commit, rootState }, { upgradeKey }) {
       commit('setActionLoading', true)
       commit('setError', null)
 
       try {
         const user = rootState.auth.user
         const data = LOCAL_ECONOMY_ENABLED
-          ? upgradeLocalLuck(user, { debugAllowed: rootState.debug.enabled })
-          : await apiUpgradeLuck()
+          ? buyLocalUpgrade(user, {
+              upgradeKey,
+              debugAllowed: rootState.debug.enabled,
+            })
+          : await apiBuyUpgrade({ upgradeKey })
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
       } catch (error) {
-        commit('setError', error.message || 'Unable to upgrade luck.')
+        commit('setError', error.message || 'Unable to buy upgrade.')
       } finally {
         commit('setActionLoading', false)
       }
+    },
+
+    // Backward-compatible actions.
+    async openEgg({ dispatch }, { tier = 1, debugOverride = null } = {}) {
+      const override = {
+        ...(debugOverride || {}),
+      }
+      if (override.tier == null) {
+        override.tier = tier
+      }
+
+      return dispatch('openPack', { source: 'manual', debugOverride: override })
+    },
+
+    async upgradeLuck({ dispatch }) {
+      return dispatch('buyUpgrade', { upgradeKey: 'luck_engine' })
     },
 
     async updateNickname({ commit, rootState }, parts) {

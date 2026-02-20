@@ -1,7 +1,7 @@
 import { fetchLeaderboard } from '../../services/gameApi'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
-const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
+const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY !== '0'
 
 export default {
   namespaced: true,
@@ -46,15 +46,15 @@ export default {
           const snapshot = rootState.game.snapshot
           const stateRow = snapshot?.state
           const profile = snapshot?.profile
-          const score = (Number(stateRow?.coins || 0) + Math.floor((Number(stateRow?.passive_rate_bp || 0) / 10000) * 3600))
+
           rows = stateRow
             ? [{
                 rank: 1,
                 display_name: profile?.display_name || 'Local Player',
-                score,
-                luck_level: Number(stateRow.luck_level || 0),
-                highest_tier_unlocked: Number(stateRow.highest_tier_unlocked || 1),
-                updated_at: stateRow.updated_at,
+                score: Number(stateRow?.coins || 0),
+                luck_level: Number(stateRow?.luck_level || 0),
+                highest_tier_unlocked: Number(stateRow?.highest_tier_unlocked || 1),
+                updated_at: stateRow?.updated_at,
               }]
             : []
         } else {

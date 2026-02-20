@@ -2,11 +2,11 @@
   <section class="card p-5">
     <div class="mb-4 flex items-center justify-between">
       <h2 class="text-lg font-semibold">Inventory</h2>
-      <p class="text-xs text-muted">Duplicates increase term levels and passive income.</p>
+      <p class="text-xs text-muted">Duplicates increase term levels and collection depth.</p>
     </div>
 
     <div v-if="items.length === 0" class="rounded-xl border border-dashed border-soft p-6 text-sm text-muted">
-      No terms yet. Open your first egg.
+      No cards yet. Open your first pack.
     </div>
 
     <div v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
