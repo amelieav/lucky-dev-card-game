@@ -608,7 +608,7 @@ declare
   cost bigint;
   debug_override_allowed boolean;
   debug_applied boolean := false;
-  next_reward jsonb;
+  debug_next_reward jsonb;
 begin
   uid := auth.uid();
   if uid is null then
@@ -657,15 +657,15 @@ begin
     draw_tier := coalesce((p_debug_override ->> 'tier')::int, p_egg_tier);
     debug_applied := true;
   else
-    select next_reward into next_reward
-    from public.player_debug_state
+    select pds.next_reward into debug_next_reward
+    from public.player_debug_state pds
     where user_id = uid
     for update;
 
-    if next_reward is not null and debug_override_allowed then
-      chosen_term := nullif(trim(coalesce(next_reward ->> 'term_key', '')), '');
-      current_rarity := nullif(trim(coalesce(next_reward ->> 'rarity', '')), '');
-      draw_tier := coalesce((next_reward ->> 'tier')::int, p_egg_tier);
+    if debug_next_reward is not null and debug_override_allowed then
+      chosen_term := nullif(trim(coalesce(debug_next_reward ->> 'term_key', '')), '');
+      current_rarity := nullif(trim(coalesce(debug_next_reward ->> 'rarity', '')), '');
+      draw_tier := coalesce((debug_next_reward ->> 'tier')::int, p_egg_tier);
       update public.player_debug_state set next_reward = null where user_id = uid;
       debug_applied := true;
     end if;
