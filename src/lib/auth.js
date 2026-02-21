@@ -1,5 +1,16 @@
 export function getMagicLinkRedirectTo() {
   if (typeof window === 'undefined') return undefined
+
+  // Explicit override for environments where URL rewriting is strict.
+  const configuredRedirect = import.meta.env.VITE_AUTH_REDIRECT_URL
+  if (configuredRedirect) return configuredRedirect
+
+  // Prefer the actual served path (e.g. /lucky-agent/) to avoid bare-origin redirects.
+  const servedPath = window.location.pathname || '/'
+  if (servedPath && servedPath !== '/') {
+    return new URL(servedPath, window.location.origin).toString()
+  }
+
   const base = import.meta.env.BASE_URL || '/'
   return new URL(base, window.location.origin).toString()
 }
