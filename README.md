@@ -1,74 +1,101 @@
 # Lucky Agent
 
-Lucky Agent is a lucky-draw idle game built with Vue 3 + Vite + Tailwind + Supabase.
+Lucky Agent is a Vue 3 + Supabase card opening game with progression, collection tracking, passive income, and a global leaderboard.
 
-## Gameplay
-- Sign in with magic link.
-- Buy/open egg tiers to unlock AI and software-engineering terms.
-- Duplicates level up terms.
-- Terms generate passive coins over time.
-- Spend coins to increase luck (better rarity odds + small passive bonus).
-- Compete on a global leaderboard.
+## Core features
+- Single-pack opening loop with manual and unlockable auto opening.
+- Card outcomes driven by:
+  - Tier odds (`tier_boost` upgrade)
+  - Rarity odds (`value` upgrade)
+  - Mutation odds (`mutation` upgrade)
+- 6 tiers of cards, with rarity and mutation affecting value.
+- Foil/Holo mutations grant permanent passive coins per second.
+- Card Book view with discovered slots, copies, and best mutation.
+- Leaderboard ranking by highest card quality and copies of that card.
+- Legendary full-page purple sparkle celebration effect.
 
-## Local setup
-1. Install dependencies.
+## Tech stack
+- Vue 3 + Vuex + Vue Router
+- Vite + Tailwind
+- Supabase Auth + Postgres RPC
+
+## Local development
+1. Install dependencies
 ```bash
 npm install
 ```
 
-2. Create `.env` from `.env.example` and fill Supabase credentials.
+2. Create env file
 ```bash
 cp .env.example .env
 ```
 
-3. Apply Supabase SQL schema and RPCs.
-- Open Supabase SQL editor.
-- Run `supabase/schema.sql`.
+3. Fill required variables in `.env`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- Optional: `VITE_LOCAL_ECONOMY=1` for local-only economy simulation
 
-4. Start dev server.
+4. Apply DB schema
+- Open Supabase SQL Editor
+- Run `supabase/schema.sql`
+
+5. Run dev server
 ```bash
 npm run dev
 ```
 
-## Supabase auth configuration
-Configure Auth URL allowlist:
+## Scripts
+- `npm run dev` - start Vite dev server
+- `npm test` - run node test suite (`tests/*.test.mjs`)
+- `npm run build` - production build
+- `npm run sync-schema` - refresh generated schema sections from source data files
+
+## Supabase auth setup
+Configure redirect/allowlist URLs in Supabase Auth:
 - Local: `http://localhost:5173/`
-- Production: `https://<user>.github.io/<repo>/`
+- Production (GitHub Pages): `https://<user>.github.io/<repo>/`
 
 ## Debug mode
-- Enable: append `?debug=1` to URL.
-- Disable: append `?debug=0`.
-- Debug UI shows on `/game` only when signed in and debug flag is enabled.
-- Mutating debug actions are server-guarded by `debug_allowlist` email entries.
+Append query params in URL:
+- `?debug=1` to enable
+- `?debug=0` to disable
 
-To allow a production account:
+Debug actions are restricted by `public.debug_allowlist`.
+
+Example allowlist entry:
 ```sql
 insert into public.debug_allowlist(email) values ('you@example.com');
 ```
 
-## Local balance mode (no schema reruns)
-Use this when you want to tune prices/chances/luck quickly in frontend code first.
+## Database operations
+### Reapply schema safely
+Run `supabase/schema.sql` in Supabase SQL Editor when updating RPC/view logic.
 
-1. Set in `.env`:
+### Reset all test profiles and sign-ins
+Use:
+- `supabase/reset_all_profiles.sql`
+
+This removes all `auth.users` rows plus gameplay/profile data tables.
+
+## Local economy mode (fast balancing)
+Set:
 ```bash
 VITE_LOCAL_ECONOMY=1
 ```
-2. Restart `npm run dev`.
-3. Tune values in:
-- `src/lib/balanceConfig.mjs` (egg costs, unlock thresholds, hatch mix weights, rarity weights, luck bonus)
-- `src/data/terms.js` (`baseBp` values per code-chick)
 
-Notes:
-- Auth still works with Supabase magic links.
-- Game economy runs from local storage per signed-in user.
-- Leaderboard becomes local-only while this mode is enabled.
-- During `npm run dev`, updates to `src/data/terms.mjs`, `src/data/nicknameParts.mjs`, or `src/lib/balanceConfig.mjs` auto-sync generated sections in `supabase/schema.sql`.
-- Run `npm run sync-schema` manually any time to refresh DB-facing schema data from local source files.
-- Set `VITE_LOCAL_ECONOMY=0` to switch back to server-authoritative RPC economy.
+In this mode:
+- Economy runs from browser local storage per signed-in user
+- Leaderboard is local-only
+- You can quickly tune balance files without server RPC round-trips
 
-## Deploy
-GitHub Pages workflow is in `.github/workflows/deploy.yml`.
+Key files:
+- `src/lib/balanceConfig.mjs`
+- `src/lib/packLogic.mjs`
+- `src/data/terms.mjs`
 
-Set repository secrets:
+## Deployment
+GitHub Pages workflow: `.github/workflows/deploy.yml`
+
+Repository secrets required:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`

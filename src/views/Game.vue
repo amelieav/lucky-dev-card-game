@@ -1,5 +1,10 @@
 <template>
   <section class="space-y-4">
+    <div v-if="legendarySparkleActive" class="legendary-sparkle" aria-hidden="true">
+      <div class="legendary-sparkle__layer legendary-sparkle__layer--a"></div>
+      <div class="legendary-sparkle__layer legendary-sparkle__layer--b"></div>
+    </div>
+
     <div class="card p-4 status-strip">
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
@@ -10,7 +15,10 @@
           <p class="text-xs text-muted">Manual / Auto</p>
           <p class="text-xl font-semibold">{{ formatNumber(playerManualOpens) }} / {{ formatNumber(playerAutoOpens) }}</p>
         </article>
-        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+        <article
+          class="rounded-xl border border-soft bg-panel-soft p-3"
+          :class="leaderboardPositionToneClass"
+        >
           <p class="text-xs text-muted">Leaderboard Position</p>
           <p class="text-xl font-semibold">{{ leaderboardPositionLabel }}</p>
         </article>
@@ -304,10 +312,12 @@ const autoRollEnabled = ref(true)
 const REVEAL_READ_MS = 2750
 const MANUAL_OPENING_EXTRA_MS = 500
 const AUTO_OPENING_MS = 420
+const LEGENDARY_SPARKLE_MS = 5000
 
 let autoRollTimer = null
 let syncTimer = null
 let viewActive = true
+let legendarySparkleTimer = null
 
 const snapshot = computed(() => store.state.game.snapshot)
 const playerState = computed(() => snapshot.value?.state || null)
@@ -315,6 +325,7 @@ const playerTerms = computed(() => snapshot.value?.terms || [])
 const gameError = computed(() => store.state.game.error)
 const actionLoading = computed(() => store.state.game.actionLoading)
 const recentDraws = computed(() => displayedRecentDraws.value)
+const legendarySparkleActive = ref(false)
 
 const debugEnabled = computed(() => store.state.debug.enabled)
 const debugPanelOpen = computed(() => store.state.debug.panelOpen)
@@ -340,6 +351,14 @@ const leaderboardPositionLabel = computed(() => {
     return leaderboardLoading.value ? '...' : 'Unranked'
   }
   return toOrdinal(leaderboardPosition.value)
+})
+const leaderboardPositionToneClass = computed(() => {
+  const rank = Number(leaderboardPosition.value || 999)
+  if (rank === 1) return 'leaderboard-tile--first'
+  if (rank === 2) return 'leaderboard-tile--second'
+  if (rank === 3) return 'leaderboard-tile--third'
+  if (rank === 4 || rank === 5) return 'leaderboard-tile--fourth-fifth'
+  return 'leaderboard-tile--other'
 })
 
 const autoLoopDelayMs = computed(() => {
@@ -548,6 +567,11 @@ onUnmounted(() => {
   if (syncTimer) {
     window.clearInterval(syncTimer)
   }
+
+  if (legendarySparkleTimer) {
+    window.clearTimeout(legendarySparkleTimer)
+    legendarySparkleTimer = null
+  }
 })
 
 watch(autoUnlocked, (enabled) => {
@@ -636,6 +660,7 @@ async function runAutoRollCycle() {
     return
   }
 
+  triggerLegendarySparkle(draw)
   manualPackPhase.value = 'opening'
   await sleep(AUTO_OPENING_MS)
   if (!viewActive) return
@@ -671,6 +696,7 @@ async function openManualPack() {
     return
   }
 
+  triggerLegendarySparkle(draw)
   manualPackPhase.value = 'opening'
   await sleep(cycle.openingMs + MANUAL_OPENING_EXTRA_MS)
   manualRevealDraw.value = draw
@@ -696,6 +722,20 @@ function appendRecentDraw(draw) {
   if (!draw) return
   displayedRecentDraws.value = [draw, ...displayedRecentDraws.value]
     .slice(0, 5)
+}
+
+function triggerLegendarySparkle(draw) {
+  if (normalizeRarity(draw?.rarity) !== 'legendary') return
+
+  legendarySparkleActive.value = true
+  if (legendarySparkleTimer) {
+    window.clearTimeout(legendarySparkleTimer)
+  }
+
+  legendarySparkleTimer = window.setTimeout(() => {
+    legendarySparkleActive.value = false
+    legendarySparkleTimer = null
+  }, LEGENDARY_SPARKLE_MS)
 }
 
 async function toggleDebugPanel() {
@@ -805,6 +845,73 @@ function sleep(ms) {
   background: rgba(255, 255, 255, 0.95);
   border-color: rgba(120, 143, 194, 0.35);
   box-shadow: 0 10px 24px rgba(23, 42, 94, 0.14);
+}
+
+.leaderboard-tile--first {
+  background: #e9f8ec;
+  border-color: #9fcea8;
+}
+
+.leaderboard-tile--second {
+  background: #fff8df;
+  border-color: #e3cf88;
+}
+
+.leaderboard-tile--third {
+  background: #fff0e2;
+  border-color: #e9be90;
+}
+
+.leaderboard-tile--fourth-fifth {
+  background: #ffeaec;
+  border-color: #ebb4bc;
+}
+
+.leaderboard-tile--other {
+  background: #eaf2ff;
+  border-color: #adbfeb;
+}
+
+.legendary-sparkle {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.legendary-sparkle__layer {
+  position: absolute;
+  inset: -10%;
+}
+
+.legendary-sparkle__layer--a {
+  background:
+    radial-gradient(circle at 8% 14%, rgba(195, 142, 255, 0.8) 0 1.5px, transparent 2.4px),
+    radial-gradient(circle at 18% 62%, rgba(224, 174, 255, 0.72) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 33% 28%, rgba(179, 123, 255, 0.76) 0 1.4px, transparent 2.3px),
+    radial-gradient(circle at 49% 74%, rgba(244, 206, 255, 0.72) 0 1.7px, transparent 2.8px),
+    radial-gradient(circle at 63% 18%, rgba(200, 147, 255, 0.8) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle at 78% 64%, rgba(235, 190, 255, 0.74) 0 1.7px, transparent 2.7px),
+    radial-gradient(circle at 92% 34%, rgba(182, 126, 255, 0.75) 0 1.4px, transparent 2.2px),
+    radial-gradient(circle at 70% 44%, rgba(155, 102, 247, 0.34), transparent 44%);
+  animation: legendary-sparkle-shift 1.8s ease-in-out infinite;
+  opacity: 0.72;
+}
+
+.legendary-sparkle__layer--b {
+  background:
+    radial-gradient(circle at 12% 82%, rgba(246, 214, 255, 0.78) 0 1.7px, transparent 2.8px),
+    radial-gradient(circle at 26% 46%, rgba(193, 128, 255, 0.74) 0 1.3px, transparent 2.2px),
+    radial-gradient(circle at 39% 14%, rgba(237, 191, 255, 0.75) 0 1.7px, transparent 2.7px),
+    radial-gradient(circle at 56% 86%, rgba(172, 117, 255, 0.72) 0 1.3px, transparent 2.1px),
+    radial-gradient(circle at 71% 24%, rgba(244, 208, 255, 0.74) 0 1.6px, transparent 2.6px),
+    radial-gradient(circle at 84% 56%, rgba(188, 132, 255, 0.74) 0 1.4px, transparent 2.2px),
+    radial-gradient(circle at 96% 72%, rgba(239, 198, 255, 0.75) 0 1.7px, transparent 2.8px),
+    radial-gradient(circle at 44% 52%, rgba(121, 77, 217, 0.32), transparent 48%);
+  mix-blend-mode: screen;
+  animation: legendary-sparkle-twinkle 1.15s ease-in-out infinite;
+  opacity: 0.68;
 }
 
 .manual-pack {
@@ -981,6 +1088,39 @@ function sleep(ms) {
   }
 }
 
+@keyframes legendary-sparkle-shift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.66;
+  }
+  50% {
+    transform: translate3d(-1.2%, 1.4%, 0) scale(1.02);
+    opacity: 0.82;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.66;
+  }
+}
+
+@keyframes legendary-sparkle-twinkle {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.56;
+  }
+  35% {
+    opacity: 0.9;
+  }
+  70% {
+    transform: translate3d(1.1%, -1.2%, 0);
+    opacity: 0.62;
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0.56;
+  }
+}
+
 @keyframes pack-bob {
   0%,
   100% {
@@ -988,6 +1128,13 @@ function sleep(ms) {
   }
   50% {
     transform: translateY(-8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legendary-sparkle__layer--a,
+  .legendary-sparkle__layer--b {
+    animation: none;
   }
 }
 </style>
