@@ -7,12 +7,12 @@
           <p class="text-2xl font-semibold">{{ formatNumber(playerCoins) }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
-          <p class="text-xs text-muted">Packs Opened</p>
-          <p class="text-xl font-semibold">{{ formatNumber(playerPacksOpened) }}</p>
-        </article>
-        <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Manual / Auto</p>
           <p class="text-xl font-semibold">{{ formatNumber(playerManualOpens) }} / {{ formatNumber(playerAutoOpens) }}</p>
+        </article>
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs text-muted">Leaderboard Position</p>
+          <p class="text-xl font-semibold">{{ leaderboardPositionLabel }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Tier Coverage</p>
@@ -60,7 +60,7 @@
 
         <div
           v-if="autoUnlocked && autoRollEnabled"
-          class="manual-pack mt-4"
+          class="manual-pack mt-6"
           :class="`manual-pack--${manualPackPhase}`"
           role="status"
           aria-live="polite"
@@ -93,7 +93,7 @@
 
         <button
           v-else
-          class="manual-pack manual-pack--interactive mt-4"
+          class="manual-pack manual-pack--interactive mt-6"
           :class="`manual-pack--${manualPackPhase}`"
           type="button"
           :disabled="!canOpenManual"
@@ -321,12 +321,26 @@ const debugPanelOpen = computed(() => store.state.debug.panelOpen)
 const debugLastError = computed(() => store.state.debug.lastError)
 const debugLastResult = computed(() => store.state.debug.lastResult)
 const debugAllowed = computed(() => store.state.game.debugAllowed)
+const leaderboardRows = computed(() => store.state.leaderboard.rows || [])
+const leaderboardLoading = computed(() => Boolean(store.state.leaderboard.loading))
+const currentUserId = computed(() => store.state.auth.user?.id || null)
 
 const playerCoins = computed(() => Number(playerState.value?.coins || 0))
-const playerPacksOpened = computed(() => Number(playerState.value?.packs_opened || 0))
 const playerManualOpens = computed(() => Number(playerState.value?.manual_opens || 0))
 const playerAutoOpens = computed(() => Number(playerState.value?.auto_opens || 0))
 const autoUnlocked = computed(() => Boolean(playerState.value?.auto_unlocked))
+const leaderboardPosition = computed(() => {
+  const rowByFlag = leaderboardRows.value.find((row) => row?.is_you)
+  const rowById = rowByFlag || leaderboardRows.value.find((row) => row?.user_id && row.user_id === currentUserId.value)
+  const rank = Number(rowById?.rank || 0)
+  return rank > 0 ? rank : null
+})
+const leaderboardPositionLabel = computed(() => {
+  if (!leaderboardPosition.value) {
+    return leaderboardLoading.value ? '...' : 'Unranked'
+  }
+  return toOrdinal(leaderboardPosition.value)
+})
 
 const autoLoopDelayMs = computed(() => {
   return autoUnlocked.value
@@ -508,6 +522,7 @@ onMounted(async () => {
   if (!store.state.game.snapshot) {
     await store.dispatch('game/bootstrapPlayer')
   }
+  await store.dispatch('leaderboard/fetch', { force: false, limit: 100 })
 
   displayedRecentDraws.value = [...(store.state.game.recentDraws || [])]
 
@@ -714,6 +729,17 @@ function percent(value) {
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString()
+}
+
+function toOrdinal(value) {
+  const n = Math.max(0, Number(value || 0))
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`
+  const mod10 = n % 10
+  if (mod10 === 1) return `${n}st`
+  if (mod10 === 2) return `${n}nd`
+  if (mod10 === 3) return `${n}rd`
+  return `${n}th`
 }
 
 function normalizeMutation(mutation) {
