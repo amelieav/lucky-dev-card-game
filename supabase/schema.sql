@@ -232,12 +232,37 @@ for all
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
+create or replace function public.allowed_nick_words()
+returns text[]
+language sql
+stable
+as $$
+  select array[
+    'Amber', 'Aqua', 'Azure', 'Beige', 'Black', 'Blue', 'Bronze', 'Coral', 'Crimson', 'Cyan', 'Emerald', 'Gold', 'Gray', 'Green', 'Indigo', 'Ivory',
+    'Jade', 'Lavender', 'Lime', 'Magenta', 'Maroon', 'Mint', 'Navy', 'Neon', 'Olive', 'Orange', 'Peach', 'Pink', 'Plum', 'Purple', 'Red', 'Rose',
+    'Ruby', 'Saffron', 'Scarlet', 'Silver', 'Teal', 'Turquoise', 'Violet', 'White', 'Yellow',
+    'Agile', 'Alert', 'Bold', 'Bright', 'Calm', 'Clever', 'Crisp', 'Daring', 'Eager', 'Fancy', 'Fast', 'Fierce', 'Focused', 'Gentle', 'Grand', 'Happy',
+    'Icy', 'Jolly', 'Keen', 'Kind', 'Lucky', 'Mighty', 'Nimble', 'Noble', 'Patient', 'Playful', 'Proud', 'Quick', 'Rapid', 'Ready', 'Sharp', 'Silent',
+    'Smart', 'Smooth', 'Solid', 'Steady', 'Steel', 'Sunny', 'Swift', 'Tidy', 'Vivid', 'Wise', 'Zesty',
+    'Ant', 'Bear', 'Beaver', 'Bee', 'Bison', 'Cat', 'Cheetah', 'Cobra', 'Crane', 'Crow', 'Deer', 'Dolphin', 'Dragon', 'Eagle', 'Falcon', 'Finch', 'Fox',
+    'Frog', 'Gecko', 'Hawk', 'Horse', 'Hound', 'Koala', 'Lion', 'Lynx', 'Mantis', 'Moose', 'Otter', 'Owl', 'Panda', 'Panther', 'Penguin', 'Pigeon',
+    'Puma', 'Rabbit', 'Raven', 'Seal', 'Shark', 'Sparrow', 'Tiger', 'Turtle', 'Whale', 'Wolf', 'Wren', 'Yak', 'Zebra',
+    'Anchor', 'Arrow', 'Beacon', 'Blade', 'Bolt', 'Book', 'Bridge', 'Cannon', 'Clock', 'Compass', 'Crystal', 'Cube', 'Disk', 'Drone', 'Engine', 'Feather',
+    'Flame', 'Gadget', 'Gear', 'Globe', 'Hammer', 'Helmet', 'Jet', 'Key', 'Lantern', 'Laser', 'Lens', 'Magnet', 'Mirror', 'Needle', 'Nova', 'Orb',
+    'Pixel', 'Planet', 'Prism', 'Radar', 'Rocket', 'Shield', 'Signal', 'Socket', 'Spark', 'Sphere', 'Star', 'Stone', 'Switch', 'Tablet', 'Tower', 'Wheel', 'Wing',
+    'Agent', 'Algorithm', 'Array', 'Binary', 'Branch', 'Buffer', 'Cache', 'Class', 'Cloud', 'Code', 'Commit', 'Compiler', 'Cookie', 'Cursor', 'Data',
+    'Debug', 'Deploy', 'Docker', 'Field', 'Flux', 'Frame', 'Function', 'Gateway', 'Git', 'Graph', 'Hash', 'Hook', 'Index', 'Kernel', 'Lambda', 'Library',
+    'Linker', 'Logic', 'Loop', 'Matrix', 'Method', 'Module', 'Object', 'Packet', 'Parser', 'Patch', 'Pilot', 'Pipeline', 'Pointer', 'Process', 'Protocol',
+    'Query', 'Queue', 'Script', 'Server', 'Stack', 'Stream', 'Syntax', 'Tensor', 'Thread', 'Token', 'Variable', 'Vector'
+  ];
+$$;
+
 create or replace function public.allowed_nick_part_a()
 returns text[]
 language sql
 stable
 as $$
-  select array['Neon','Lucky','Calm','Rapid','Cloud','Steel','Pixel','Quiet'];
+  select public.allowed_nick_words();
 $$;
 
 create or replace function public.allowed_nick_part_b()
@@ -245,7 +270,7 @@ returns text[]
 language sql
 stable
 as $$
-  select array['Loop','Vector','Kernel','Agent','Signal','Compiler','Tensor','Flux'];
+  select public.allowed_nick_words();
 $$;
 
 create or replace function public.allowed_nick_part_c()
@@ -253,7 +278,7 @@ returns text[]
 language sql
 stable
 as $$
-  select array['Fox','Nova','Whale','Raven','Otter','Spark','Pilot','Orb'];
+  select public.allowed_nick_words();
 $$;
 
 create or replace function public.random_array_item(p_values text[])
@@ -1096,9 +1121,6 @@ set search_path = public
 as $$
 declare
   uid uuid;
-  part_a text;
-  part_b text;
-  part_c text;
 begin
   uid := auth.uid();
   if uid is null then
@@ -1516,6 +1538,9 @@ set search_path = public
 as $$
 declare
   uid uuid;
+  part_a text;
+  part_b text;
+  part_c text;
 begin
   uid := auth.uid();
   if uid is null then
