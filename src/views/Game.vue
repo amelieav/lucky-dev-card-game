@@ -243,7 +243,7 @@ import {
   getUpgradePreview,
 } from '../lib/packLogic.mjs'
 
-const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY !== '0'
+const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 const MUTATION_ORDER = ['none', 'foil', 'holo', 'glitched', 'prismatic']
 const MUTATION_STYLE_MAP = {
   none: {

@@ -1,4 +1,4 @@
--- Lucky Agent Supabase schema + RPCs
+-- Lucky Agent Supabase schema + RPCs (Card Pack Economy)
 -- Run in Supabase SQL editor after creating a new project.
 
 create extension if not exists pgcrypto;
@@ -20,20 +20,64 @@ create table if not exists public.player_state (
   passive_rate_bp int not null default 0,
   highest_tier_unlocked int not null default 1,
   eggs_opened int not null default 0,
+  packs_opened int not null default 0,
+  manual_opens int not null default 0,
+  auto_opens int not null default 0,
+  tier_boost_level int not null default 0,
+  mutation_level int not null default 0,
+  value_level int not null default 0,
+  auto_unlocked boolean not null default false,
+  auto_speed_level int not null default 0,
+  auto_open_progress numeric not null default 0,
   last_tick_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.player_state add column if not exists packs_opened int not null default 0;
+alter table public.player_state add column if not exists manual_opens int not null default 0;
+alter table public.player_state add column if not exists auto_opens int not null default 0;
+alter table public.player_state add column if not exists tier_boost_level int not null default 0;
+alter table public.player_state add column if not exists mutation_level int not null default 0;
+alter table public.player_state add column if not exists value_level int not null default 0;
+alter table public.player_state add column if not exists auto_unlocked boolean not null default false;
+alter table public.player_state add column if not exists auto_speed_level int not null default 0;
+alter table public.player_state add column if not exists auto_open_progress numeric not null default 0;
+
+update public.player_state
+set packs_opened = eggs_opened
+where packs_opened = 0 and eggs_opened > 0;
+
+update public.player_state
+set eggs_opened = packs_opened
+where eggs_opened <> packs_opened;
 
 create table if not exists public.player_terms (
   user_id uuid not null references auth.users(id) on delete cascade,
   term_key text not null,
   copies int not null default 0,
   level int not null default 1,
+  best_mutation text not null default 'none',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (user_id, term_key)
 );
+
+alter table public.player_terms add column if not exists best_mutation text not null default 'none';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'player_terms_best_mutation_check'
+  ) then
+    alter table public.player_terms
+      add constraint player_terms_best_mutation_check
+      check (best_mutation in ('none', 'foil', 'holo', 'glitched', 'prismatic'));
+  end if;
+end;
+$$;
 
 create table if not exists public.player_profile (
   user_id uuid primary key references auth.users(id) on delete cascade,
@@ -262,30 +306,156 @@ as $$
   );
 $$;
 
-create or replace function public.luck_upgrade_cost(level int)
-returns bigint
+create or replace function public.calc_level(copies int)
+returns int
 language sql
 immutable
 as $$
-  select floor(80 + (level * 30) + (power(level, 2) * 18))::bigint;
+  select greatest(1, floor(sqrt(greatest(copies, 1)::numeric))::int);
 $$;
 
-create or replace function public.egg_cost(tier int)
-returns bigint
+create or replace function public.normalize_mutation(p_mutation text)
+returns text
 language sql
 immutable
 as $$
-  select case tier
-    when 1 then 25
-    when 2 then 120
-    when 3 then 450
-    when 4 then 1800
-    when 5 then 6200
-    when 6 then 22000
-    else null
+  select case lower(coalesce($1, 'none'))
+    when 'foil' then 'foil'
+    when 'holo' then 'holo'
+    when 'glitched' then 'glitched'
+    when 'prismatic' then 'prismatic'
+    else 'none'
   end;
 $$;
 
+create or replace function public.mutation_rank(p_mutation text)
+returns int
+language sql
+immutable
+as $$
+  select case public.normalize_mutation($1)
+    when 'none' then 0
+    when 'foil' then 1
+    when 'holo' then 2
+    when 'glitched' then 3
+    when 'prismatic' then 4
+    else 0
+  end;
+$$;
+
+create or replace function public.rarity_multiplier(p_rarity text)
+returns numeric
+language sql
+immutable
+as $$
+  select case lower(coalesce($1, 'common'))
+    when 'common' then 1.0
+    when 'rare' then 1.5
+    when 'epic' then 2.3
+    when 'legendary' then 3.6
+    else 1.0
+  end;
+$$;
+
+create or replace function public.mutation_multiplier(p_mutation text)
+returns numeric
+language sql
+immutable
+as $$
+  select case public.normalize_mutation($1)
+    when 'none' then 1.0
+    when 'foil' then 1.18
+    when 'holo' then 1.45
+    when 'glitched' then 1.9
+    when 'prismatic' then 2.8
+    else 1.0
+  end;
+$$;
+
+create or replace function public.value_multiplier(p_value_level int)
+returns numeric
+language sql
+immutable
+as $$
+  select 1 + (greatest(0, coalesce($1, 0)) * 0.07);
+$$;
+
+create or replace function public.card_reward(
+  p_term_key text,
+  p_rarity text,
+  p_mutation text,
+  p_value_level int
+)
+returns bigint
+language sql
+stable
+as $$
+  with term_row as (
+    select coalesce((select base_bp from public.term_catalog where term_key = p_term_key), 0)::numeric as base_bp
+  )
+  select floor(greatest(
+    1,
+    floor((select base_bp from term_row) * 0.06)
+      * public.rarity_multiplier(p_rarity)
+      * public.mutation_multiplier(p_mutation)
+      * public.value_multiplier(p_value_level)
+  ))::bigint;
+$$;
+
+create or replace function public.tier_unlock_required_packs(p_tier int)
+returns int
+language sql
+immutable
+as $$
+  select case $1
+    when 1 then 0
+    when 2 then 40
+    when 3 then 200
+    when 4 then 550
+    when 5 then 1100
+    when 6 then 1900
+    else 2147483647
+  end;
+$$;
+
+create or replace function public.tier_unlock_required_boost(p_tier int)
+returns int
+language sql
+immutable
+as $$
+  select case $1
+    when 1 then 0
+    when 2 then 1
+    when 3 then 4
+    when 4 then 7
+    when 5 then 10
+    when 6 then 13
+    else 2147483647
+  end;
+$$;
+
+create or replace function public.max_unlocked_tier(total_packs_opened int, tier_boost_level int)
+returns int
+language plpgsql
+immutable
+as $$
+declare
+  packs int;
+  boost int;
+begin
+  packs := greatest(0, coalesce(total_packs_opened, 0));
+  boost := greatest(0, coalesce(tier_boost_level, 0));
+
+  if boost >= 13 and packs >= 1900 then return 6; end if;
+  if boost >= 10 and packs >= 1100 then return 5; end if;
+  if boost >= 7 and packs >= 550 then return 4; end if;
+  if boost >= 4 and packs >= 200 then return 3; end if;
+  if boost >= 1 and packs >= 40 then return 2; end if;
+  return 1;
+end;
+$$;
+
+-- Backward-compatible overload.
 create or replace function public.max_unlocked_tier(total_eggs_opened int)
 returns int
 language sql
@@ -301,55 +471,354 @@ as $$
   end;
 $$;
 
-create or replace function public.pick_mixed_tier(total_eggs_opened int)
+create or replace function public.base_tier_weights(p_tier_boost_level int)
+returns table (t1 numeric, t2 numeric, t3 numeric, t4 numeric, t5 numeric, t6 numeric)
+language plpgsql
+immutable
+as $$
+declare
+  lvl int;
+  shifted_levels int;
+  shift numeric;
+begin
+  lvl := greatest(0, least(20, coalesce(p_tier_boost_level, 0)));
+
+  if lvl >= 13 then
+    t1 := 41; t2 := 17; t3 := 16; t4 := 13; t5 := 8; t6 := 5;
+  elsif lvl >= 10 then
+    t1 := 53; t2 := 18; t3 := 14; t4 := 10; t5 := 5; t6 := 0;
+  elsif lvl >= 7 then
+    t1 := 66; t2 := 16; t3 := 11; t4 := 7; t5 := 0; t6 := 0;
+  elsif lvl >= 4 then
+    t1 := 78; t2 := 14; t3 := 8; t4 := 0; t5 := 0; t6 := 0;
+  elsif lvl >= 1 then
+    t1 := 90; t2 := 10; t3 := 0; t4 := 0; t5 := 0; t6 := 0;
+  else
+    t1 := 100; t2 := 0; t3 := 0; t4 := 0; t5 := 0; t6 := 0;
+  end if;
+
+  if lvl >= 14 then
+    shifted_levels := lvl - 13;
+    shift := shifted_levels * 0.6;
+    t1 := greatest(0, t1 - shift);
+    t6 := t6 + shift;
+  end if;
+
+  return next;
+end;
+$$;
+
+create or replace function public.effective_tier_weights(
+  p_total_packs_opened int,
+  p_tier_boost_level int
+)
+returns table (t1 numeric, t2 numeric, t3 numeric, t4 numeric, t5 numeric, t6 numeric)
+language plpgsql
+immutable
+as $$
+declare
+  highest int;
+  base_t1 numeric;
+  base_t2 numeric;
+  base_t3 numeric;
+  base_t4 numeric;
+  base_t5 numeric;
+  base_t6 numeric;
+  unlocked_total numeric;
+  locked_total numeric;
+  norm_total numeric;
+begin
+  highest := public.max_unlocked_tier(p_total_packs_opened, p_tier_boost_level);
+
+  select bw.t1, bw.t2, bw.t3, bw.t4, bw.t5, bw.t6
+  into base_t1, base_t2, base_t3, base_t4, base_t5, base_t6
+  from public.base_tier_weights(p_tier_boost_level) bw;
+
+  unlocked_total :=
+    (case when highest >= 1 then base_t1 else 0 end) +
+    (case when highest >= 2 then base_t2 else 0 end) +
+    (case when highest >= 3 then base_t3 else 0 end) +
+    (case when highest >= 4 then base_t4 else 0 end) +
+    (case when highest >= 5 then base_t5 else 0 end) +
+    (case when highest >= 6 then base_t6 else 0 end);
+
+  locked_total := 100 - unlocked_total;
+
+  if unlocked_total <= 0 then
+    t1 := case when highest = 1 then 100 else 0 end;
+    t2 := case when highest = 2 then 100 else 0 end;
+    t3 := case when highest = 3 then 100 else 0 end;
+    t4 := case when highest = 4 then 100 else 0 end;
+    t5 := case when highest = 5 then 100 else 0 end;
+    t6 := case when highest = 6 then 100 else 0 end;
+    return next;
+  end if;
+
+  t1 := case when highest >= 1 then base_t1 + (locked_total * (base_t1 / unlocked_total)) else 0 end;
+  t2 := case when highest >= 2 then base_t2 + (locked_total * (base_t2 / unlocked_total)) else 0 end;
+  t3 := case when highest >= 3 then base_t3 + (locked_total * (base_t3 / unlocked_total)) else 0 end;
+  t4 := case when highest >= 4 then base_t4 + (locked_total * (base_t4 / unlocked_total)) else 0 end;
+  t5 := case when highest >= 5 then base_t5 + (locked_total * (base_t5 / unlocked_total)) else 0 end;
+  t6 := case when highest >= 6 then base_t6 + (locked_total * (base_t6 / unlocked_total)) else 0 end;
+
+  norm_total := t1 + t2 + t3 + t4 + t5 + t6;
+  if norm_total > 0 then
+    t1 := (t1 / norm_total) * 100;
+    t2 := (t2 / norm_total) * 100;
+    t3 := (t3 / norm_total) * 100;
+    t4 := (t4 / norm_total) * 100;
+    t5 := (t5 / norm_total) * 100;
+    t6 := (t6 / norm_total) * 100;
+  end if;
+
+  return next;
+end;
+$$;
+
+create or replace function public.pick_effective_tier(
+  p_total_packs_opened int,
+  p_tier_boost_level int
+)
 returns int
 language plpgsql
 volatile
 as $$
 declare
-  highest int;
+  w1 numeric;
+  w2 numeric;
+  w3 numeric;
+  w4 numeric;
+  w5 numeric;
+  w6 numeric;
   roll numeric;
 begin
-  highest := public.max_unlocked_tier(total_eggs_opened);
+  select ew.t1, ew.t2, ew.t3, ew.t4, ew.t5, ew.t6
+  into w1, w2, w3, w4, w5, w6
+  from public.effective_tier_weights(p_total_packs_opened, p_tier_boost_level) ew;
+
   roll := random() * 100;
 
-  if highest = 1 then
-    return 1;
-  elsif highest = 2 then
-    if roll < 95 then return 1; end if;
-    return 2;
-  elsif highest = 3 then
-    if roll < 82 then return 1; end if;
-    if roll < 90 then return 2; end if;
-    return 3;
-  elsif highest = 4 then
-    if roll < 72 then return 1; end if;
-    if roll < 80 then return 2; end if;
-    if roll < 94 then return 3; end if;
-    return 4;
-  elsif highest = 5 then
-    if roll < 60 then return 1; end if;
-    if roll < 67 then return 2; end if;
-    if roll < 83 then return 3; end if;
-    if roll < 94 then return 4; end if;
-    return 5;
-  else
-    if roll < 50 then return 1; end if;
-    if roll < 56 then return 2; end if;
-    if roll < 74 then return 3; end if;
-    if roll < 87 then return 4; end if;
-    if roll < 95 then return 5; end if;
-    return 6;
-  end if;
+  if roll < w1 then return 1; end if;
+  if roll < (w1 + w2) then return 2; end if;
+  if roll < (w1 + w2 + w3) then return 3; end if;
+  if roll < (w1 + w2 + w3 + w4) then return 4; end if;
+  if roll < (w1 + w2 + w3 + w4 + w5) then return 5; end if;
+  return 6;
 end;
 $$;
 
-create or replace function public.calc_level(copies int)
+create or replace function public.rarity_weights(
+  p_draw_tier int,
+  p_luck_level int
+)
+returns table (common_w numeric, rare_w numeric, epic_w numeric, legendary_w numeric)
+language plpgsql
+immutable
+as $$
+declare
+  base_common numeric;
+  base_rare numeric;
+  base_epic numeric;
+  base_legendary numeric;
+  x numeric;
+  common_fixed numeric;
+  rest_total numeric;
+  scale numeric;
+  sum_total numeric;
+begin
+  case greatest(1, least(6, coalesce(p_draw_tier, 1)))
+    when 1 then
+      base_common := 80; base_rare := 17; base_epic := 3; base_legendary := 0;
+    when 2 then
+      base_common := 70; base_rare := 22; base_epic := 7; base_legendary := 1;
+    when 3 then
+      base_common := 58; base_rare := 27; base_epic := 11; base_legendary := 4;
+    when 4 then
+      base_common := 44; base_rare := 31; base_epic := 17; base_legendary := 8;
+    when 5 then
+      base_common := 30; base_rare := 34; base_epic := 22; base_legendary := 14;
+    else
+      base_common := 18; base_rare := 31; base_epic := 30; base_legendary := 21;
+  end case;
+
+  x := least(25, greatest(0, coalesce(p_luck_level, 0)));
+
+  common_fixed := greatest(5, base_common - (0.9 * x));
+  rare_w := greatest(0, base_rare + (0.45 * x));
+  epic_w := greatest(0, base_epic + (0.30 * x));
+  legendary_w := greatest(0, base_legendary + (0.15 * x));
+
+  if common_fixed >= 100 then
+    common_w := 100; rare_w := 0; epic_w := 0; legendary_w := 0;
+    return next;
+  end if;
+
+  rest_total := rare_w + epic_w + legendary_w;
+  if rest_total <= 0 then
+    common_w := 100; rare_w := 0; epic_w := 0; legendary_w := 0;
+    return next;
+  end if;
+
+  scale := (100 - common_fixed) / rest_total;
+
+  common_w := common_fixed;
+  rare_w := rare_w * scale;
+  epic_w := epic_w * scale;
+  legendary_w := legendary_w * scale;
+
+  sum_total := common_w + rare_w + epic_w + legendary_w;
+  if sum_total <> 100 then
+    legendary_w := legendary_w + (100 - sum_total);
+  end if;
+
+  return next;
+end;
+$$;
+
+create or replace function public.roll_rarity(p_draw_tier int, p_luck_level int)
+returns text
+language plpgsql
+volatile
+as $$
+declare
+  common_w numeric;
+  rare_w numeric;
+  epic_w numeric;
+  legendary_w numeric;
+  roll numeric;
+begin
+  select rw.common_w, rw.rare_w, rw.epic_w, rw.legendary_w
+  into common_w, rare_w, epic_w, legendary_w
+  from public.rarity_weights(p_draw_tier, p_luck_level) rw;
+
+  roll := random() * 100;
+
+  if roll < common_w then return 'common'; end if;
+  if roll < (common_w + rare_w) then return 'rare'; end if;
+  if roll < (common_w + rare_w + epic_w) then return 'epic'; end if;
+  return 'legendary';
+end;
+$$;
+
+create or replace function public.mutation_weights(p_mutation_level int)
+returns table (none_w numeric, foil_w numeric, holo_w numeric, glitched_w numeric, prismatic_w numeric)
+language plpgsql
+immutable
+as $$
+declare
+  m numeric;
+  sum_total numeric;
+begin
+  m := least(25, greatest(0, coalesce(p_mutation_level, 0)));
+
+  none_w := greatest(0, 92 - (0.55 * m));
+  foil_w := greatest(0, 6 + (0.32 * m));
+  holo_w := greatest(0, 1.6 + (0.15 * m));
+  glitched_w := greatest(0, 0.35 + (0.06 * m));
+  prismatic_w := greatest(0, 0.05 + (0.02 * m));
+
+  sum_total := none_w + foil_w + holo_w + glitched_w + prismatic_w;
+  if sum_total <= 0 then
+    none_w := 100; foil_w := 0; holo_w := 0; glitched_w := 0; prismatic_w := 0;
+    return next;
+  end if;
+
+  none_w := (none_w / sum_total) * 100;
+  foil_w := (foil_w / sum_total) * 100;
+  holo_w := (holo_w / sum_total) * 100;
+  glitched_w := (glitched_w / sum_total) * 100;
+  prismatic_w := (prismatic_w / sum_total) * 100;
+
+  return next;
+end;
+$$;
+
+create or replace function public.roll_mutation(p_mutation_level int)
+returns text
+language plpgsql
+volatile
+as $$
+declare
+  none_w numeric;
+  foil_w numeric;
+  holo_w numeric;
+  glitched_w numeric;
+  prismatic_w numeric;
+  roll numeric;
+begin
+  select mw.none_w, mw.foil_w, mw.holo_w, mw.glitched_w, mw.prismatic_w
+  into none_w, foil_w, holo_w, glitched_w, prismatic_w
+  from public.mutation_weights(p_mutation_level) mw;
+
+  roll := random() * 100;
+
+  if roll < none_w then return 'none'; end if;
+  if roll < (none_w + foil_w) then return 'foil'; end if;
+  if roll < (none_w + foil_w + holo_w) then return 'holo'; end if;
+  if roll < (none_w + foil_w + holo_w + glitched_w) then return 'glitched'; end if;
+  return 'prismatic';
+end;
+$$;
+
+create or replace function public.random_term_by_pool(p_pack_tier int, p_rarity text)
+returns text
+language plpgsql
+volatile
+as $$
+declare
+  chosen_term text;
+begin
+  select tc.term_key
+  into chosen_term
+  from public.term_catalog tc
+  where tc.tier = p_pack_tier
+    and tc.rarity = lower(coalesce(p_rarity, 'common'))
+  order by random()
+  limit 1;
+
+  if chosen_term is null then
+    select tc.term_key
+    into chosen_term
+    from public.term_catalog tc
+    where tc.tier = p_pack_tier
+    order by random()
+    limit 1;
+  end if;
+
+  return chosen_term;
+end;
+$$;
+
+create or replace function public.upgrade_cap(p_upgrade_key text)
 returns int
 language sql
 immutable
 as $$
-  select greatest(1, floor(sqrt(greatest(copies, 1)::numeric))::int);
+  select case lower(coalesce($1, ''))
+    when 'auto_unlock' then 1
+    when 'auto_speed' then 30
+    when 'tier_boost' then 20
+    when 'luck_engine' then 25
+    when 'mutation_lab' then 25
+    when 'value_engine' then 20
+    else 0
+  end;
+$$;
+
+create or replace function public.upgrade_cost(p_upgrade_key text, p_level int, p_auto_unlocked boolean default false)
+returns bigint
+language sql
+immutable
+as $$
+  select case lower(coalesce(p_upgrade_key, ''))
+    when 'auto_unlock' then case when p_auto_unlocked then null else 900::bigint end
+    when 'auto_speed' then floor(140 * power(1.33, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'tier_boost' then floor(60 * power(1.42, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'luck_engine' then floor(75 * power(1.36, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'mutation_lab' then floor(90 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'value_engine' then floor(120 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
+    else null
+  end;
 $$;
 
 create or replace function public.is_debug_allowed()
@@ -379,6 +848,21 @@ begin
   values (p_user_id)
   on conflict (user_id) do nothing;
 
+  update public.player_state
+  set packs_opened = eggs_opened
+  where user_id = p_user_id
+    and packs_opened = 0
+    and eggs_opened > 0;
+
+  update public.player_state
+  set eggs_opened = packs_opened
+  where user_id = p_user_id
+    and eggs_opened <> packs_opened;
+
+  update public.player_state
+  set highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level)
+  where user_id = p_user_id;
+
   if not exists (select 1 from public.player_profile where user_id = p_user_id) then
     part_a := public.random_array_item(public.allowed_nick_part_a());
     part_b := public.random_array_item(public.allowed_nick_part_b());
@@ -400,56 +884,144 @@ language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-  total_bp int;
-  user_luck int;
 begin
-  select coalesce(sum(public.term_base_bp(pt.term_key) * greatest(pt.level, 1)), 0)
-  into total_bp
-  from public.player_terms pt
-  where pt.user_id = p_user_id;
-
-  select luck_level into user_luck
-  from public.player_state
-  where user_id = p_user_id;
-
-  total_bp := coalesce(total_bp, 0) + (coalesce(user_luck, 0) * 3500);
-
   update public.player_state
-  set passive_rate_bp = total_bp,
+  set passive_rate_bp = 0,
       updated_at = now()
   where user_id = p_user_id;
 
-  return total_bp;
+  return 0;
 end;
 $$;
 
-create or replace function public.apply_idle_income(p_user_id uuid)
-returns bigint
+create or replace function public.apply_auto_progress(p_user_id uuid)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
   state_row public.player_state;
+  term_row public.player_terms;
   elapsed_seconds int;
-  gained bigint;
+  capped_seconds int;
+  openings numeric;
+  whole_opens int;
+  remainder numeric;
+  draw_tier int;
+  draw_rarity text;
+  draw_mutation text;
+  draw_term_key text;
+  draw_reward bigint;
+  max_tier int := 0;
+  last_draw jsonb := null;
+  i int;
 begin
   select * into state_row
   from public.player_state
   where user_id = p_user_id
   for update;
 
-  elapsed_seconds := least(43200, greatest(0, extract(epoch from now() - state_row.last_tick_at)::int));
-  gained := floor((elapsed_seconds * state_row.passive_rate_bp) / 10000.0)::bigint;
+  if not found then
+    return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
+  end if;
+
+  elapsed_seconds := greatest(0, extract(epoch from now() - state_row.last_tick_at)::int);
+  capped_seconds := least(43200, elapsed_seconds);
+
+  if not state_row.auto_unlocked or capped_seconds <= 0 then
+    update public.player_state
+    set last_tick_at = now(),
+        updated_at = now()
+    where user_id = p_user_id;
+
+    return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
+  end if;
+
+  openings := coalesce(state_row.auto_open_progress, 0)
+    + (capped_seconds * (0.25 + (0.06 * greatest(0, state_row.auto_speed_level))));
+  whole_opens := floor(openings)::int;
+  remainder := openings - whole_opens;
+
+  for i in 1..whole_opens loop
+    draw_tier := public.pick_effective_tier(state_row.packs_opened, state_row.tier_boost_level);
+    draw_rarity := public.roll_rarity(draw_tier, state_row.luck_level);
+    draw_mutation := public.roll_mutation(state_row.mutation_level);
+    draw_term_key := public.random_term_by_pool(draw_tier, draw_rarity);
+
+    if draw_term_key is null then
+      raise exception 'Unable to resolve draw term';
+    end if;
+
+    draw_reward := public.card_reward(draw_term_key, draw_rarity, draw_mutation, state_row.value_level);
+
+    update public.player_state
+    set coins = coins + draw_reward,
+        packs_opened = packs_opened + 1,
+        eggs_opened = eggs_opened + 1,
+        auto_opens = auto_opens + 1,
+        highest_tier_unlocked = greatest(highest_tier_unlocked, public.max_unlocked_tier(packs_opened + 1, tier_boost_level)),
+        updated_at = now()
+    where user_id = p_user_id
+    returning * into state_row;
+
+    insert into public.player_terms (user_id, term_key, copies, level, best_mutation)
+    values (p_user_id, draw_term_key, 1, 1, public.normalize_mutation(draw_mutation))
+    on conflict (user_id, term_key)
+    do update
+      set copies = public.player_terms.copies + 1,
+          level = public.calc_level(public.player_terms.copies + 1),
+          best_mutation = case
+            when public.mutation_rank(excluded.best_mutation) > public.mutation_rank(public.player_terms.best_mutation)
+              then excluded.best_mutation
+            else public.player_terms.best_mutation
+          end,
+          updated_at = now();
+
+    select * into term_row
+    from public.player_terms
+    where user_id = p_user_id and term_key = draw_term_key;
+
+    max_tier := greatest(max_tier, draw_tier);
+    last_draw := jsonb_build_object(
+      'term_key', draw_term_key,
+      'term_name', public.term_display_name(draw_term_key),
+      'rarity', draw_rarity,
+      'mutation', draw_mutation,
+      'tier', draw_tier,
+      'reward', draw_reward,
+      'copies', term_row.copies,
+      'level', term_row.level,
+      'best_mutation', term_row.best_mutation,
+      'source', 'auto',
+      'debug_applied', false
+    );
+  end loop;
 
   update public.player_state
-  set coins = coins + gained,
+  set auto_open_progress = remainder,
       last_tick_at = now(),
       updated_at = now()
   where user_id = p_user_id;
 
-  return gained;
+  return jsonb_build_object(
+    'draws_applied', whole_opens,
+    'draw', last_draw,
+    'draw_max_tier', max_tier
+  );
+end;
+$$;
+
+-- Backward-compatible idle function.
+create or replace function public.apply_idle_income(p_user_id uuid)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.apply_auto_progress(p_user_id);
+  return 0;
 end;
 $$;
 
@@ -466,6 +1038,15 @@ as $$
       passive_rate_bp,
       highest_tier_unlocked,
       eggs_opened,
+      packs_opened,
+      manual_opens,
+      auto_opens,
+      tier_boost_level,
+      mutation_level,
+      value_level,
+      auto_unlocked,
+      auto_speed_level,
+      auto_open_progress,
       last_tick_at,
       updated_at
     from public.player_state
@@ -486,6 +1067,7 @@ as $$
           'term_key', term_key,
           'copies', copies,
           'level', level,
+          'best_mutation', best_mutation,
           'updated_at', updated_at
         )
         order by level desc, copies desc, term_key asc
@@ -506,80 +1088,6 @@ as $$
   );
 $$;
 
-create or replace function public.roll_rarity(p_egg_tier int, p_luck_level int)
-returns text
-language plpgsql
-volatile
-as $$
-declare
-  common_w int;
-  rare_w int;
-  epic_w int;
-  legendary_w int;
-  luck_bonus int;
-  roll numeric;
-  total_w int;
-begin
-  case p_egg_tier
-    when 1 then
-      common_w := 76; rare_w := 20; epic_w := 4; legendary_w := 0;
-    when 2 then
-      common_w := 58; rare_w := 30; epic_w := 11; legendary_w := 1;
-    when 3 then
-      common_w := 46; rare_w := 33; epic_w := 16; legendary_w := 5;
-    when 4 then
-      common_w := 24; rare_w := 42; epic_w := 24; legendary_w := 10;
-    when 5 then
-      common_w := 8; rare_w := 30; epic_w := 42; legendary_w := 20;
-    else
-      common_w := 0; rare_w := 8; epic_w := 42; legendary_w := 50;
-  end case;
-
-  luck_bonus := least(25, greatest(0, p_luck_level));
-  common_w := greatest(5, common_w - luck_bonus);
-  rare_w := rare_w + floor(luck_bonus * 0.5);
-  epic_w := epic_w + floor(luck_bonus * 0.3);
-  legendary_w := legendary_w + (luck_bonus - floor(luck_bonus * 0.5) - floor(luck_bonus * 0.3));
-
-  total_w := common_w + rare_w + epic_w + legendary_w;
-  roll := random() * total_w;
-
-  if roll < common_w then return 'common'; end if;
-  if roll < (common_w + rare_w) then return 'rare'; end if;
-  if roll < (common_w + rare_w + epic_w) then return 'epic'; end if;
-  return 'legendary';
-end;
-$$;
-
-create or replace function public.random_term_by_pool(p_egg_tier int, p_rarity text)
-returns text
-language plpgsql
-volatile
-as $$
-declare
-  chosen_term text;
-begin
-  select tc.term_key
-  into chosen_term
-  from public.term_catalog tc
-  where tc.tier = p_egg_tier
-    and tc.rarity = p_rarity
-  order by random()
-  limit 1;
-
-  if chosen_term is null then
-    select tc.term_key
-    into chosen_term
-    from public.term_catalog tc
-    where tc.tier = p_egg_tier
-    order by random()
-    limit 1;
-  end if;
-
-  return chosen_term;
-end;
-$$;
-
 create or replace function public.bootstrap_player()
 returns jsonb
 language plpgsql
@@ -595,13 +1103,13 @@ begin
   end if;
 
   perform public.ensure_player_initialized(uid);
-  perform public.recompute_passive_rate_bp(uid);
+  perform public.apply_auto_progress(uid);
 
   return public.player_snapshot(uid);
 end;
 $$;
 
-create or replace function public.open_egg(p_egg_tier int, p_debug_override jsonb default null)
+create or replace function public.open_pack(p_source text default 'manual', p_debug_override jsonb default null)
 returns jsonb
 language plpgsql
 security definer
@@ -611,48 +1119,33 @@ declare
   uid uuid;
   state_row public.player_state;
   term_row public.player_terms;
-  current_rarity text;
-  chosen_term text;
   draw_tier int;
-  cost bigint;
+  draw_rarity text;
+  draw_mutation text;
+  chosen_term text;
+  draw_reward bigint;
   debug_override_allowed boolean;
   debug_applied boolean := false;
   debug_next_reward jsonb;
+  source_kind text;
 begin
   uid := auth.uid();
   if uid is null then
     raise exception 'Authentication required';
   end if;
 
-  if p_egg_tier < 1 or p_egg_tier > 6 then
-    raise exception 'Invalid egg tier';
+  source_kind := lower(coalesce(p_source, 'manual'));
+  if source_kind not in ('manual', 'auto') then
+    raise exception 'Invalid source: %', source_kind;
   end if;
 
   perform public.ensure_player_initialized(uid);
-  perform public.apply_idle_income(uid);
+  perform public.apply_auto_progress(uid);
 
   select * into state_row
   from public.player_state
   where user_id = uid
   for update;
-
-  update public.player_state
-  set highest_tier_unlocked = greatest(highest_tier_unlocked, public.max_unlocked_tier(state_row.eggs_opened))
-  where user_id = uid;
-
-  select * into state_row
-  from public.player_state
-  where user_id = uid
-  for update;
-
-  if p_egg_tier > state_row.highest_tier_unlocked then
-    raise exception 'Tier % is locked', p_egg_tier;
-  end if;
-
-  cost := public.egg_cost(p_egg_tier);
-  if state_row.coins < cost then
-    raise exception 'Not enough coins';
-  end if;
 
   debug_override_allowed := public.is_debug_allowed();
 
@@ -662,8 +1155,9 @@ begin
     end if;
 
     chosen_term := nullif(trim(coalesce(p_debug_override ->> 'term_key', '')), '');
-    current_rarity := nullif(trim(coalesce(p_debug_override ->> 'rarity', '')), '');
-    draw_tier := coalesce((p_debug_override ->> 'tier')::int, p_egg_tier);
+    draw_rarity := nullif(trim(lower(coalesce(p_debug_override ->> 'rarity', ''))), '');
+    draw_mutation := nullif(trim(lower(coalesce(p_debug_override ->> 'mutation', ''))), '');
+    draw_tier := nullif((p_debug_override ->> 'tier'), '')::int;
     debug_applied := true;
   else
     select pds.next_reward into debug_next_reward
@@ -673,74 +1167,102 @@ begin
 
     if debug_next_reward is not null and debug_override_allowed then
       chosen_term := nullif(trim(coalesce(debug_next_reward ->> 'term_key', '')), '');
-      current_rarity := nullif(trim(coalesce(debug_next_reward ->> 'rarity', '')), '');
-      draw_tier := coalesce((debug_next_reward ->> 'tier')::int, p_egg_tier);
+      draw_rarity := nullif(trim(lower(coalesce(debug_next_reward ->> 'rarity', ''))), '');
+      draw_mutation := nullif(trim(lower(coalesce(debug_next_reward ->> 'mutation', ''))), '');
+      draw_tier := nullif((debug_next_reward ->> 'tier'), '')::int;
       update public.player_debug_state set next_reward = null where user_id = uid;
       debug_applied := true;
-    elsif p_egg_tier = 1 then
-      draw_tier := public.pick_mixed_tier(state_row.eggs_opened);
     end if;
   end if;
 
-  draw_tier := coalesce(draw_tier, p_egg_tier);
+  if draw_tier is not null and (draw_tier < 1 or draw_tier > 6) then
+    raise exception 'Invalid draw tier';
+  end if;
 
   if chosen_term is not null and not (chosen_term = any(public.allowed_term_keys())) then
     raise exception 'Unknown term key: %', chosen_term;
   end if;
 
-  if current_rarity is null then
+  if chosen_term is not null and draw_tier is null then
+    select tc.tier into draw_tier
+    from public.term_catalog tc
+    where tc.term_key = chosen_term;
+  end if;
+
+  draw_tier := coalesce(draw_tier, public.pick_effective_tier(state_row.packs_opened, state_row.tier_boost_level));
+
+  if draw_rarity is null then
     if chosen_term is not null then
-      current_rarity := public.term_rarity(chosen_term);
+      draw_rarity := public.term_rarity(chosen_term);
     else
-      current_rarity := public.roll_rarity(p_egg_tier, state_row.luck_level);
+      draw_rarity := public.roll_rarity(draw_tier, state_row.luck_level);
     end if;
   end if;
 
+  if draw_rarity not in ('common', 'rare', 'epic', 'legendary') then
+    raise exception 'Invalid rarity: %', draw_rarity;
+  end if;
+
+  draw_mutation := coalesce(draw_mutation, public.roll_mutation(state_row.mutation_level));
+  draw_mutation := public.normalize_mutation(draw_mutation);
+
   if chosen_term is null then
-    chosen_term := public.random_term_by_pool(draw_tier, current_rarity);
+    chosen_term := public.random_term_by_pool(draw_tier, draw_rarity);
   end if;
 
   if chosen_term is null then
     raise exception 'Unable to resolve draw term';
   end if;
 
+  draw_reward := public.card_reward(chosen_term, draw_rarity, draw_mutation, state_row.value_level);
+
   update public.player_state
-  set coins = coins - cost,
+  set coins = coins + draw_reward,
+      packs_opened = packs_opened + 1,
       eggs_opened = eggs_opened + 1,
-      highest_tier_unlocked = greatest(highest_tier_unlocked, public.max_unlocked_tier(eggs_opened + 1)),
+      manual_opens = manual_opens + case when source_kind = 'manual' then 1 else 0 end,
+      auto_opens = auto_opens + case when source_kind = 'auto' then 1 else 0 end,
+      highest_tier_unlocked = greatest(highest_tier_unlocked, public.max_unlocked_tier(packs_opened + 1, tier_boost_level)),
       updated_at = now()
   where user_id = uid;
 
-  insert into public.player_terms (user_id, term_key, copies, level)
-  values (uid, chosen_term, 1, 1)
+  insert into public.player_terms (user_id, term_key, copies, level, best_mutation)
+  values (uid, chosen_term, 1, 1, draw_mutation)
   on conflict (user_id, term_key)
   do update
     set copies = public.player_terms.copies + 1,
         level = public.calc_level(public.player_terms.copies + 1),
+        best_mutation = case
+          when public.mutation_rank(excluded.best_mutation) > public.mutation_rank(public.player_terms.best_mutation)
+            then excluded.best_mutation
+          else public.player_terms.best_mutation
+        end,
         updated_at = now();
 
   select * into term_row
   from public.player_terms
   where user_id = uid and term_key = chosen_term;
 
-  perform public.recompute_passive_rate_bp(uid);
-
   return jsonb_build_object(
     'snapshot', public.player_snapshot(uid),
     'draw', jsonb_build_object(
       'term_key', chosen_term,
       'term_name', public.term_display_name(chosen_term),
-      'rarity', current_rarity,
+      'rarity', draw_rarity,
+      'mutation', draw_mutation,
       'tier', draw_tier,
+      'reward', draw_reward,
       'copies', term_row.copies,
       'level', term_row.level,
+      'best_mutation', term_row.best_mutation,
+      'source', source_kind,
       'debug_applied', debug_applied
     )
   );
 end;
 $$;
 
-create or replace function public.upgrade_luck()
+create or replace function public.buy_upgrade(p_upgrade_key text)
 returns jsonb
 language plpgsql
 security definer
@@ -749,36 +1271,197 @@ as $$
 declare
   uid uuid;
   state_row public.player_state;
-  upgrade_cost bigint;
+  key_name text;
+  cap int;
+  cost bigint;
+  current_level int;
+  next_level int;
 begin
   uid := auth.uid();
   if uid is null then
     raise exception 'Authentication required';
   end if;
 
+  key_name := lower(coalesce(p_upgrade_key, ''));
+  if key_name = '' then
+    raise exception 'Missing upgrade key';
+  end if;
+
   perform public.ensure_player_initialized(uid);
-  perform public.apply_idle_income(uid);
+  perform public.apply_auto_progress(uid);
 
   select * into state_row
   from public.player_state
   where user_id = uid
   for update;
 
-  upgrade_cost := public.luck_upgrade_cost(state_row.luck_level);
-
-  if state_row.coins < upgrade_cost then
-    raise exception 'Not enough coins to upgrade luck';
+  cap := public.upgrade_cap(key_name);
+  if cap <= 0 then
+    raise exception 'Unsupported upgrade key: %', key_name;
   end if;
 
-  update public.player_state
-  set coins = coins - upgrade_cost,
-      luck_level = luck_level + 1,
-      updated_at = now()
-  where user_id = uid;
+  if key_name = 'auto_unlock' then
+    if state_row.auto_unlocked then
+      raise exception 'Upgrade is already maxed';
+    end if;
 
-  perform public.recompute_passive_rate_bp(uid);
+    cost := public.upgrade_cost(key_name, 0, state_row.auto_unlocked);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
 
-  return jsonb_build_object('snapshot', public.player_snapshot(uid));
+    update public.player_state
+    set coins = coins - cost,
+        auto_unlocked = true,
+        highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level),
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := 1;
+
+  elsif key_name = 'auto_speed' then
+    if not state_row.auto_unlocked then
+      raise exception 'Unlock auto opener first';
+    end if;
+
+    current_level := greatest(0, coalesce(state_row.auto_speed_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        auto_speed_level = auto_speed_level + 1,
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  elsif key_name = 'tier_boost' then
+    current_level := greatest(0, coalesce(state_row.tier_boost_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        tier_boost_level = tier_boost_level + 1,
+        highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level + 1),
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  elsif key_name = 'luck_engine' then
+    current_level := greatest(0, coalesce(state_row.luck_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        luck_level = luck_level + 1,
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  elsif key_name = 'mutation_lab' then
+    current_level := greatest(0, coalesce(state_row.mutation_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        mutation_level = mutation_level + 1,
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  elsif key_name = 'value_engine' then
+    current_level := greatest(0, coalesce(state_row.value_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        value_level = value_level + 1,
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  else
+    raise exception 'Unsupported upgrade key: %', key_name;
+  end if;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'purchase', jsonb_build_object(
+      'upgrade_key', key_name,
+      'spent', cost,
+      'level', next_level
+    )
+  );
+end;
+$$;
+
+-- Backward-compatible wrapper.
+create or replace function public.open_egg(p_egg_tier int, p_debug_override jsonb default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  override_payload jsonb;
+begin
+  if p_egg_tier < 1 or p_egg_tier > 6 then
+    raise exception 'Invalid egg tier';
+  end if;
+
+  override_payload := coalesce(p_debug_override, '{}'::jsonb) || jsonb_build_object('tier', p_egg_tier);
+  return public.open_pack('manual', override_payload);
+end;
+$$;
+
+-- Backward-compatible wrapper.
+create or replace function public.upgrade_luck()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return public.buy_upgrade('luck_engine');
 end;
 $$;
 
@@ -830,12 +1513,13 @@ set search_path = public
 as $$
 declare
   uid uuid;
-  state_row public.player_state;
   action_type text;
   amount bigint;
   target_level int;
   term_key text;
   copies_to_add int;
+  mutation_value text;
+  key_name text;
 begin
   uid := auth.uid();
   if uid is null then
@@ -846,13 +1530,13 @@ begin
     raise exception 'Debug actions are not allowed for this account';
   end if;
 
-  action_type := coalesce(p_action ->> 'type', '');
+  action_type := lower(coalesce(p_action ->> 'type', ''));
   if action_type = '' then
     raise exception 'Missing debug action type';
   end if;
 
   perform public.ensure_player_initialized(uid);
-  perform public.apply_idle_income(uid);
+  perform public.apply_auto_progress(uid);
 
   if action_type = 'add_coins' then
     amount := greatest(0, coalesce((p_action ->> 'amount')::bigint, 0));
@@ -869,9 +1553,44 @@ begin
     where user_id = uid;
 
   elsif action_type = 'set_luck_level' then
-    target_level := greatest(0, coalesce((p_action ->> 'level')::int, 0));
+    target_level := greatest(0, least(25, coalesce((p_action ->> 'level')::int, 0)));
     update public.player_state
     set luck_level = target_level,
+        updated_at = now()
+    where user_id = uid;
+
+  elsif action_type = 'set_mutation_level' then
+    target_level := greatest(0, least(25, coalesce((p_action ->> 'level')::int, 0)));
+    update public.player_state
+    set mutation_level = target_level,
+        updated_at = now()
+    where user_id = uid;
+
+  elsif action_type = 'set_tier_boost_level' then
+    target_level := greatest(0, least(20, coalesce((p_action ->> 'level')::int, 0)));
+    update public.player_state
+    set tier_boost_level = target_level,
+        highest_tier_unlocked = public.max_unlocked_tier(packs_opened, target_level),
+        updated_at = now()
+    where user_id = uid;
+
+  elsif action_type = 'set_auto_speed_level' then
+    target_level := greatest(0, least(30, coalesce((p_action ->> 'level')::int, 0)));
+    update public.player_state
+    set auto_speed_level = target_level,
+        updated_at = now()
+    where user_id = uid;
+
+  elsif action_type = 'set_value_level' then
+    target_level := greatest(0, least(20, coalesce((p_action ->> 'level')::int, 0)));
+    update public.player_state
+    set value_level = target_level,
+        updated_at = now()
+    where user_id = uid;
+
+  elsif action_type = 'set_auto_unlocked' then
+    update public.player_state
+    set auto_unlocked = coalesce((p_action ->> 'enabled')::boolean, false),
         updated_at = now()
     where user_id = uid;
 
@@ -882,13 +1601,19 @@ begin
     end if;
 
     copies_to_add := greatest(1, coalesce((p_action ->> 'copies')::int, 1));
+    mutation_value := public.normalize_mutation(coalesce(p_action ->> 'best_mutation', p_action ->> 'mutation', 'none'));
 
-    insert into public.player_terms (user_id, term_key, copies, level)
-    values (uid, term_key, copies_to_add, public.calc_level(copies_to_add))
+    insert into public.player_terms (user_id, term_key, copies, level, best_mutation)
+    values (uid, term_key, copies_to_add, public.calc_level(copies_to_add), mutation_value)
     on conflict (user_id, term_key)
     do update
       set copies = public.player_terms.copies + copies_to_add,
           level = public.calc_level(public.player_terms.copies + copies_to_add),
+          best_mutation = case
+            when public.mutation_rank(excluded.best_mutation) > public.mutation_rank(public.player_terms.best_mutation)
+              then excluded.best_mutation
+            else public.player_terms.best_mutation
+          end,
           updated_at = now();
 
   elsif action_type = 'set_next_reward' then
@@ -896,6 +1621,13 @@ begin
     set next_reward = p_action - 'type',
         updated_at = now()
     where user_id = uid;
+
+  elsif action_type = 'buy_upgrade' then
+    key_name := lower(coalesce(p_action ->> 'upgrade_key', ''));
+    if key_name = '' then
+      raise exception 'Missing upgrade_key';
+    end if;
+    perform public.buy_upgrade(key_name);
 
   elsif action_type = 'reset_account' then
     delete from public.player_terms where user_id = uid;
@@ -906,6 +1638,15 @@ begin
         passive_rate_bp = 0,
         highest_tier_unlocked = 1,
         eggs_opened = 0,
+        packs_opened = 0,
+        manual_opens = 0,
+        auto_opens = 0,
+        tier_boost_level = 0,
+        mutation_level = 0,
+        value_level = 0,
+        auto_unlocked = false,
+        auto_speed_level = 0,
+        auto_open_progress = 0,
         last_tick_at = now(),
         updated_at = now()
     where user_id = uid;
@@ -914,18 +1655,14 @@ begin
     set next_reward = null,
         updated_at = now()
     where user_id = uid;
+
   else
     raise exception 'Unsupported debug action type: %', action_type;
   end if;
 
-  select * into state_row from public.player_state where user_id = uid;
-
-  if action_type in ('set_luck_level', 'grant_term', 'reset_account') then
-    perform public.recompute_passive_rate_bp(uid);
-  end if;
-
   update public.player_state
-  set highest_tier_unlocked = greatest(highest_tier_unlocked, public.max_unlocked_tier(eggs_opened))
+  set highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level),
+      eggs_opened = packs_opened
   where user_id = uid;
 
   return jsonb_build_object(
@@ -939,11 +1676,11 @@ drop view if exists public.leaderboard_v1;
 create view public.leaderboard_v1 as
 select
   row_number() over (
-    order by (ps.coins + floor((ps.passive_rate_bp / 10000.0) * 3600)) desc,
+    order by ps.coins desc,
              ps.updated_at asc
   )::int as rank,
   pp.display_name,
-  (ps.coins + floor((ps.passive_rate_bp / 10000.0) * 3600))::bigint as score,
+  ps.coins::bigint as score,
   ps.luck_level,
   ps.highest_tier_unlocked,
   ps.updated_at
@@ -976,6 +1713,8 @@ as $$
 $$;
 
 grant execute on function public.bootstrap_player() to authenticated;
+grant execute on function public.open_pack(text, jsonb) to authenticated;
+grant execute on function public.buy_upgrade(text) to authenticated;
 grant execute on function public.open_egg(int, jsonb) to authenticated;
 grant execute on function public.upgrade_luck() to authenticated;
 grant execute on function public.update_nickname(text, text, text) to authenticated;

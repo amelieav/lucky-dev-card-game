@@ -1,7 +1,7 @@
 import { fetchLeaderboard } from '../../services/gameApi'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
-const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY !== '0'
+const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 
 export default {
   namespaced: true,
