@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Redirecting...</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <script>
+      (function () {
+        var path = window.location.pathname || '/'
+        var search = window.location.search || ''
+        var hash = window.location.hash || ''
+
+        // Expect project pages paths like /repo-name/...
+        var parts = path.split('/').filter(Boolean)
+        var repoBase = parts.length > 0 ? '/' + parts[0] + '/' : '/'
+        var routePart = parts.length > 1 ? '/' + parts.slice(1).join('/') : '/'
+
+        var target = repoBase + '#' + routePart + search + hash
+        window.location.replace(target)
+      })()
+    </script>
+  </body>
+</html>
