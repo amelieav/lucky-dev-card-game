@@ -62,6 +62,8 @@ Notes:
 - Auth still works with Supabase magic links.
 - Game economy runs from local storage per signed-in user.
 - Leaderboard becomes local-only while this mode is enabled.
+- During `npm run dev`, updates to `src/data/terms.mjs`, `src/data/nicknameParts.mjs`, or `src/lib/balanceConfig.mjs` auto-sync generated sections in `supabase/schema.sql`.
+- Run `npm run sync-schema` manually any time to refresh DB-facing schema data from local source files.
 - Set `VITE_LOCAL_ECONOMY=0` to switch back to server-authoritative RPC economy.
 
 ## Deploy

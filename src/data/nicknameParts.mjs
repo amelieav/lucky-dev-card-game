@@ -37,10 +37,6 @@ export const NICK_WORD_CATEGORIES = {
   ],
 }
 
-const ALL_NICK_WORDS = Object.values(NICK_WORD_CATEGORIES).flat()
-const UNIQUE_NICK_WORDS = [...new Set(ALL_NICK_WORDS)]
-
-// All three slots intentionally share the same safe dictionary pool.
-export const NICK_PARTS_A = UNIQUE_NICK_WORDS
-export const NICK_PARTS_B = UNIQUE_NICK_WORDS
-export const NICK_PARTS_C = UNIQUE_NICK_WORDS
+export const NICK_PARTS_A = [...NICK_WORD_CATEGORIES.adjectives]
+export const NICK_PARTS_B = [...NICK_WORD_CATEGORIES.animals]
+export const NICK_PARTS_C = [...NICK_WORD_CATEGORIES.objects]

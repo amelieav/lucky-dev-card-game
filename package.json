@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "sync-schema": "node scripts/sync-schema.mjs",
     "build": "vite build",
     "serve": "vite preview",
     "test": "node --test tests/*.test.mjs"

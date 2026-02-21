@@ -108,6 +108,7 @@ create table if not exists public.term_catalog (
   base_bp int not null check (base_bp >= 0)
 );
 
+-- GENERATED: term_catalog:start
 insert into public.term_catalog (term_key, display_name, tier, rarity, base_bp)
 values
   ('if_statement', 'If Statement', 1, 'common', 50),
@@ -120,7 +121,6 @@ values
   ('operators', 'Operators', 1, 'rare', 85),
   ('functions', 'Functions', 1, 'epic', 90),
   ('return_values', 'Return Values', 1, 'epic', 95),
-
   ('arrays', 'Arrays', 2, 'common', 90),
   ('objects', 'Objects', 2, 'common', 97),
   ('maps', 'Maps', 2, 'common', 104),
@@ -131,7 +131,6 @@ values
   ('closures', 'Closures', 2, 'rare', 139),
   ('recursion', 'Recursion', 2, 'epic', 146),
   ('modules', 'Modules', 2, 'epic', 153),
-
   ('callbacks', 'Callbacks', 3, 'common', 140),
   ('promises', 'Promises', 3, 'common', 149),
   ('async_await', 'Async/Await', 3, 'common', 158),
@@ -142,7 +141,6 @@ values
   ('state_management', 'State Management', 3, 'epic', 203),
   ('caching_basics', 'Caching Basics', 3, 'epic', 212),
   ('error_handling', 'Error Handling', 3, 'legendary', 221),
-
   ('git_workflow', 'Git Workflow', 4, 'rare', 210),
   ('branching_strategy', 'Branching Strategy', 4, 'rare', 221),
   ('pull_requests', 'Pull Requests', 4, 'rare', 232),
@@ -153,7 +151,6 @@ values
   ('docker_basics', 'Docker Basics', 4, 'epic', 287),
   ('observability', 'Observability', 4, 'legendary', 298),
   ('performance_profiling', 'Performance Profiling', 4, 'legendary', 309),
-
   ('gradient_descent', 'Gradient Descent', 5, 'rare', 300),
   ('backpropagation', 'Backpropagation', 5, 'rare', 314),
   ('activation_functions', 'Activation Functions', 5, 'epic', 328),
@@ -164,7 +161,6 @@ values
   ('rnns_lstms', 'RNNs/LSTMs', 5, 'legendary', 398),
   ('attention', 'Attention', 5, 'legendary', 412),
   ('transformers', 'Transformers', 5, 'legendary', 426),
-
   ('tool_calling', 'Tool Calling', 6, 'epic', 420),
   ('function_routing', 'Function Routing', 6, 'epic', 438),
   ('planner_executor_agents', 'Planner-Executor Agents', 6, 'epic', 456),
@@ -181,6 +177,7 @@ set
   tier = excluded.tier,
   rarity = excluded.rarity,
   base_bp = excluded.base_bp;
+-- GENERATED: term_catalog:end
 
 drop trigger if exists player_state_updated_at on public.player_state;
 create trigger player_state_updated_at
@@ -232,28 +229,30 @@ for all
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
 
+-- GENERATED: nickname_words:start
 create or replace function public.allowed_nick_words()
 returns text[]
 language sql
 stable
 as $$
   select array[
-    'Amber', 'Aqua', 'Azure', 'Beige', 'Black', 'Blue', 'Bronze', 'Coral', 'Crimson', 'Cyan', 'Emerald', 'Gold', 'Gray', 'Green', 'Indigo', 'Ivory',
-    'Jade', 'Lavender', 'Lime', 'Magenta', 'Maroon', 'Mint', 'Navy', 'Neon', 'Olive', 'Orange', 'Peach', 'Pink', 'Plum', 'Purple', 'Red', 'Rose',
-    'Ruby', 'Saffron', 'Scarlet', 'Silver', 'Teal', 'Turquoise', 'Violet', 'White', 'Yellow',
-    'Agile', 'Alert', 'Bold', 'Bright', 'Calm', 'Clever', 'Crisp', 'Daring', 'Eager', 'Fancy', 'Fast', 'Fierce', 'Focused', 'Gentle', 'Grand', 'Happy',
-    'Icy', 'Jolly', 'Keen', 'Kind', 'Lucky', 'Mighty', 'Nimble', 'Noble', 'Patient', 'Playful', 'Proud', 'Quick', 'Rapid', 'Ready', 'Sharp', 'Silent',
-    'Smart', 'Smooth', 'Solid', 'Steady', 'Steel', 'Sunny', 'Swift', 'Tidy', 'Vivid', 'Wise', 'Zesty',
-    'Ant', 'Bear', 'Beaver', 'Bee', 'Bison', 'Cat', 'Cheetah', 'Cobra', 'Crane', 'Crow', 'Deer', 'Dolphin', 'Dragon', 'Eagle', 'Falcon', 'Finch', 'Fox',
-    'Frog', 'Gecko', 'Hawk', 'Horse', 'Hound', 'Koala', 'Lion', 'Lynx', 'Mantis', 'Moose', 'Otter', 'Owl', 'Panda', 'Panther', 'Penguin', 'Pigeon',
-    'Puma', 'Rabbit', 'Raven', 'Seal', 'Shark', 'Sparrow', 'Tiger', 'Turtle', 'Whale', 'Wolf', 'Wren', 'Yak', 'Zebra',
-    'Anchor', 'Arrow', 'Beacon', 'Blade', 'Bolt', 'Book', 'Bridge', 'Cannon', 'Clock', 'Compass', 'Crystal', 'Cube', 'Disk', 'Drone', 'Engine', 'Feather',
-    'Flame', 'Gadget', 'Gear', 'Globe', 'Hammer', 'Helmet', 'Jet', 'Key', 'Lantern', 'Laser', 'Lens', 'Magnet', 'Mirror', 'Needle', 'Nova', 'Orb',
-    'Pixel', 'Planet', 'Prism', 'Radar', 'Rocket', 'Shield', 'Signal', 'Socket', 'Spark', 'Sphere', 'Star', 'Stone', 'Switch', 'Tablet', 'Tower', 'Wheel', 'Wing',
-    'Agent', 'Algorithm', 'Array', 'Binary', 'Branch', 'Buffer', 'Cache', 'Class', 'Cloud', 'Code', 'Commit', 'Compiler', 'Cookie', 'Cursor', 'Data',
-    'Debug', 'Deploy', 'Docker', 'Field', 'Flux', 'Frame', 'Function', 'Gateway', 'Git', 'Graph', 'Hash', 'Hook', 'Index', 'Kernel', 'Lambda', 'Library',
-    'Linker', 'Logic', 'Loop', 'Matrix', 'Method', 'Module', 'Object', 'Packet', 'Parser', 'Patch', 'Pilot', 'Pipeline', 'Pointer', 'Process', 'Protocol',
-    'Query', 'Queue', 'Script', 'Server', 'Stack', 'Stream', 'Syntax', 'Tensor', 'Thread', 'Token', 'Variable', 'Vector'
+    'Amber', 'Aqua', 'Azure', 'Beige', 'Black', 'Blue', 'Bronze', 'Coral', 'Crimson', 'Cyan', 'Emerald', 'Gold', 'Gray', 'Green',
+    'Indigo', 'Ivory', 'Jade', 'Lavender', 'Lime', 'Magenta', 'Maroon', 'Mint', 'Navy', 'Neon', 'Olive', 'Orange', 'Peach', 'Pink',
+    'Plum', 'Purple', 'Red', 'Rose', 'Ruby', 'Saffron', 'Scarlet', 'Silver', 'Teal', 'Turquoise', 'Violet', 'White', 'Yellow', 'Agile',
+    'Alert', 'Bold', 'Bright', 'Calm', 'Clever', 'Crisp', 'Daring', 'Eager', 'Fancy', 'Fast', 'Fierce', 'Focused', 'Gentle', 'Grand',
+    'Happy', 'Icy', 'Jolly', 'Keen', 'Kind', 'Lucky', 'Mighty', 'Nimble', 'Noble', 'Patient', 'Playful', 'Proud', 'Quick', 'Rapid',
+    'Ready', 'Sharp', 'Silent', 'Smart', 'Smooth', 'Solid', 'Steady', 'Steel', 'Sunny', 'Swift', 'Tidy', 'Vivid', 'Wise', 'Zesty',
+    'Ant', 'Bear', 'Beaver', 'Bee', 'Bison', 'Cat', 'Cheetah', 'Cobra', 'Crane', 'Crow', 'Deer', 'Dolphin', 'Dragon', 'Eagle',
+    'Falcon', 'Finch', 'Fox', 'Frog', 'Gecko', 'Hawk', 'Horse', 'Hound', 'Koala', 'Lion', 'Lynx', 'Mantis', 'Moose', 'Otter',
+    'Owl', 'Panda', 'Panther', 'Penguin', 'Pigeon', 'Puma', 'Rabbit', 'Raven', 'Seal', 'Shark', 'Sparrow', 'Tiger', 'Turtle', 'Whale',
+    'Wolf', 'Wren', 'Yak', 'Zebra', 'Anchor', 'Arrow', 'Beacon', 'Blade', 'Bolt', 'Book', 'Bridge', 'Cannon', 'Clock', 'Compass',
+    'Crystal', 'Cube', 'Disk', 'Drone', 'Engine', 'Feather', 'Flame', 'Gadget', 'Gear', 'Globe', 'Hammer', 'Helmet', 'Jet', 'Key',
+    'Lantern', 'Laser', 'Lens', 'Magnet', 'Mirror', 'Needle', 'Nova', 'Orb', 'Pixel', 'Planet', 'Prism', 'Radar', 'Rocket', 'Shield',
+    'Signal', 'Socket', 'Spark', 'Sphere', 'Star', 'Stone', 'Switch', 'Tablet', 'Tower', 'Wheel', 'Wing', 'Agent', 'Algorithm', 'Array',
+    'Binary', 'Branch', 'Buffer', 'Cache', 'Class', 'Cloud', 'Code', 'Commit', 'Compiler', 'Cookie', 'Cursor', 'Data', 'Debug', 'Deploy',
+    'Docker', 'Field', 'Flux', 'Frame', 'Function', 'Gateway', 'Git', 'Graph', 'Hash', 'Hook', 'Index', 'Kernel', 'Lambda', 'Library',
+    'Linker', 'Logic', 'Loop', 'Matrix', 'Method', 'Module', 'Object', 'Packet', 'Parser', 'Patch', 'Pilot', 'Pipeline', 'Pointer', 'Process',
+    'Protocol', 'Query', 'Queue', 'Script', 'Server', 'Stack', 'Stream', 'Syntax', 'Tensor', 'Thread', 'Token', 'Variable', 'Vector'
   ];
 $$;
 
@@ -262,7 +261,12 @@ returns text[]
 language sql
 stable
 as $$
-  select public.allowed_nick_words();
+  select array[
+    'Agile', 'Alert', 'Bold', 'Bright', 'Calm', 'Clever', 'Crisp', 'Daring', 'Eager', 'Fancy', 'Fast', 'Fierce', 'Focused', 'Gentle',
+    'Grand', 'Happy', 'Icy', 'Jolly', 'Keen', 'Kind', 'Lucky', 'Mighty', 'Nimble', 'Noble', 'Patient', 'Playful', 'Proud', 'Quick',
+    'Rapid', 'Ready', 'Sharp', 'Silent', 'Smart', 'Smooth', 'Solid', 'Steady', 'Steel', 'Sunny', 'Swift', 'Tidy', 'Vivid', 'Wise',
+    'Zesty'
+  ];
 $$;
 
 create or replace function public.allowed_nick_part_b()
@@ -270,7 +274,12 @@ returns text[]
 language sql
 stable
 as $$
-  select public.allowed_nick_words();
+  select array[
+    'Ant', 'Bear', 'Beaver', 'Bee', 'Bison', 'Cat', 'Cheetah', 'Cobra', 'Crane', 'Crow', 'Deer', 'Dolphin', 'Dragon', 'Eagle',
+    'Falcon', 'Finch', 'Fox', 'Frog', 'Gecko', 'Hawk', 'Horse', 'Hound', 'Koala', 'Lion', 'Lynx', 'Mantis', 'Moose', 'Otter',
+    'Owl', 'Panda', 'Panther', 'Penguin', 'Pigeon', 'Puma', 'Rabbit', 'Raven', 'Seal', 'Shark', 'Sparrow', 'Tiger', 'Turtle', 'Whale',
+    'Wolf', 'Wren', 'Yak', 'Zebra'
+  ];
 $$;
 
 create or replace function public.allowed_nick_part_c()
@@ -278,8 +287,14 @@ returns text[]
 language sql
 stable
 as $$
-  select public.allowed_nick_words();
+  select array[
+    'Anchor', 'Arrow', 'Beacon', 'Blade', 'Bolt', 'Book', 'Bridge', 'Cannon', 'Clock', 'Compass', 'Crystal', 'Cube', 'Disk', 'Drone',
+    'Engine', 'Feather', 'Flame', 'Gadget', 'Gear', 'Globe', 'Hammer', 'Helmet', 'Jet', 'Key', 'Lantern', 'Laser', 'Lens', 'Magnet',
+    'Mirror', 'Needle', 'Nova', 'Orb', 'Pixel', 'Planet', 'Prism', 'Radar', 'Rocket', 'Shield', 'Signal', 'Socket', 'Spark', 'Sphere',
+    'Star', 'Stone', 'Switch', 'Tablet', 'Tower', 'Wheel', 'Wing'
+  ];
 $$;
+-- GENERATED: nickname_words:end
 
 create or replace function public.random_array_item(p_values text[])
 returns text

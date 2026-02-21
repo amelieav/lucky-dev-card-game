@@ -133,9 +133,9 @@ test('nickname updates are validated and persisted', () => {
 
   const result = updateLocalNickname(
     account,
-    { partA: 'Neon', partB: 'Tensor', partC: 'Nova' },
+    { partA: 'Agile', partB: 'Fox', partC: 'Nova' },
     { nowMs: 1_000 },
   )
 
-  assert.equal(result.snapshot.profile.display_name, 'Neon Tensor Nova')
+  assert.equal(result.snapshot.profile.display_name, 'Agile Fox Nova')
 })
