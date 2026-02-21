@@ -21,21 +21,26 @@ function assertApproxHundred(value) {
   assert.ok(Math.abs(value - 100) < 0.0005, `Expected ~100, got ${value}`)
 }
 
-test('highest unlocked tier requires both packs opened and tier boost', () => {
-  assert.equal(getHighestUnlockedTier({ packs_opened: 500, tier_boost_level: 0 }), 1)
-  assert.equal(getHighestUnlockedTier({ packs_opened: 40, tier_boost_level: 1 }), 2)
-  assert.equal(getHighestUnlockedTier({ packs_opened: 200, tier_boost_level: 4 }), 3)
+test('all pack tiers stay available from the start', () => {
+  assert.equal(getHighestUnlockedTier({ packs_opened: 0, tier_boost_level: 0 }), 6)
+  assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 2 }), 6)
   assert.equal(getHighestUnlockedTier({ packs_opened: 1900, tier_boost_level: 13 }), 6)
 })
 
-test('effective tier weights sum to 100 and respect unlocks', () => {
-  const early = getEffectiveTierWeights({ packs_opened: 0, tier_boost_level: 10 })
-  assertApproxHundred(sum(Object.values(early)))
-  assert.equal(early[1], 100)
+test('effective tier weights sum to 100 and shift with tier boost', () => {
+  const start = getEffectiveTierWeights({ packs_opened: 0, tier_boost_level: 0 })
+  assertApproxHundred(sum(Object.values(start)))
+  assert.equal(start[1], 100)
+  assert.equal(start[2], 0)
 
-  const late = getEffectiveTierWeights({ packs_opened: 2500, tier_boost_level: 20 })
+  const mid = getEffectiveTierWeights({ packs_opened: 0, tier_boost_level: 10 })
+  assertApproxHundred(sum(Object.values(mid)))
+  assert.ok(mid[5] > 0)
+  assert.ok(mid[1] < start[1])
+
+  const late = getEffectiveTierWeights({ packs_opened: 0, tier_boost_level: 20 })
   assertApproxHundred(sum(Object.values(late)))
-  assert.ok(late[6] > 5)
+  assert.ok(late[6] > mid[6])
 })
 
 test('base tier profile applies extra T1->T6 shift at level 14+', () => {
@@ -131,10 +136,10 @@ test('applyUpgrade mutates state and spends coins', () => {
   assert.equal(state.auto_speed_level, 1)
 })
 
-test('progress reports remaining packs and tier boost', () => {
+test('progress reports no lock gates for pack tiers', () => {
   const progress = getProgressToNextTier({ packs_opened: 180, tier_boost_level: 3 })
-  assert.equal(progress.highestTier, 2)
-  assert.equal(progress.nextTier, 3)
-  assert.equal(progress.remainingPacks, 20)
-  assert.equal(progress.remainingTierBoost, 1)
+  assert.equal(progress.highestTier, 6)
+  assert.equal(progress.nextTier, null)
+  assert.equal(progress.remainingPacks, 0)
+  assert.equal(progress.remainingTierBoost, 0)
 })

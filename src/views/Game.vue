@@ -15,24 +15,13 @@
           <p class="text-xl font-semibold">{{ formatNumber(playerManualOpens) }} / {{ formatNumber(playerAutoOpens) }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
-          <p class="text-xs text-muted">Highest Tier</p>
-          <p class="text-xl font-semibold">Tier {{ highestTierUnlocked }}</p>
+          <p class="text-xs text-muted">Tier Coverage</p>
+          <p class="text-xl font-semibold">T1-T6</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Auto Rate</p>
           <p class="text-xl font-semibold">{{ autoRateLabel }}</p>
         </article>
-      </div>
-
-      <div class="mt-3 rounded-xl border border-soft bg-panel-soft p-3 text-xs text-muted">
-        <p>
-          Next unlock:
-          <span v-if="progression.nextTier">
-            Tier {{ progression.nextTier }} requires {{ progression.requirement?.packsOpened }} packs and Tier Boost Lv {{ progression.requirement?.tierBoostLevel }}.
-            Remaining: {{ progression.remainingPacks }} packs, {{ progression.remainingTierBoost }} Tier Boost.
-          </span>
-          <span v-else>All tiers unlocked.</span>
-        </p>
       </div>
     </div>
 
@@ -44,35 +33,33 @@
       <section class="card p-6 lg:col-span-2">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <p class="text-xs uppercase tracking-wide text-muted">Manual Open</p>
-            <h1 class="mt-1 text-xl font-semibold">Starter Card Pack</h1>
+            <p class="text-xs uppercase tracking-wide text-muted">Auto Roll</p>
+            <h1 class="mt-1 text-xl font-semibold">Continuous Card Pack Loop</h1>
             <p class="mt-1 text-sm text-muted">
-              Free to open. Rolls tier, rarity, mutation, then rewards coins.
+              Packs now appear, open, reveal, and loop automatically.
             </p>
           </div>
           <div class="text-right">
-            <p class="text-xs text-muted">Manual Cadence</p>
-            <p class="text-sm font-semibold">1 pack / 1.2s</p>
+            <p class="text-xs text-muted">Loop Cadence</p>
+            <p class="text-sm font-semibold">{{ loopCadenceLabel }}</p>
           </div>
         </div>
 
-        <button
+        <div
           class="manual-pack mt-4"
           :class="`manual-pack--${manualPackPhase}`"
-          type="button"
-          :disabled="!canOpenManual"
-          @click="openManualPack"
+          role="status"
+          aria-live="polite"
         >
           <template v-if="manualPackPhase === 'ready'">
-            <p class="manual-pack__eyebrow">Next pack ready</p>
-            <p class="manual-pack__title">{{ nextManualPackLabel }}</p>
-            <p class="manual-pack__hint" v-if="manualCooldownRemainingMs > 0">
-              Cooldown {{ (manualCooldownRemainingMs / 1000).toFixed(1) }}s
-            </p>
-            <p class="manual-pack__hint" v-else>Tap to open</p>
+            <div class="manual-pack__card" aria-hidden="true"></div>
+            <p class="manual-pack__eyebrow">Incoming pack</p>
+            <p class="manual-pack__title">Preparing next roll...</p>
+            <p class="manual-pack__hint">Looping automatically</p>
           </template>
 
           <template v-else-if="manualPackPhase === 'opening'">
+            <div class="manual-pack__card manual-pack__card--opening" aria-hidden="true"></div>
             <div class="manual-pack__spinner" aria-hidden="true"></div>
             <p class="manual-pack__title">Opening pack...</p>
             <p class="manual-pack__hint">Rolling tier, rarity, and mutation</p>
@@ -84,7 +71,7 @@
             <p class="manual-pack__hint">{{ manualRevealDraw.rarity }} · {{ manualRevealDraw.mutation }}</p>
             <p class="manual-pack__reward">+{{ formatNumber(manualRevealDraw.reward) }} coins</p>
           </template>
-        </button>
+        </div>
 
         <div v-if="recentDraws.length && manualPackPhase === 'ready'" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
           <p class="text-[11px] uppercase tracking-wide text-muted">Recent opened cards</p>
@@ -174,7 +161,7 @@
         <details class="mt-3 rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
           <summary class="cursor-pointer font-semibold">Why these odds?</summary>
           <p class="mt-2">Luck Lv {{ playerState?.luck_level || 0 }} shifts rarity. Mutation Lv {{ playerState?.mutation_level || 0 }} shifts mutation quality.</p>
-          <p class="mt-1">Tier odds come from Tier Boost Lv {{ playerState?.tier_boost_level || 0 }} with lock redistribution to unlocked tiers.</p>
+          <p class="mt-1">Tier odds come directly from Tier Boost Lv {{ playerState?.tier_boost_level || 0 }}.</p>
         </details>
       </aside>
     </div>
@@ -287,7 +274,6 @@ import {
   getEffectiveTierWeights,
   getMutationWeights,
   getNextTierOddsChangeLevel,
-  getProgressToNextTier,
   getRarityWeightsForTier,
   getUpgradeCost,
   getUpgradePreview,
@@ -334,8 +320,6 @@ const MUTATION_STYLE_MAP = {
 }
 
 const store = useStore()
-const nowMs = ref(Date.now())
-const manualLockedUntilMs = ref(0)
 const manualPackPhase = ref('ready')
 const manualRevealDraw = ref(null)
 const showResetButton = ref(false)
@@ -344,8 +328,9 @@ const PACK_OPENING_ANIMATION_MS = 600
 const PACK_REVEAL_MS = 1500
 const RESET_BUTTON_PREF_KEY = 'lucky_agent_show_reset_button'
 
-let clockTimer = null
+let autoRollTimer = null
 let syncTimer = null
+let viewActive = true
 
 const snapshot = computed(() => store.state.game.snapshot)
 const playerState = computed(() => snapshot.value?.state || null)
@@ -364,12 +349,11 @@ const playerCoins = computed(() => Number(playerState.value?.coins || 0))
 const playerPacksOpened = computed(() => Number(playerState.value?.packs_opened || 0))
 const playerManualOpens = computed(() => Number(playerState.value?.manual_opens || 0))
 const playerAutoOpens = computed(() => Number(playerState.value?.auto_opens || 0))
-const highestTierUnlocked = computed(() => Number(playerState.value?.highest_tier_unlocked || 1))
 
 const autoRate = computed(() => getAutoOpensPerSecond(playerState.value || {}))
 const autoRateLabel = computed(() => (autoRate.value > 0 ? `${autoRate.value.toFixed(2)} packs/sec` : 'Locked'))
+const loopCadenceLabel = computed(() => `1 pack / ${(BALANCE_CONFIG.manualOpenCooldownMs / 1000).toFixed(1)}s`)
 
-const progression = computed(() => getProgressToNextTier(playerState.value || {}))
 const tierWeights = computed(() => getEffectiveTierWeights(playerState.value || {}))
 const mutationWeights = computed(() => getMutationWeights(playerState.value?.mutation_level || 0))
 const mutationMultiplierRows = computed(() => {
@@ -388,7 +372,7 @@ const tierRows = computed(() => {
 
 const rarityRows = computed(() => {
   const rows = []
-  for (let tier = 1; tier <= highestTierUnlocked.value; tier += 1) {
+  for (let tier = 1; tier <= 6; tier += 1) {
     rows.push({
       tier,
       weights: getRarityWeightsForTier(tier, playerState.value?.luck_level || 0),
@@ -454,29 +438,24 @@ const shopRows = computed(() => {
   })
 })
 
-const manualCooldownRemainingMs = computed(() => Math.max(0, manualLockedUntilMs.value - nowMs.value))
-const nextManualPackLabel = computed(() => packName(highestTierUnlocked.value || 1))
-const canOpenManual = computed(() => {
+const canRunAutoRoll = computed(() => {
   return !!playerState.value
     && !actionLoading.value
     && manualPackPhase.value === 'ready'
-    && manualCooldownRemainingMs.value <= 0
 })
 const canResetAccount = computed(() => !!playerState.value && !actionLoading.value)
 
 const termOptions = TERMS.map((term) => ({ key: term.key, name: term.name }))
 
 onMounted(async () => {
+  viewActive = true
   await store.dispatch('auth/initAuth')
   if (!store.state.game.snapshot) {
     await store.dispatch('game/bootstrapPlayer')
   }
 
   showResetButton.value = readResetButtonPreference()
-
-  clockTimer = window.setInterval(() => {
-    nowMs.value = Date.now()
-  }, 120)
+  scheduleAutoRoll(350)
 
   if (LOCAL_ECONOMY_ENABLED) {
     syncTimer = window.setInterval(async () => {
@@ -488,8 +467,9 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  if (clockTimer) {
-    window.clearInterval(clockTimer)
+  viewActive = false
+  if (autoRollTimer) {
+    window.clearTimeout(autoRollTimer)
   }
 
   if (syncTimer) {
@@ -497,13 +477,36 @@ onUnmounted(() => {
   }
 })
 
-async function openManualPack() {
-  if (!canOpenManual.value) return
+function scheduleAutoRoll(delayMs = BALANCE_CONFIG.manualOpenCooldownMs) {
+  if (!viewActive) return
+
+  if (autoRollTimer) {
+    window.clearTimeout(autoRollTimer)
+  }
+
+  autoRollTimer = window.setTimeout(() => {
+    void runAutoRollTick()
+  }, delayMs)
+}
+
+async function runAutoRollTick() {
+  if (!viewActive) return
+
+  if (!canRunAutoRoll.value) {
+    scheduleAutoRoll(250)
+    return
+  }
+
+  await runAutoRollCycle()
+  scheduleAutoRoll(BALANCE_CONFIG.manualOpenCooldownMs)
+}
+
+async function runAutoRollCycle() {
+  if (!canRunAutoRoll.value) return
 
   const previousDraw = store.state.game.openResult
   manualPackPhase.value = 'opening'
   manualRevealDraw.value = null
-  manualLockedUntilMs.value = Date.now() + BALANCE_CONFIG.manualOpenCooldownMs
   await sleep(PACK_OPENING_ANIMATION_MS)
   await store.dispatch('game/openPack', { source: 'manual' })
 
@@ -533,8 +536,8 @@ async function resetAccount() {
 
   manualPackPhase.value = 'ready'
   manualRevealDraw.value = null
-  manualLockedUntilMs.value = 0
   await store.dispatch('game/resetAccount')
+  scheduleAutoRoll(500)
 }
 
 function persistResetButtonPreference() {
@@ -632,27 +635,18 @@ function sleep(ms) {
 
 <style scoped>
 .manual-pack {
-  width: 100%;
-  min-height: 180px;
-  border-radius: 1rem;
+  width: min(250px, 100%);
+  min-height: 340px;
+  margin: 0 auto;
+  border-radius: 1.1rem;
   border: 1px solid var(--border-soft);
-  padding: 1rem;
+  padding: 1.1rem 0.9rem;
   text-align: center;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  box-shadow: 0 16px 28px rgba(31, 56, 128, 0.18);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-}
-
-.manual-pack:disabled {
-  opacity: 0.8;
-  cursor: not-allowed;
-}
-
-.manual-pack:not(:disabled):hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 26px rgba(31, 56, 128, 0.18);
 }
 
 .manual-pack--ready {
@@ -668,6 +662,21 @@ function sleep(ms) {
 .manual-pack--reveal {
   color: var(--text-main);
   background: linear-gradient(145deg, #ffffff, #ecf3ff);
+}
+
+.manual-pack__card {
+  width: 122px;
+  height: 168px;
+  margin-bottom: 0.8rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.16));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 10px 20px rgba(19, 33, 89, 0.28);
+  animation: pack-bob 1.8s ease-in-out infinite;
+}
+
+.manual-pack__card--opening {
+  animation: pack-bob 0.8s ease-in-out infinite;
 }
 
 .manual-pack__eyebrow {
@@ -734,6 +743,16 @@ function sleep(ms) {
 @keyframes pack-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes pack-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
   }
 }
 </style>

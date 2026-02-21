@@ -85,7 +85,7 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
     tier_boost_level: 0,
     auto_unlocked: false,
     auto_speed_level: 0,
-    highest_tier_unlocked: 1,
+    highest_tier_unlocked: 6,
     packs_opened: 0,
     eggs_opened: 0,
     manual_opens: 0,
@@ -452,7 +452,7 @@ function resetProgress(record, nowMs = Date.now()) {
   record.tier_boost_level = 0
   record.auto_unlocked = false
   record.auto_speed_level = 0
-  record.highest_tier_unlocked = 1
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
   record.packs_opened = 0
   record.eggs_opened = 0
   record.manual_opens = 0

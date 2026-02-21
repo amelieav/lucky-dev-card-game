@@ -103,63 +103,17 @@ function tierWeightsEqual(a, b) {
 }
 
 export function getHighestUnlockedTier(stateLike) {
-  const packsOpened = Math.max(0, Number(stateLike?.packs_opened ?? stateLike?.eggs_opened ?? 0))
-  const tierBoostLevel = Math.max(0, Number(stateLike?.tier_boost_level || 0))
-
-  let highest = 1
-  for (const tier of TIERS.slice(1)) {
-    const req = BALANCE_CONFIG.tierUnlockRequirements[tier]
-    if (!req) continue
-
-    if (tierBoostLevel >= req.tierBoostLevel && packsOpened >= req.packsOpened) {
-      highest = tier
-    } else {
-      break
-    }
-  }
-
-  return highest
-}
-
-function redistributeLockedTierWeights(baseWeights, highestUnlockedTier) {
-  const available = TIERS.filter((tier) => tier <= highestUnlockedTier)
-
-  const unlockedTotal = available.reduce((sum, tier) => sum + Number(baseWeights[tier] || 0), 0)
-  const lockedTotal = TIERS.filter((tier) => tier > highestUnlockedTier)
-    .reduce((sum, tier) => sum + Number(baseWeights[tier] || 0), 0)
-
-  if (available.length === 0) {
-    return { 1: 100 }
-  }
-
-  if (unlockedTotal <= 0) {
-    const fallback = {}
-    for (const tier of available) {
-      fallback[tier] = tier === available[available.length - 1] ? 100 : 0
-    }
-    return fallback
-  }
-
-  const redistributed = {}
-  for (const tier of available) {
-    const current = Number(baseWeights[tier] || 0)
-    redistributed[tier] = current + (lockedTotal * (current / unlockedTotal))
-  }
-
-  return normalizeWeightMap(redistributed)
+  return TIERS[TIERS.length - 1]
 }
 
 export function getEffectiveTierWeights(stateLike) {
-  const highestUnlockedTier = getHighestUnlockedTier(stateLike)
   const base = getBaseTierWeightsForBoostLevel(stateLike?.tier_boost_level || 0)
-  const redistributed = redistributeLockedTierWeights(base, highestUnlockedTier)
-
   const full = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
-  for (const [tier, weight] of Object.entries(redistributed)) {
+  for (const [tier, weight] of Object.entries(base)) {
     full[Number(tier)] = weight
   }
 
-  return full
+  return normalizeWeightMap(full)
 }
 
 export function getNextTierOddsChangeLevel(currentTierBoostLevel) {
@@ -177,32 +131,12 @@ export function getNextTierOddsChangeLevel(currentTierBoostLevel) {
 }
 
 export function getProgressToNextTier(stateLike) {
-  const highestTier = getHighestUnlockedTier(stateLike)
-
-  if (highestTier >= 6) {
-    return {
-      highestTier,
-      nextTier: null,
-      remainingPacks: 0,
-      remainingTierBoost: 0,
-      requirement: null,
-    }
-  }
-
-  const nextTier = highestTier + 1
-  const req = BALANCE_CONFIG.tierUnlockRequirements[nextTier]
-  const packsOpened = Math.max(0, Number(stateLike?.packs_opened ?? stateLike?.eggs_opened ?? 0))
-  const tierBoostLevel = Math.max(0, Number(stateLike?.tier_boost_level || 0))
-
   return {
-    highestTier,
-    nextTier,
-    remainingPacks: Math.max(0, req.packsOpened - packsOpened),
-    remainingTierBoost: Math.max(0, req.tierBoostLevel - tierBoostLevel),
-    requirement: {
-      packsOpened: req.packsOpened,
-      tierBoostLevel: req.tierBoostLevel,
-    },
+    highestTier: getHighestUnlockedTier(stateLike),
+    nextTier: null,
+    remainingPacks: 0,
+    remainingTierBoost: 0,
+    requirement: null,
   }
 }
 

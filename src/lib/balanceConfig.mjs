@@ -15,15 +15,6 @@ export const BALANCE_CONFIG = {
     6: 'C++ Pack',
   },
 
-  tierUnlockRequirements: {
-    1: { tierBoostLevel: 0, packsOpened: 0 },
-    2: { tierBoostLevel: 1, packsOpened: 40 },
-    3: { tierBoostLevel: 4, packsOpened: 200 },
-    4: { tierBoostLevel: 7, packsOpened: 550 },
-    5: { tierBoostLevel: 10, packsOpened: 1100 },
-    6: { tierBoostLevel: 13, packsOpened: 1900 },
-  },
-
   tierWeightProfiles: {
     0: { 1: 100, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 },
     1: { 1: 90, 2: 10, 3: 0, 4: 0, 5: 0, 6: 0 },
