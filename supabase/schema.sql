@@ -735,9 +735,11 @@ declare
   base_rare numeric;
   base_legendary numeric;
   x numeric;
-  common_fixed numeric;
-  rest_total numeric;
-  scale numeric;
+  tier_index int;
+  step_levels numeric := 4.0;
+  progress_levels numeric;
+  progress numeric;
+  target numeric := (100.0 / 3.0);
   sum_total numeric;
 begin
   case greatest(1, least(6, coalesce(p_draw_tier, 1)))
@@ -756,27 +758,13 @@ begin
   end case;
 
   x := least(25, greatest(0, coalesce(p_value_level, 0)));
+  tier_index := greatest(1, least(6, coalesce(p_draw_tier, 1))) - 1;
+  progress_levels := greatest(0, x - (tier_index * step_levels));
+  progress := least(1, progress_levels / step_levels);
 
-  common_fixed := greatest(25, base_common - (1.2 * x));
-  rare_w := greatest(0, base_rare + (0.8 * x));
-  legendary_w := greatest(0, base_legendary + (0.4 * x));
-
-  if common_fixed >= 100 then
-    common_w := 100; rare_w := 0; legendary_w := 0;
-    return next;
-  end if;
-
-  rest_total := rare_w + legendary_w;
-  if rest_total <= 0 then
-    common_w := 100; rare_w := 0; legendary_w := 0;
-    return next;
-  end if;
-
-  scale := (100 - common_fixed) / rest_total;
-
-  common_w := common_fixed;
-  rare_w := rare_w * scale;
-  legendary_w := legendary_w * scale;
+  common_w := base_common + ((target - base_common) * progress);
+  rare_w := base_rare + ((target - base_rare) * progress);
+  legendary_w := base_legendary + ((target - base_legendary) * progress);
 
   sum_total := common_w + rare_w + legendary_w;
   if sum_total <> 100 then
@@ -1148,6 +1136,50 @@ begin
 end;
 $$;
 
+create or replace function public.apply_passive_progress(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  state_row public.player_state;
+  elapsed_seconds int;
+  capped_seconds int;
+  passive_rate_cps int := 0;
+begin
+  select * into state_row
+  from public.player_state
+  where user_id = p_user_id
+  for update;
+
+  if not found then
+    return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
+  end if;
+
+  elapsed_seconds := greatest(0, extract(epoch from now() - state_row.last_tick_at)::int);
+  capped_seconds := least(43200, elapsed_seconds);
+  passive_rate_cps := public.recompute_passive_rate_bp(p_user_id);
+
+  if capped_seconds > 0 and passive_rate_cps > 0 then
+    update public.player_state
+    set coins = coins + (passive_rate_cps * capped_seconds),
+        auto_open_progress = 0,
+        last_tick_at = now(),
+        updated_at = now()
+    where user_id = p_user_id;
+  else
+    update public.player_state
+    set auto_open_progress = 0,
+        last_tick_at = now(),
+        updated_at = now()
+    where user_id = p_user_id;
+  end if;
+
+  return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
+end;
+$$;
+
 -- Backward-compatible idle function.
 create or replace function public.apply_idle_income(p_user_id uuid)
 returns bigint
@@ -1276,7 +1308,11 @@ begin
   end if;
 
   perform public.ensure_player_initialized(uid);
-  perform public.apply_auto_progress(uid);
+  if source_kind = 'auto' then
+    perform public.apply_passive_progress(uid);
+  else
+    perform public.apply_auto_progress(uid);
+  end if;
 
   select * into state_row
   from public.player_state

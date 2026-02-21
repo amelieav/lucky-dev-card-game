@@ -150,39 +150,20 @@ export function getRarityWeightsForTier(drawTier, valueLevel = 0) {
     ...(BALANCE_CONFIG.rarityWeightsByTier[drawTier] || BALANCE_CONFIG.rarityWeightsByTier[1]),
   }
   const x = Math.min(BALANCE_CONFIG.valueShift.cap, Math.max(0, Number(valueLevel || 0)))
-
-  const common = Math.max(
-    BALANCE_CONFIG.valueShift.minCommon,
-    Number(base.common || 0) + (BALANCE_CONFIG.valueShift.common * x),
-  )
-
-  const rest = {
-    rare: Math.max(0, Number(base.rare || 0) + (BALANCE_CONFIG.valueShift.rare * x)),
-    legendary: Math.max(0, Number(base.legendary || 0) + (BALANCE_CONFIG.valueShift.legendary * x)),
+  const tierIndex = Math.max(0, Math.min(5, Number(drawTier || 1) - 1))
+  const stepLevels = Math.max(1, Number(BALANCE_CONFIG.valueShift.tierStepLevels || 4))
+  const target = {
+    common: Number(BALANCE_CONFIG.valueShift.targetCommon || (100 / 3)),
+    rare: Number(BALANCE_CONFIG.valueShift.targetRare || (100 / 3)),
+    legendary: Number(BALANCE_CONFIG.valueShift.targetLegendary || (100 / 3)),
   }
+  const progressLevels = Math.max(0, x - (tierIndex * stepLevels))
+  const progress = Math.max(0, Math.min(1, progressLevels / stepLevels))
 
-  if (common >= 100) {
-    return {
-      common: 100,
-      rare: 0,
-      legendary: 0,
-    }
-  }
-
-  const restTotal = rest.rare + rest.legendary
-  if (restTotal <= 0) {
-    return {
-      common: 100,
-      rare: 0,
-      legendary: 0,
-    }
-  }
-
-  const scale = (100 - common) / restTotal
   const weights = {
-    common: round4(common),
-    rare: round4(rest.rare * scale),
-    legendary: round4(rest.legendary * scale),
+    common: round4(Number(base.common || 0) + ((target.common - Number(base.common || 0)) * progress)),
+    rare: round4(Number(base.rare || 0) + ((target.rare - Number(base.rare || 0)) * progress)),
+    legendary: round4(Number(base.legendary || 0) + ((target.legendary - Number(base.legendary || 0)) * progress)),
   }
 
   const total = weights.common + weights.rare + weights.legendary
@@ -379,8 +360,16 @@ function formatTierProfileForLevel(level) {
 }
 
 function formatRarityProfileForLevel(level) {
-  const rarity = getRarityWeightsForTier(1, level)
-  return `C ${rarity.common.toFixed(1)}% · R ${rarity.rare.toFixed(1)}% · L ${rarity.legendary.toFixed(1)}%`
+  let focusTier = 6
+  for (const tier of TIERS) {
+    const row = getRarityWeightsForTier(tier, level)
+    if (Math.abs(row.common - row.rare) > 0.05 || Math.abs(row.rare - row.legendary) > 0.05) {
+      focusTier = tier
+      break
+    }
+  }
+  const rarity = getRarityWeightsForTier(focusTier, level)
+  return `T${focusTier} C ${rarity.common.toFixed(1)}% · R ${rarity.rare.toFixed(1)}% · L ${rarity.legendary.toFixed(1)}%`
 }
 
 function formatMutationProfileForLevel(level) {

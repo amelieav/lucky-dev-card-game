@@ -1,6 +1,6 @@
 <template>
   <section class="space-y-4">
-    <div v-if="legendarySparkleActive" class="legendary-sparkle" aria-hidden="true">
+    <div v-if="legendarySparkleActive" class="legendary-sparkle" :style="legendarySparkleStyle" aria-hidden="true">
       <div class="legendary-sparkle__layer legendary-sparkle__layer--a"></div>
       <div class="legendary-sparkle__layer legendary-sparkle__layer--b"></div>
     </div>
@@ -9,7 +9,7 @@
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Coins</p>
-          <p class="text-2xl font-semibold">{{ formatNumber(playerCoins) }}</p>
+          <p class="text-2xl font-semibold">{{ formatNumber(playerCoinsDisplay) }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Manual / Auto</p>
@@ -68,7 +68,7 @@
 
         <div
           v-if="autoUnlocked && autoRollEnabled"
-          class="manual-pack mt-6"
+          class="manual-pack mt-8"
           :class="`manual-pack--${manualPackPhase}`"
           role="status"
           aria-live="polite"
@@ -101,7 +101,7 @@
 
         <button
           v-else
-          class="manual-pack manual-pack--interactive mt-6"
+          class="manual-pack manual-pack--interactive mt-8"
           :class="`manual-pack--${manualPackPhase}`"
           type="button"
           :disabled="!canOpenManual"
@@ -133,7 +133,7 @@
           />
         </button>
 
-        <div v-if="recentDraws.length" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
+        <div v-if="recentDraws.length" class="mt-6 rounded-lg border border-soft bg-panel-soft p-2">
           <p class="text-[11px] uppercase tracking-wide text-muted">Recently opened cards</p>
           <div class="recent-mini-strip mt-2">
             <div
@@ -313,11 +313,15 @@ const REVEAL_READ_MS = 2750
 const MANUAL_OPENING_EXTRA_MS = 500
 const AUTO_OPENING_MS = 420
 const LEGENDARY_SPARKLE_MS = 5000
+const LEADERBOARD_REFRESH_MS = 15000
+const LIVE_METRICS_TICK_MS = 500
 
 let autoRollTimer = null
 let syncTimer = null
 let viewActive = true
 let legendarySparkleTimer = null
+let leaderboardRefreshTimer = null
+let metricsTickTimer = null
 
 const snapshot = computed(() => store.state.game.snapshot)
 const playerState = computed(() => snapshot.value?.state || null)
@@ -326,6 +330,8 @@ const gameError = computed(() => store.state.game.error)
 const actionLoading = computed(() => store.state.game.actionLoading)
 const recentDraws = computed(() => displayedRecentDraws.value)
 const legendarySparkleActive = ref(false)
+const liveNowMs = ref(Date.now())
+const legendaryOrigin = ref({ x: 50, y: 50 })
 
 const debugEnabled = computed(() => store.state.debug.enabled)
 const debugPanelOpen = computed(() => store.state.debug.panelOpen)
@@ -340,6 +346,17 @@ const playerCoins = computed(() => Number(playerState.value?.coins || 0))
 const playerManualOpens = computed(() => Number(playerState.value?.manual_opens || 0))
 const playerAutoOpens = computed(() => Number(playerState.value?.auto_opens || 0))
 const autoUnlocked = computed(() => Boolean(playerState.value?.auto_unlocked))
+const passiveRateCps = computed(() => Number(playerState.value?.passive_rate_cps || 0))
+const playerCoinsDisplay = computed(() => {
+  const baseCoins = Number(playerCoins.value || 0)
+  if (passiveRateCps.value <= 0) return baseCoins
+
+  const lastTickMs = Date.parse(playerState.value?.last_tick_at || '')
+  if (!Number.isFinite(lastTickMs)) return baseCoins
+
+  const elapsedSeconds = Math.max(0, Math.floor((liveNowMs.value - lastTickMs) / 1000))
+  return baseCoins + (elapsedSeconds * passiveRateCps.value)
+})
 const leaderboardPosition = computed(() => {
   const rowByFlag = leaderboardRows.value.find((row) => row?.is_you)
   const rowById = rowByFlag || leaderboardRows.value.find((row) => row?.user_id && row.user_id === currentUserId.value)
@@ -360,6 +377,10 @@ const leaderboardPositionToneClass = computed(() => {
   if (rank === 4 || rank === 5) return 'leaderboard-tile--fourth-fifth'
   return 'leaderboard-tile--other'
 })
+const legendarySparkleStyle = computed(() => ({
+  '--legendary-origin-x': `${legendaryOrigin.value.x}%`,
+  '--legendary-origin-y': `${legendaryOrigin.value.y}%`,
+}))
 
 const autoLoopDelayMs = computed(() => {
   return autoUnlocked.value
@@ -541,9 +562,18 @@ onMounted(async () => {
   if (!store.state.game.snapshot) {
     await store.dispatch('game/bootstrapPlayer')
   }
-  await store.dispatch('leaderboard/fetch', { force: false, limit: 100 })
+  await store.dispatch('leaderboard/fetch', { force: true, limit: 100 })
 
   displayedRecentDraws.value = [...(store.state.game.recentDraws || [])]
+
+  metricsTickTimer = window.setInterval(() => {
+    liveNowMs.value = Date.now()
+  }, LIVE_METRICS_TICK_MS)
+
+  leaderboardRefreshTimer = window.setInterval(() => {
+    if (!viewActive || !currentUserId.value) return
+    void store.dispatch('leaderboard/fetch', { force: true, limit: 100 })
+  }, LEADERBOARD_REFRESH_MS)
 
   if (autoUnlocked.value && autoRollEnabled.value) {
     scheduleAutoRoll(120)
@@ -571,6 +601,16 @@ onUnmounted(() => {
   if (legendarySparkleTimer) {
     window.clearTimeout(legendarySparkleTimer)
     legendarySparkleTimer = null
+  }
+
+  if (leaderboardRefreshTimer) {
+    window.clearInterval(leaderboardRefreshTimer)
+    leaderboardRefreshTimer = null
+  }
+
+  if (metricsTickTimer) {
+    window.clearInterval(metricsTickTimer)
+    metricsTickTimer = null
   }
 })
 
@@ -727,6 +767,7 @@ function appendRecentDraw(draw) {
 function triggerLegendarySparkle(draw) {
   if (normalizeRarity(draw?.rarity) !== 'legendary') return
 
+  setLegendaryOriginFromCard()
   legendarySparkleActive.value = true
   if (legendarySparkleTimer) {
     window.clearTimeout(legendarySparkleTimer)
@@ -736,6 +777,30 @@ function triggerLegendarySparkle(draw) {
     legendarySparkleActive.value = false
     legendarySparkleTimer = null
   }, LEGENDARY_SPARKLE_MS)
+}
+
+function setLegendaryOriginFromCard() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return
+
+  const packEl = document.querySelector('.manual-pack')
+  if (!packEl) {
+    legendaryOrigin.value = { x: 50, y: 50 }
+    return
+  }
+
+  const rect = packEl.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0 || window.innerWidth <= 0 || window.innerHeight <= 0) {
+    legendaryOrigin.value = { x: 50, y: 50 }
+    return
+  }
+
+  const x = ((rect.left + (rect.width / 2)) / window.innerWidth) * 100
+  const y = ((rect.top + (rect.height / 2)) / window.innerHeight) * 100
+
+  legendaryOrigin.value = {
+    x: Math.max(0, Math.min(100, x)),
+    y: Math.max(0, Math.min(100, y)),
+  }
 }
 
 async function toggleDebugPanel() {
@@ -878,6 +943,22 @@ function sleep(ms) {
   z-index: 70;
   pointer-events: none;
   overflow: hidden;
+}
+
+.legendary-sparkle::before {
+  content: '';
+  position: absolute;
+  inset: -18%;
+  background:
+    radial-gradient(
+      circle at var(--legendary-origin-x, 50%) var(--legendary-origin-y, 50%),
+      rgba(177, 114, 255, 0.72) 0%,
+      rgba(176, 112, 255, 0.44) 18%,
+      rgba(155, 97, 245, 0.28) 34%,
+      rgba(132, 78, 224, 0.12) 52%,
+      transparent 68%
+    );
+  animation: legendary-origin-burst 1.8s ease-out infinite;
 }
 
 .legendary-sparkle__layer {
@@ -1088,6 +1169,21 @@ function sleep(ms) {
   }
 }
 
+@keyframes legendary-origin-burst {
+  0% {
+    transform: scale(0.72);
+    opacity: 0.72;
+  }
+  55% {
+    transform: scale(1.04);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1.16);
+    opacity: 0.2;
+  }
+}
+
 @keyframes legendary-sparkle-shift {
   0% {
     transform: translate3d(0, 0, 0) scale(1);
@@ -1132,6 +1228,7 @@ function sleep(ms) {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .legendary-sparkle::before,
   .legendary-sparkle__layer--a,
   .legendary-sparkle__layer--b {
     animation: none;

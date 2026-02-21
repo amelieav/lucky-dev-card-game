@@ -48,10 +48,10 @@ export const BALANCE_CONFIG = {
   },
   valueShift: {
     cap: 25,
-    common: -1.2,
-    rare: 0.8,
-    legendary: 0.4,
-    minCommon: 25,
+    tierStepLevels: 4,
+    targetCommon: 100 / 3,
+    targetRare: 100 / 3,
+    targetLegendary: 100 / 3,
   },
 
   mutationWeights: {

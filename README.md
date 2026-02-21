@@ -6,12 +6,14 @@ Lucky Agent is a Vue 3 + Supabase card opening game with progression, collection
 - Single-pack opening loop with manual and unlockable auto opening.
 - Card outcomes driven by:
   - Tier odds (`tier_boost` upgrade)
-  - Rarity odds (`value` upgrade)
+  - Rarity odds (`value` upgrade, applied tier-by-tier)
   - Mutation odds (`mutation` upgrade)
 - 6 tiers of cards, with rarity and mutation affecting value.
 - Foil/Holo mutations grant permanent passive coins per second.
 - Card Book view with discovered slots, copies, and best mutation.
 - Leaderboard ranking by highest card quality and copies of that card.
+- Leaderboard auto-refreshes every 15 seconds with on-page countdown.
+- Top status metrics (including coins and leaderboard position) update live while you play.
 - Legendary full-page purple sparkle celebration effect.
 
 ## Tech stack

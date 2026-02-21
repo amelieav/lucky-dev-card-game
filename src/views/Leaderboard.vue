@@ -5,7 +5,10 @@
         <h1 class="text-xl font-semibold">Global Leaderboard</h1>
         <p class="text-sm text-muted">Ranks by highest card, then number of copies of that card.</p>
       </div>
-      <button class="btn-secondary" type="button" :disabled="loading" @click="refresh">Refresh</button>
+      <div class="text-right">
+        <p class="text-[11px] uppercase tracking-wide text-muted">Auto Refresh</p>
+        <p class="text-sm font-semibold text-main">in {{ refreshCountdown }}s</p>
+      </div>
     </div>
 
     <p v-if="error" class="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>
@@ -58,11 +61,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useStore } from 'vuex'
 import { TERMS_BY_KEY } from '../data/terms'
 
 const store = useStore()
+const AUTO_REFRESH_SECONDS = 15
+const refreshCountdown = ref(AUTO_REFRESH_SECONDS)
+let refreshTimer = null
 
 const rows = computed(() => store.state.leaderboard.rows)
 const loading = computed(() => store.state.leaderboard.loading)
@@ -82,11 +88,36 @@ const totalPlayers = computed(() => {
 })
 
 onMounted(async () => {
-  await store.dispatch('leaderboard/fetch', { force: false, limit: 50 })
+  await refreshLeaderboard(true)
+  startAutoRefresh()
 })
 
-async function refresh() {
-  await store.dispatch('leaderboard/fetch', { force: true, limit: 50 })
+onUnmounted(() => {
+  if (refreshTimer) {
+    window.clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+})
+
+function startAutoRefresh() {
+  if (refreshTimer) {
+    window.clearInterval(refreshTimer)
+  }
+
+  refreshCountdown.value = AUTO_REFRESH_SECONDS
+  refreshTimer = window.setInterval(() => {
+    if (refreshCountdown.value <= 1) {
+      refreshCountdown.value = AUTO_REFRESH_SECONDS
+      void refreshLeaderboard(true)
+      return
+    }
+
+    refreshCountdown.value -= 1
+  }, 1000)
+}
+
+async function refreshLeaderboard(force = true) {
+  await store.dispatch('leaderboard/fetch', { force, limit: 50 })
 }
 
 function formatNumber(value) {
