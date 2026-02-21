@@ -593,6 +593,32 @@ export function updateLocalNickname(user, parts, { debugAllowed = false, rng = M
   }
 }
 
+export function resetLocalAccount(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+  assertAuthenticatedUser(user)
+
+  const record = readRecord(user, rng, nowMs)
+  const timestamp = nowIso(nowMs)
+  const partA = chooseRandom(NICK_PARTS_A, rng)
+  const partB = chooseRandom(NICK_PARTS_B, rng)
+  const partC = chooseRandom(NICK_PARTS_C, rng)
+
+  resetProgress(record, nowMs)
+  record.profile = {
+    nick_part_a: partA,
+    nick_part_b: partB,
+    nick_part_c: partC,
+    display_name: `${partA} ${partB} ${partC}`,
+    updated_at: timestamp,
+  }
+  record.updated_at = timestamp
+  writeRecord(user, record)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    debug_action: 'reset_account',
+  }
+}
+
 export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
   assertAuthenticatedUser(user)
 

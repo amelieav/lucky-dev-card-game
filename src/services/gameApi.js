@@ -88,6 +88,22 @@ export async function updateNickname(parts) {
   }))
 }
 
+export async function resetAccount() {
+  const primary = await supabase.rpc('reset_account')
+
+  if (!primary.error) {
+    return primary.data
+  }
+
+  if (!isMissingRpcError(primary.error, 'reset_account')) {
+    throw primary.error
+  }
+
+  return unwrap(await supabase.rpc('debug_apply_action', {
+    p_action: { type: 'reset_account' },
+  }))
+}
+
 export async function fetchLeaderboard(limit = 50) {
   return unwrap(await supabase.rpc('get_leaderboard', {
     p_limit: limit,

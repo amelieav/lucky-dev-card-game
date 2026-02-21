@@ -3,6 +3,7 @@ import {
   buyUpgrade as apiBuyUpgrade,
   debugApply as apiDebugApply,
   openPack as apiOpenPack,
+  resetAccount as apiResetAccount,
   updateNickname as apiUpdateNickname,
 } from '../../services/gameApi'
 import {
@@ -10,11 +11,13 @@ import {
   buyLocalUpgrade,
   debugApplyLocal,
   openLocalPack,
+  resetLocalAccount,
   syncLocalPlayer,
   updateLocalNickname,
 } from '../../lib/localEconomy.mjs'
 
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
+const RECENT_DRAWS_LIMIT = 5
 
 function normalizeSnapshot(data) {
   if (!data) return null
@@ -26,6 +29,12 @@ function normalizeSnapshot(data) {
   return data
 }
 
+function isSameDraw(a, b) {
+  if (!a || !b) return false
+  const keys = ['term_key', 'tier', 'rarity', 'mutation', 'reward', 'copies', 'level', 'source']
+  return keys.every((key) => a[key] === b[key])
+}
+
 export default {
   namespaced: true,
   state: () => ({
@@ -35,6 +44,7 @@ export default {
     snapshot: null,
     lastSyncMs: 0,
     openResult: null,
+    recentDraws: [],
     debugAllowed: false,
     economyMode: LOCAL_ECONOMY_ENABLED ? 'local' : 'server',
   }),
@@ -60,7 +70,16 @@ export default {
       state.error = message || null
     },
     setOpenResult(state, payload) {
-      state.openResult = payload || null
+      const draw = payload || null
+      state.openResult = draw
+
+      if (!draw) return
+      if (isSameDraw(state.recentDraws[0], draw)) return
+
+      state.recentDraws = [draw, ...state.recentDraws].slice(0, RECENT_DRAWS_LIMIT)
+    },
+    setRecentDraws(state, payload) {
+      state.recentDraws = Array.isArray(payload) ? payload.slice(0, RECENT_DRAWS_LIMIT) : []
     },
     applySnapshot(state, snapshot) {
       state.snapshot = snapshot
@@ -74,6 +93,7 @@ export default {
       state.snapshot = null
       state.lastSyncMs = 0
       state.openResult = null
+      state.recentDraws = []
       state.debugAllowed = false
     },
   },
@@ -155,6 +175,26 @@ export default {
         commit('applySnapshot', snapshot)
       } catch (error) {
         commit('setError', error.message || 'Unable to buy upgrade.')
+      } finally {
+        commit('setActionLoading', false)
+      }
+    },
+
+    async resetAccount({ commit, rootState }) {
+      commit('setActionLoading', true)
+      commit('setError', null)
+
+      try {
+        const user = rootState.auth.user
+        const data = LOCAL_ECONOMY_ENABLED
+          ? resetLocalAccount(user, { debugAllowed: rootState.debug.enabled })
+          : await apiResetAccount()
+        const snapshot = normalizeSnapshot(data)
+        commit('applySnapshot', snapshot)
+        commit('setOpenResult', null)
+        commit('setRecentDraws', [])
+      } catch (error) {
+        commit('setError', error.message || 'Unable to reset account.')
       } finally {
         commit('setActionLoading', false)
       }

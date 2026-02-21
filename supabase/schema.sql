@@ -811,12 +811,12 @@ language sql
 immutable
 as $$
   select case lower(coalesce(p_upgrade_key, ''))
-    when 'auto_unlock' then case when p_auto_unlocked then null else 900::bigint end
-    when 'auto_speed' then floor(140 * power(1.33, greatest(0, coalesce(p_level, 0))))::bigint
-    when 'tier_boost' then floor(60 * power(1.42, greatest(0, coalesce(p_level, 0))))::bigint
-    when 'luck_engine' then floor(75 * power(1.36, greatest(0, coalesce(p_level, 0))))::bigint
-    when 'mutation_lab' then floor(90 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
-    when 'value_engine' then floor(120 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'auto_unlock' then case when p_auto_unlocked then null else 225::bigint end
+    when 'auto_speed' then floor((140 * power(1.33, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
+    when 'tier_boost' then floor((60 * power(1.42, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
+    when 'luck_engine' then floor((75 * power(1.36, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
+    when 'mutation_lab' then floor((90 * power(1.38, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
+    when 'value_engine' then floor((120 * power(1.40, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
     else null
   end;
 $$;
@@ -1096,6 +1096,9 @@ set search_path = public
 as $$
 declare
   uid uuid;
+  part_a text;
+  part_b text;
+  part_c text;
 begin
   uid := auth.uid();
   if uid is null then
@@ -1505,6 +1508,72 @@ begin
 end;
 $$;
 
+create or replace function public.reset_account()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_player_initialized(uid);
+
+  delete from public.player_terms where user_id = uid;
+
+  update public.player_state
+  set coins = 100,
+      luck_level = 0,
+      passive_rate_bp = 0,
+      highest_tier_unlocked = 1,
+      eggs_opened = 0,
+      packs_opened = 0,
+      manual_opens = 0,
+      auto_opens = 0,
+      tier_boost_level = 0,
+      mutation_level = 0,
+      value_level = 0,
+      auto_unlocked = false,
+      auto_speed_level = 0,
+      auto_open_progress = 0,
+      last_tick_at = now(),
+      updated_at = now()
+  where user_id = uid;
+
+  update public.player_debug_state
+  set next_reward = null,
+      updated_at = now()
+  where user_id = uid;
+
+  part_a := public.random_array_item(public.allowed_nick_part_a());
+  part_b := public.random_array_item(public.allowed_nick_part_b());
+  part_c := public.random_array_item(public.allowed_nick_part_c());
+
+  update public.player_profile
+  set nick_part_a = part_a,
+      nick_part_b = part_b,
+      nick_part_c = part_c,
+      display_name = concat(part_a, ' ', part_b, ' ', part_c),
+      updated_at = now()
+  where user_id = uid;
+
+  update public.player_state
+  set highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level),
+      eggs_opened = packs_opened
+  where user_id = uid;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'debug_action', 'reset_account'
+  );
+end;
+$$;
+
 create or replace function public.debug_apply_action(p_action jsonb)
 returns jsonb
 language plpgsql
@@ -1630,31 +1699,7 @@ begin
     perform public.buy_upgrade(key_name);
 
   elsif action_type = 'reset_account' then
-    delete from public.player_terms where user_id = uid;
-
-    update public.player_state
-    set coins = 100,
-        luck_level = 0,
-        passive_rate_bp = 0,
-        highest_tier_unlocked = 1,
-        eggs_opened = 0,
-        packs_opened = 0,
-        manual_opens = 0,
-        auto_opens = 0,
-        tier_boost_level = 0,
-        mutation_level = 0,
-        value_level = 0,
-        auto_unlocked = false,
-        auto_speed_level = 0,
-        auto_open_progress = 0,
-        last_tick_at = now(),
-        updated_at = now()
-    where user_id = uid;
-
-    update public.player_debug_state
-    set next_reward = null,
-        updated_at = now()
-    where user_id = uid;
+    return public.reset_account();
 
   else
     raise exception 'Unsupported debug action type: %', action_type;
@@ -1718,5 +1763,6 @@ grant execute on function public.buy_upgrade(text) to authenticated;
 grant execute on function public.open_egg(int, jsonb) to authenticated;
 grant execute on function public.upgrade_luck() to authenticated;
 grant execute on function public.update_nickname(text, text, text) to authenticated;
+grant execute on function public.reset_account() to authenticated;
 grant execute on function public.get_leaderboard(int) to authenticated;
 grant execute on function public.debug_apply_action(jsonb) to authenticated;

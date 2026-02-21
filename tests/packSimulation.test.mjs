@@ -182,7 +182,7 @@ function simulateFirstTier6HitMinutes(seed) {
   return firstTier6AtSeconds / 60
 }
 
-test('seeded simulation keeps first tier-6 hit in 30-50 minute target band', () => {
+test('seeded simulation keeps first tier-6 hit in 20-24 minute target band', () => {
   const runCount = Math.max(1, Number(process.env.SIM_RUNS || 500))
   const runs = []
   for (let i = 0; i < runCount; i += 1) {
@@ -198,7 +198,7 @@ test('seeded simulation keeps first tier-6 hit in 30-50 minute target band', () 
     console.log(`simulation runs=${runCount} p25=${p25.toFixed(2)} p50=${p50.toFixed(2)} p75=${p75.toFixed(2)}`)
   }
 
-  assert.ok(p25 >= 30, `Expected p25 >= 30, got ${p25}`)
-  assert.ok(p50 >= 30 && p50 <= 50, `Expected p50 in [30, 50], got ${p50}`)
-  assert.ok(p75 <= 50, `Expected p75 <= 50, got ${p75}`)
+  assert.ok(p25 >= 20, `Expected p25 >= 20, got ${p25}`)
+  assert.ok(p50 >= 20 && p50 <= 24, `Expected p50 in [20, 24], got ${p50}`)
+  assert.ok(p75 <= 24, `Expected p75 <= 24, got ${p75}`)
 })

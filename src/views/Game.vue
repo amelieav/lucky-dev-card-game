@@ -86,13 +86,45 @@
           </template>
         </button>
 
-        <div v-if="lastDraw && manualPackPhase === 'ready'" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
-          <p class="text-[11px] uppercase tracking-wide text-muted">Last opened card</p>
-          <p class="mt-1 text-sm font-semibold">
-            {{ termName(lastDraw.term_key) }}
-          </p>
-          <p class="mt-1 text-xs text-muted">
-            {{ lastDraw.rarity }} · {{ lastDraw.mutation }} · {{ packName(lastDraw.tier) }}
+        <div v-if="recentDraws.length && manualPackPhase === 'ready'" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
+          <p class="text-[11px] uppercase tracking-wide text-muted">Recent opened cards</p>
+          <div class="mt-2 space-y-1.5">
+            <div
+              v-for="(draw, index) in recentDraws"
+              :key="`recent-${index}-${draw.term_key}-${draw.copies}-${draw.level}-${draw.reward}`"
+              class="rounded-md border border-soft bg-white/70 px-2 py-1.5"
+            >
+              <p class="text-xs font-semibold">{{ termName(draw.term_key) }}</p>
+              <p class="text-[11px] text-muted">
+                {{ draw.rarity }} · {{ draw.mutation }} · {{ packName(draw.tier) }} · +{{ formatNumber(draw.reward) }} coins
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
+          <label class="reset-tools__toggle">
+            <input
+              v-model="showResetButton"
+              type="checkbox"
+              class="h-4 w-4"
+              @change="persistResetButtonPreference"
+            />
+            <span>Show reset button (testing)</span>
+          </label>
+
+          <button
+            v-if="showResetButton"
+            class="btn-danger mt-2"
+            type="button"
+            :disabled="!canResetAccount"
+            @click="resetAccount"
+          >
+            Reset Profile
+          </button>
+
+          <p v-if="showResetButton" class="mt-1 text-[11px] text-muted">
+            Resets coins, cards, upgrades, and progress back to a fresh profile.
           </p>
         </div>
       </section>
@@ -306,9 +338,11 @@ const nowMs = ref(Date.now())
 const manualLockedUntilMs = ref(0)
 const manualPackPhase = ref('ready')
 const manualRevealDraw = ref(null)
+const showResetButton = ref(false)
 
 const PACK_OPENING_ANIMATION_MS = 600
 const PACK_REVEAL_MS = 1500
+const RESET_BUTTON_PREF_KEY = 'lucky_agent_show_reset_button'
 
 let clockTimer = null
 let syncTimer = null
@@ -318,7 +352,7 @@ const playerState = computed(() => snapshot.value?.state || null)
 const playerTerms = computed(() => snapshot.value?.terms || [])
 const gameError = computed(() => store.state.game.error)
 const actionLoading = computed(() => store.state.game.actionLoading)
-const lastDraw = computed(() => store.state.game.openResult)
+const recentDraws = computed(() => store.state.game.recentDraws || [])
 
 const debugEnabled = computed(() => store.state.debug.enabled)
 const debugPanelOpen = computed(() => store.state.debug.panelOpen)
@@ -428,6 +462,7 @@ const canOpenManual = computed(() => {
     && manualPackPhase.value === 'ready'
     && manualCooldownRemainingMs.value <= 0
 })
+const canResetAccount = computed(() => !!playerState.value && !actionLoading.value)
 
 const termOptions = TERMS.map((term) => ({ key: term.key, name: term.name }))
 
@@ -436,6 +471,8 @@ onMounted(async () => {
   if (!store.state.game.snapshot) {
     await store.dispatch('game/bootstrapPlayer')
   }
+
+  showResetButton.value = readResetButtonPreference()
 
   clockTimer = window.setInterval(() => {
     nowMs.value = Date.now()
@@ -486,6 +523,28 @@ async function openManualPack() {
 
 async function buyUpgrade(upgradeKey) {
   await store.dispatch('game/buyUpgrade', { upgradeKey })
+}
+
+async function resetAccount() {
+  if (!canResetAccount.value) return
+
+  const confirmed = window.confirm('Reset your profile to a fresh new state? This cannot be undone.')
+  if (!confirmed) return
+
+  manualPackPhase.value = 'ready'
+  manualRevealDraw.value = null
+  manualLockedUntilMs.value = 0
+  await store.dispatch('game/resetAccount')
+}
+
+function persistResetButtonPreference() {
+  if (typeof window === 'undefined' || !window.localStorage) return
+  window.localStorage.setItem(RESET_BUTTON_PREF_KEY, showResetButton.value ? '1' : '0')
+}
+
+function readResetButtonPreference() {
+  if (typeof window === 'undefined' || !window.localStorage) return false
+  return window.localStorage.getItem(RESET_BUTTON_PREF_KEY) === '1'
 }
 
 async function toggleDebugPanel() {
@@ -647,6 +706,29 @@ function sleep(ms) {
   border: 3px solid rgba(255, 255, 255, 0.3);
   border-top-color: #ffffff;
   animation: pack-spin 0.9s linear infinite;
+}
+
+.reset-tools__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-main);
+}
+
+.btn-danger {
+  border-radius: 0.75rem;
+  border: 1px solid #f7b0b7;
+  background: #d8404f;
+  color: #ffffff;
+  padding: 0.5rem 0.8rem;
+  font-weight: 700;
+  font-size: 0.82rem;
+}
+
+.btn-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 @keyframes pack-spin {

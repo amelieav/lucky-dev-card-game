@@ -88,7 +88,7 @@ export const BALANCE_CONFIG = {
   valueMultiplierPerLevel: 0.07,
 
   autoOpen: {
-    unlockCost: 900,
+    unlockCost: 225,
     basePerSecond: 0.25,
     perLevelPerSecond: 0.06,
   },
@@ -103,11 +103,11 @@ export const BALANCE_CONFIG = {
   },
 
   upgradeCostCurves: {
-    auto_speed: { base: 140, growth: 1.33 },
-    tier_boost: { base: 60, growth: 1.42 },
-    luck_engine: { base: 75, growth: 1.36 },
-    mutation_lab: { base: 90, growth: 1.38 },
-    value_engine: { base: 120, growth: 1.4 },
+    auto_speed: { base: 35, growth: 1.33 },
+    tier_boost: { base: 15, growth: 1.42 },
+    luck_engine: { base: 18.75, growth: 1.36 },
+    mutation_lab: { base: 22.5, growth: 1.38 },
+    value_engine: { base: 30, growth: 1.4 },
   },
 }
 
