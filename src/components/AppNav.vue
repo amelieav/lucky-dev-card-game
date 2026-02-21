@@ -3,7 +3,7 @@
     <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
       <div class="flex items-center gap-3">
         <div class="brand-badge h-8 w-8 rounded-lg grid place-items-center text-sm font-semibold" aria-hidden="true">
-          <i class="fa-solid fa-code"></i>
+          <vue-feather type="code" size="14" stroke-width="2.5"></vue-feather>
         </div>
         <div>
           <p class="text-sm font-semibold tracking-wide text-main">Lucky Agent</p>

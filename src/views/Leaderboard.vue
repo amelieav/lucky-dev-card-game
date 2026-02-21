@@ -26,14 +26,14 @@
             <td class="px-2 py-2">{{ row.rank }}</td>
             <td class="px-2 py-2 font-medium">
               <div class="flex items-center gap-2">
-                <i v-if="row.best_term_key" :class="[cardIcon(row), 'text-sm text-muted']" aria-hidden="true"></i>
+                <vue-feather v-if="row.best_term_key" :type="cardIcon(row)" class="h-3.5 w-3.5 text-muted" stroke-width="2.3" aria-hidden="true"></vue-feather>
                 <span>{{ row.display_name }}</span>
               </div>
               <span v-if="row.is_you" class="ml-2 rounded bg-panel-soft px-1.5 py-0.5 text-[11px] text-muted">You</span>
             </td>
             <td class="px-2 py-2">
               <div v-if="row.best_term_key" class="flex items-center gap-2">
-                <i :class="[cardIcon(row), 'text-base']" aria-hidden="true"></i>
+                <vue-feather :type="cardIcon(row)" class="h-4 w-4" stroke-width="2.3" aria-hidden="true"></vue-feather>
                 <div class="leading-tight">
                   <p class="font-medium">{{ cardName(row) }}</p>
                   <p class="text-xs text-muted">
@@ -94,7 +94,7 @@ function formatNumber(value) {
 }
 
 function cardIcon(row) {
-  return TERMS_BY_KEY[row?.best_term_key]?.icon || 'fa-solid fa-circle-question'
+  return TERMS_BY_KEY[row?.best_term_key]?.icon || 'help-circle'
 }
 
 function cardName(row) {

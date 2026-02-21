@@ -14,8 +14,7 @@
     </div>
 
     <div class="term-card__section term-card__icon">
-      <i v-if="isFontAwesomeIcon" :class="[iconClass, 'term-card__icon-fa']" aria-hidden="true"></i>
-      <span v-else class="term-card__icon-fallback">{{ iconGlyph }}</span>
+      <vue-feather :type="iconName" class="term-card__icon-feather" stroke-width="2.3" aria-hidden="true"></vue-feather>
     </div>
 
     <div class="term-card__section term-card__name">
@@ -44,7 +43,7 @@ const props = defineProps({
   tier: { type: Number, default: 1 },
   rarity: { type: String, default: 'common' },
   mutation: { type: String, default: 'none' },
-  icon: { type: String, default: 'fa-solid fa-circle-question' },
+  icon: { type: String, default: 'help-circle' },
   coins: { type: Number, default: 0 },
   unknown: { type: Boolean, default: false },
 })
@@ -126,16 +125,9 @@ const cardCssVars = computed(() => {
   }
 })
 
-const iconClass = computed(() => {
-  if (props.unknown) return 'fa-solid fa-circle-question'
-  return String(props.icon || 'fa-solid fa-circle-question')
-})
-
-const isFontAwesomeIcon = computed(() => iconClass.value.includes('fa-'))
-
-const iconGlyph = computed(() => {
-  if (props.unknown) return '?'
-  return String(props.icon || '?')
+const iconName = computed(() => {
+  if (props.unknown) return 'help-circle'
+  return String(props.icon || 'help-circle')
 })
 
 const displayName = computed(() => {
@@ -280,16 +272,11 @@ const formattedCoins = computed(() => {
   grid-row: 2 / span 2;
 }
 
-.term-card__icon-fa {
-  font-size: 2.35rem;
+.term-card__icon-feather {
+  width: 2.35rem;
+  height: 2.35rem;
   color: rgba(22, 34, 63, 0.88);
   filter: drop-shadow(0 2px 1px rgba(255, 255, 255, 0.35));
-}
-
-.term-card__icon-fallback {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: rgba(22, 34, 63, 0.88);
 }
 
 .term-card__name {

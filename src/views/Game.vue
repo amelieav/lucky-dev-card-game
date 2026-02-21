@@ -134,7 +134,7 @@
               class="recent-mini-card"
               :class="`recent-mini-card--${normalizeMutation(draw.mutation)}`"
             >
-              <i :class="[termIcon(draw.term_key), 'recent-mini-card__icon']" aria-hidden="true"></i>
+              <vue-feather :type="termIcon(draw.term_key)" class="recent-mini-card__icon" stroke-width="2.4" aria-hidden="true"></vue-feather>
               <p class="recent-mini-card__rarity" :class="`recent-mini-card__rarity--${normalizeRarity(draw.rarity)}`">
                 {{ normalizeRarity(draw.rarity) }}
               </p>
@@ -393,7 +393,7 @@ const manualRevealCard = computed(() => {
     tier: Number(manualRevealDraw.value.tier || term.tier || 1),
     rarity: manualRevealDraw.value.rarity || term.rarity || 'common',
     mutation: normalizeMutation(manualRevealDraw.value.mutation || 'none'),
-    icon: term.icon || 'fa-solid fa-circle-question',
+    icon: term.icon || 'help-circle',
     coins: Number(manualRevealDraw.value.reward || 0),
   }
 })
@@ -414,7 +414,7 @@ const cardBookRows = computed(() => {
     return {
       termKey: term.key,
       slot: index + 1,
-      icon: term.icon || 'card',
+      icon: term.icon || 'help-circle',
       name: term.name,
       tier: Number(term.tier || 1),
       rarity: term.rarity,
@@ -706,7 +706,7 @@ function termName(termKey) {
 }
 
 function termIcon(termKey) {
-  return TERMS_BY_KEY[termKey]?.icon || 'fa-solid fa-circle-question'
+  return TERMS_BY_KEY[termKey]?.icon || 'help-circle'
 }
 
 function percent(value) {
@@ -894,7 +894,8 @@ function sleep(ms) {
 }
 
 .recent-mini-card__icon {
-  font-size: 1rem;
+  width: 1rem;
+  height: 1rem;
   color: #172342;
 }
 
