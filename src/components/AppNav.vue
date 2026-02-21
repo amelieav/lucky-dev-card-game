@@ -2,10 +2,12 @@
   <header class="app-nav border-b border-soft bg-panel">
     <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
       <div class="flex items-center gap-3">
-        <div class="h-8 w-8 rounded-lg brand-bg text-white grid place-items-center text-sm font-semibold">LA</div>
+        <div class="brand-badge h-8 w-8 rounded-lg grid place-items-center text-sm font-semibold" aria-hidden="true">
+          <i class="fa-solid fa-code"></i>
+        </div>
         <div>
           <p class="text-sm font-semibold tracking-wide text-main">Lucky Agent</p>
-          <p class="text-xs text-muted">Idle Egg Lab</p>
+          <p class="text-xs text-muted">Card Opening Game</p>
         </div>
       </div>
 
@@ -41,6 +43,16 @@ async function handleSignOut() {
 </script>
 
 <style scoped>
+.brand-badge {
+  color: #fff7ff;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 50%),
+    linear-gradient(140deg, #f6a4ca 0%, #ec76bc 45%, #d86be6 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 8px 18px rgba(221, 95, 174, 0.35);
+}
+
 .nav-link {
   color: var(--text-muted);
   transition: color 0.2s ease;

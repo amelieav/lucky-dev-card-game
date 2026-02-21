@@ -642,6 +642,9 @@ begin
 end;
 $$;
 
+drop function if exists public.roll_rarity(int, int);
+drop function if exists public.rarity_weights(int, int);
+
 create or replace function public.rarity_weights(
   p_draw_tier int,
   p_value_level int
@@ -729,6 +732,9 @@ begin
   return 'legendary';
 end;
 $$;
+
+drop function if exists public.roll_mutation(int);
+drop function if exists public.mutation_weights(int);
 
 create or replace function public.mutation_weights(p_mutation_level int)
 returns table (none_w numeric, foil_w numeric, holo_w numeric)
@@ -1825,6 +1831,8 @@ from public.player_state ps
 join public.player_profile pp on pp.user_id = ps.user_id
 join signup_order so on so.user_id = ps.user_id
 left join best_card bc on bc.user_id = ps.user_id and bc.row_num = 1;
+
+drop function if exists public.get_leaderboard(int);
 
 create or replace function public.get_leaderboard(p_limit int default 50)
 returns table (
