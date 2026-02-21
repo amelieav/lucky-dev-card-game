@@ -55,7 +55,7 @@ export async function buyUpgrade({ upgradeKey } = {}) {
     throw primary.error
   }
 
-  if (upgradeKey === 'luck_engine') {
+  if (upgradeKey === 'luck_engine' || upgradeKey === 'value_upgrade') {
     return unwrap(await supabase.rpc('upgrade_luck'))
   }
 
@@ -77,7 +77,7 @@ export async function openEgg(tier, debugOverride = null) {
 }
 
 export async function upgradeLuck() {
-  return buyUpgrade({ upgradeKey: 'luck_engine' })
+  return buyUpgrade({ upgradeKey: 'value_upgrade' })
 }
 
 export async function updateNickname(parts) {

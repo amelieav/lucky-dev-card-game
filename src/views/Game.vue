@@ -1,7 +1,7 @@
 <template>
   <section class="space-y-4">
-    <div class="card p-4">
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div class="card p-4 status-strip">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Coins</p>
           <p class="text-2xl font-semibold">{{ formatNumber(playerCoins) }}</p>
@@ -16,11 +16,15 @@
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Tier Coverage</p>
-          <p class="text-xl font-semibold">T1-T6</p>
+          <p class="text-xl font-semibold">{{ tierCoverageLabel }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Auto Rate</p>
           <p class="text-xl font-semibold">{{ autoRateLabel }}</p>
+        </article>
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs text-muted">Passive Income</p>
+          <p class="text-xl font-semibold" :title="passiveIncomeTooltip">+{{ passiveIncomeSummary.totalRate }}/sec</p>
         </article>
       </div>
     </div>
@@ -33,19 +37,20 @@
       <section class="card p-6 lg:col-span-2">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <p class="text-xs uppercase tracking-wide text-muted">Auto Roll</p>
-            <h1 class="mt-1 text-xl font-semibold">Continuous Card Pack Loop</h1>
+            <p class="text-xs uppercase tracking-wide text-muted">{{ autoUnlocked ? 'Auto Roll' : 'Manual Open' }}</p>
+            <h1 class="mt-1 text-xl font-semibold">Lucky Agent Card Pack</h1>
             <p class="mt-1 text-sm text-muted">
-              Packs now appear, open, reveal, and loop automatically.
+              {{ autoUnlocked ? 'Single pack opens on a loop. Card tier is rolled by your current odds.' : 'Open the single pack manually until Auto Opener is unlocked.' }}
             </p>
           </div>
           <div class="text-right">
-            <p class="text-xs text-muted">Loop Cadence</p>
+            <p class="text-xs text-muted">{{ autoUnlocked ? 'Loop Cadence' : 'Open Mode' }}</p>
             <p class="text-sm font-semibold">{{ loopCadenceLabel }}</p>
           </div>
         </div>
 
         <div
+          v-if="autoUnlocked"
           class="manual-pack mt-4"
           :class="`manual-pack--${manualPackPhase}`"
           role="status"
@@ -53,27 +58,57 @@
         >
           <template v-if="manualPackPhase === 'ready'">
             <div class="manual-pack__card" aria-hidden="true"></div>
-            <p class="manual-pack__eyebrow">Incoming pack</p>
-            <p class="manual-pack__title">Preparing next roll...</p>
-            <p class="manual-pack__hint">Looping automatically</p>
+            <p class="manual-pack__eyebrow">Card pack ready</p>
+            <p class="manual-pack__title">Waiting for next roll...</p>
+            <p class="manual-pack__hint">Tier is decided by probability</p>
           </template>
 
           <template v-else-if="manualPackPhase === 'opening'">
             <div class="manual-pack__card manual-pack__card--opening" aria-hidden="true"></div>
             <div class="manual-pack__spinner" aria-hidden="true"></div>
-            <p class="manual-pack__title">Opening pack...</p>
-            <p class="manual-pack__hint">Rolling tier, rarity, and mutation</p>
+            <p class="manual-pack__title">Opening card pack...</p>
+            <p class="manual-pack__hint">Rolling card tier, rarity, and mutation</p>
           </template>
 
           <template v-else-if="manualRevealDraw">
             <p class="manual-pack__eyebrow">{{ packName(manualRevealDraw.tier) }}</p>
-            <p class="manual-pack__title">{{ termName(manualRevealDraw.term_key) }}</p>
+            <p class="manual-pack__title">{{ termIcon(manualRevealDraw.term_key) }} {{ termName(manualRevealDraw.term_key) }}</p>
             <p class="manual-pack__hint">{{ manualRevealDraw.rarity }} · {{ manualRevealDraw.mutation }}</p>
             <p class="manual-pack__reward">+{{ formatNumber(manualRevealDraw.reward) }} coins</p>
           </template>
         </div>
 
-        <div v-if="recentDraws.length && manualPackPhase === 'ready'" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
+        <button
+          v-else
+          class="manual-pack manual-pack--interactive mt-4"
+          :class="`manual-pack--${manualPackPhase}`"
+          type="button"
+          :disabled="!canOpenManual"
+          @click="openManualPack"
+        >
+          <template v-if="manualPackPhase === 'ready'">
+            <div class="manual-pack__card" aria-hidden="true"></div>
+            <p class="manual-pack__eyebrow">Card pack ready</p>
+            <p class="manual-pack__title">Tap to open</p>
+            <p class="manual-pack__hint">Tier is decided by probability</p>
+          </template>
+
+          <template v-else-if="manualPackPhase === 'opening'">
+            <div class="manual-pack__card manual-pack__card--opening" aria-hidden="true"></div>
+            <div class="manual-pack__spinner" aria-hidden="true"></div>
+            <p class="manual-pack__title">Opening card pack...</p>
+            <p class="manual-pack__hint">Rolling card tier, rarity, and mutation</p>
+          </template>
+
+          <template v-else-if="manualRevealDraw">
+            <p class="manual-pack__eyebrow">{{ packName(manualRevealDraw.tier) }}</p>
+            <p class="manual-pack__title">{{ termIcon(manualRevealDraw.term_key) }} {{ termName(manualRevealDraw.term_key) }}</p>
+            <p class="manual-pack__hint">{{ manualRevealDraw.rarity }} · {{ manualRevealDraw.mutation }}</p>
+            <p class="manual-pack__reward">+{{ formatNumber(manualRevealDraw.reward) }} coins</p>
+          </template>
+        </button>
+
+        <div v-if="recentDraws.length" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
           <p class="text-[11px] uppercase tracking-wide text-muted">Recent opened cards</p>
           <div class="mt-2 space-y-1.5">
             <div
@@ -81,7 +116,7 @@
               :key="`recent-${index}-${draw.term_key}-${draw.copies}-${draw.level}-${draw.reward}`"
               class="rounded-md border border-soft bg-white/70 px-2 py-1.5"
             >
-              <p class="text-xs font-semibold">{{ termName(draw.term_key) }}</p>
+              <p class="text-xs font-semibold">{{ termIcon(draw.term_key) }} {{ termName(draw.term_key) }}</p>
               <p class="text-[11px] text-muted">
                 {{ draw.rarity }} · {{ draw.mutation }} · {{ packName(draw.tier) }} · +{{ formatNumber(draw.reward) }} coins
               </p>
@@ -121,19 +156,14 @@
         <p class="mt-1 text-xs text-muted">Current calculated rates</p>
 
         <div class="mt-3 space-y-2">
-          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Tier</p>
-          <div v-for="tier in tierRows" :key="`tier-${tier.tier}`" class="flex items-center justify-between rounded-lg border border-soft bg-panel-soft px-3 py-2">
-            <span>{{ packName(tier.tier) }}</span>
-            <span>{{ percent(tier.weight) }}</span>
-          </div>
-        </div>
-
-        <div class="mt-3 space-y-2">
-          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Rarity by Draw Tier</p>
+          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Tier + Rarity</p>
           <div v-for="rarityRow in rarityRows" :key="`rarity-${rarityRow.tier}`" class="rounded-lg border border-soft bg-panel-soft p-2">
-            <p class="text-xs font-semibold">{{ packName(rarityRow.tier) }}</p>
-            <p class="text-xs text-muted">
-              C {{ percent(rarityRow.weights.common) }} · R {{ percent(rarityRow.weights.rare) }} · E {{ percent(rarityRow.weights.epic) }} · L {{ percent(rarityRow.weights.legendary) }}
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-semibold" :style="{ color: tierColor(rarityRow.tier) }">{{ packName(rarityRow.tier) }}</p>
+              <p class="text-xs font-semibold text-main">{{ percent(tierWeightByTier[rarityRow.tier]) }}</p>
+            </div>
+            <p class="mt-1 text-xs text-muted">
+              C {{ percent(rarityRow.weights.common) }} · R {{ percent(rarityRow.weights.rare) }} · L {{ percent(rarityRow.weights.legendary) }}
             </p>
           </div>
         </div>
@@ -142,25 +172,16 @@
           <p class="text-xs font-semibold uppercase tracking-wide text-muted">Mutation</p>
           <div class="rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
             None {{ percent(mutationWeights.none) }} · Foil {{ percent(mutationWeights.foil) }} · Holo {{ percent(mutationWeights.holo) }}
-            · Glitched {{ percent(mutationWeights.glitched) }} · Prismatic {{ percent(mutationWeights.prismatic) }}
           </div>
           <div class="rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
-            <p class="mb-1 font-semibold text-main">Mutation coin multiplier</p>
-            <p>
-              <span
-                v-for="entry in mutationMultiplierRows"
-                :key="entry.mutation"
-                class="mr-2 inline-block"
-              >
-                {{ entry.label }} x{{ entry.multiplier.toFixed(2) }}
-              </span>
-            </p>
+            <p class="mb-1 font-semibold text-main">Mutation passive bonus</p>
+            <p>Foil: +1 coin/sec each card · Holo: +3 coins/sec each card</p>
           </div>
         </div>
 
         <details class="mt-3 rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
           <summary class="cursor-pointer font-semibold">Why these odds?</summary>
-          <p class="mt-2">Luck Lv {{ playerState?.luck_level || 0 }} shifts rarity. Mutation Lv {{ playerState?.mutation_level || 0 }} shifts mutation quality.</p>
+          <p class="mt-2">Value Lv {{ playerState?.value_level || 0 }} shifts rarity. Mutation Lv {{ playerState?.mutation_level || 0 }} shifts mutation quality.</p>
           <p class="mt-1">Tier odds come directly from Tier Boost Lv {{ playerState?.tier_boost_level || 0 }}.</p>
         </details>
       </aside>
@@ -203,46 +224,58 @@
 
     <section class="card p-5">
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Card Collection</h2>
-        <p class="text-xs text-muted">Collection is secondary; cards are your reward generator.</p>
+        <h2 class="text-lg font-semibold">Card Book</h2>
+        <p class="text-xs text-muted">{{ totalCollectedCards }}/{{ TERMS.length }} discovered</p>
       </div>
 
-      <div v-if="cards.length === 0" class="rounded-xl border border-dashed border-soft p-6 text-sm text-muted">
-        No cards yet. Open your first pack.
-      </div>
-
-      <div v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <article
-          v-for="item in cards"
-          :key="item.termKey"
-          class="rounded-xl border border-soft bg-white p-4"
-          :style="cardMutationStyle(item.bestMutation)"
+      <div class="space-y-4">
+        <section
+          v-for="tierRow in cardBookByTier"
+          :key="`tier-book-${tierRow.tier}`"
+          class="rounded-xl border border-soft bg-panel-soft p-3"
         >
-          <div class="flex items-start justify-between gap-3">
-            <h3 class="text-sm font-semibold">{{ item.name }}</h3>
-            <div class="flex items-center gap-1.5">
-              <span
-                class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                :style="mutationBadgeStyle(item.bestMutation)"
-              >
-                {{ mutationLabel(item.bestMutation) }}
-              </span>
-              <span class="rounded-full px-2 py-0.5 text-xs text-white" :style="{ background: rarityColor(item.rarity) }">{{ item.rarity }}</span>
-            </div>
+          <div class="mb-2 flex items-center justify-between">
+            <p class="text-sm font-semibold" :style="{ color: tierColor(tierRow.tier) }">{{ packName(tierRow.tier) }}</p>
+            <p class="text-xs text-muted">{{ tierRow.collected }}/{{ tierRow.items.length }} found</p>
           </div>
 
-          <p class="mt-1 text-xs text-muted">{{ packName(item.tier) }}</p>
-          <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <p class="text-xs text-muted">Copies</p>
-              <p class="font-medium">{{ item.copies }}</p>
-            </div>
-            <div>
-              <p class="text-xs text-muted">Level</p>
-              <p class="font-medium">Lv {{ item.level }}</p>
-            </div>
+          <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+            <article
+              v-for="item in tierRow.items"
+              :key="item.termKey"
+              class="rounded-lg border p-3"
+              :class="item.owned ? 'border-soft bg-white' : 'border-dashed border-soft bg-white/45 card-book__missing'"
+              :style="item.owned ? cardMutationStyle(item.bestMutation) : null"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <p class="text-xs font-semibold">{{ item.owned ? item.name : 'Unknown Card' }}</p>
+                <span class="card-book__icon">{{ item.owned ? item.icon : '?' }}</span>
+              </div>
+
+              <p class="mt-1 text-[11px] text-muted">{{ item.owned ? item.name : `Slot ${item.slot}` }}</p>
+              <p class="text-[11px] text-muted">
+                <span class="rounded-full px-1.5 py-0.5 text-white" :style="{ background: rarityColor(item.rarity) }">{{ item.rarity }}</span>
+                · Value {{ item.value }}
+              </p>
+
+              <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <p class="text-muted">Copies</p>
+                  <p class="font-semibold">{{ item.copies }}</p>
+                </div>
+                <div>
+                  <p class="text-muted">Mutation</p>
+                  <span
+                    class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                    :style="mutationBadgeStyle(item.bestMutation)"
+                  >
+                    {{ mutationLabel(item.bestMutation) }}
+                  </span>
+                </div>
+              </div>
+            </article>
           </div>
-        </article>
+        </section>
       </div>
     </section>
 
@@ -261,26 +294,28 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import DebugPanel from '../components/game/DebugPanel.vue'
 import { RARITY_COLORS, TERMS, TERMS_BY_KEY } from '../data/terms'
 import { BALANCE_CONFIG } from '../lib/balanceConfig.mjs'
 import {
-  PACK_NAMES_BY_TIER,
   SHOP_UPGRADES,
+  getAutoOpenIntervalMs,
   canBuyUpgrade,
-  getAutoOpensPerSecond,
+  computeCardReward,
   getEffectiveTierWeights,
   getMutationWeights,
   getNextTierOddsChangeLevel,
+  getPassiveIncomeSummaryFromTerms,
   getRarityWeightsForTier,
   getUpgradeCost,
   getUpgradePreview,
 } from '../lib/packLogic.mjs'
 
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
-const MUTATION_ORDER = ['none', 'foil', 'holo', 'glitched', 'prismatic']
+const MUTATION_ORDER = ['none', 'foil', 'holo']
+const TIER_COLOR_MAP = BALANCE_CONFIG.tierColors || {}
 const MUTATION_STYLE_MAP = {
   none: {
     badgeText: '#5f6f93',
@@ -303,20 +338,6 @@ const MUTATION_STYLE_MAP = {
     cardBorder: 'rgba(53, 189, 206, 0.33)',
     cardBg: 'linear-gradient(140deg, rgba(53,189,206,0.08), rgba(255,255,255,1) 55%)',
   },
-  glitched: {
-    badgeText: '#6d31bf',
-    badgeBg: 'rgba(145, 70, 245, 0.14)',
-    badgeBorder: 'rgba(145, 70, 245, 0.35)',
-    cardBorder: 'rgba(145, 70, 245, 0.35)',
-    cardBg: 'linear-gradient(140deg, rgba(145,70,245,0.09), rgba(255,255,255,1) 55%)',
-  },
-  prismatic: {
-    badgeText: '#9e4f10',
-    badgeBg: 'rgba(236, 146, 56, 0.16)',
-    badgeBorder: 'rgba(236, 146, 56, 0.4)',
-    cardBorder: 'rgba(236, 146, 56, 0.42)',
-    cardBg: 'linear-gradient(140deg, rgba(236,146,56,0.12), rgba(255,255,255,1) 55%)',
-  },
 }
 
 const store = useStore()
@@ -324,8 +345,6 @@ const manualPackPhase = ref('ready')
 const manualRevealDraw = ref(null)
 const showResetButton = ref(false)
 
-const PACK_OPENING_ANIMATION_MS = 600
-const PACK_REVEAL_MS = 1500
 const RESET_BUTTON_PREF_KEY = 'lucky_agent_show_reset_button'
 
 let autoRollTimer = null
@@ -349,19 +368,27 @@ const playerCoins = computed(() => Number(playerState.value?.coins || 0))
 const playerPacksOpened = computed(() => Number(playerState.value?.packs_opened || 0))
 const playerManualOpens = computed(() => Number(playerState.value?.manual_opens || 0))
 const playerAutoOpens = computed(() => Number(playerState.value?.auto_opens || 0))
+const autoUnlocked = computed(() => Boolean(playerState.value?.auto_unlocked))
 
-const autoRate = computed(() => getAutoOpensPerSecond(playerState.value || {}))
-const autoRateLabel = computed(() => (autoRate.value > 0 ? `${autoRate.value.toFixed(2)} packs/sec` : 'Locked'))
-const loopCadenceLabel = computed(() => `1 pack / ${(BALANCE_CONFIG.manualOpenCooldownMs / 1000).toFixed(1)}s`)
+const autoLoopDelayMs = computed(() => {
+  return autoUnlocked.value
+    ? Number(getAutoOpenIntervalMs(playerState.value || {}) || 2500)
+    : BALANCE_CONFIG.manualOpenCooldownMs
+})
+const autoRateLabel = computed(() => {
+  if (!autoUnlocked.value) return 'Locked'
+  return `1 pack / ${(autoLoopDelayMs.value / 1000).toFixed(1)}s`
+})
+const loopCadenceLabel = computed(() => {
+  if (!autoUnlocked.value) return `1 click / ${(BALANCE_CONFIG.manualOpenCooldownMs / 1000).toFixed(1)}s`
+  return `1 pack / ${(autoLoopDelayMs.value / 1000).toFixed(1)}s`
+})
 
 const tierWeights = computed(() => getEffectiveTierWeights(playerState.value || {}))
 const mutationWeights = computed(() => getMutationWeights(playerState.value?.mutation_level || 0))
-const mutationMultiplierRows = computed(() => {
-  return MUTATION_ORDER.map((mutation) => ({
-    mutation,
-    label: mutationLabel(mutation),
-    multiplier: Number(BALANCE_CONFIG.mutationRewardMultipliers?.[mutation] || 1),
-  }))
+const passiveIncomeSummary = computed(() => getPassiveIncomeSummaryFromTerms(playerTerms.value))
+const passiveIncomeTooltip = computed(() => {
+  return `Foil cards (${passiveIncomeSummary.value.foilCards}) +${passiveIncomeSummary.value.foilRate}/sec\nHolo cards (${passiveIncomeSummary.value.holoCards}) +${passiveIncomeSummary.value.holoRate}/sec`
 })
 
 const tierRows = computed(() => {
@@ -369,39 +396,86 @@ const tierRows = computed(() => {
     .map(([tier, weight]) => ({ tier: Number(tier), weight: Number(weight) }))
     .sort((a, b) => a.tier - b.tier)
 })
+const tierWeightByTier = computed(() => {
+  return tierRows.value.reduce((acc, row) => {
+    acc[row.tier] = Number(row.weight || 0)
+    return acc
+  }, {})
+})
+const tierCoverageLabel = computed(() => {
+  const available = tierRows.value
+    .filter((row) => Number(row.weight || 0) > 0)
+    .map((row) => row.tier)
+
+  if (available.length === 0) return 'T1'
+  if (available.length === 1) return `T${available[0]}`
+  return `T${available[0]}-T${available[available.length - 1]}`
+})
 
 const rarityRows = computed(() => {
   const rows = []
   for (let tier = 1; tier <= 6; tier += 1) {
     rows.push({
       tier,
-      weights: getRarityWeightsForTier(tier, playerState.value?.luck_level || 0),
+      weights: getRarityWeightsForTier(tier, playerState.value?.value_level || 0),
     })
   }
   return rows
 })
 
-const cards = computed(() => {
-  return playerTerms.value
-    .map((row) => {
-      const term = TERMS_BY_KEY[row.term_key]
-      if (!term) return null
-      return {
-        termKey: row.term_key,
-        name: term.name,
-        tier: term.tier,
+const ownedTermsByKey = computed(() => {
+  return playerTerms.value.reduce((acc, row) => {
+    acc[row.term_key] = row
+    return acc
+  }, {})
+})
+
+const cardBookRows = computed(() => {
+  return TERMS.map((term, index) => {
+    const owned = ownedTermsByKey.value[term.key]
+    const copies = Math.max(0, Number(owned?.copies || 0))
+    const bestMutation = normalizeMutation(owned?.best_mutation || 'none')
+
+    return {
+      termKey: term.key,
+      slot: index + 1,
+      icon: term.icon || 'card',
+      name: term.name,
+      tier: Number(term.tier || 1),
+      rarity: term.rarity,
+      value: computeCardReward({
+        baseBp: term.baseBp,
         rarity: term.rarity,
-        copies: Number(row.copies || 0),
-        level: Number(row.level || 1),
-        bestMutation: normalizeMutation(row.best_mutation || 'none'),
-      }
+        mutation: 'none',
+        valueLevel: 0,
+      }),
+      copies,
+      owned: copies > 0,
+      bestMutation,
+    }
+  })
+})
+
+const totalCollectedCards = computed(() => {
+  return cardBookRows.value.filter((row) => row.owned).length
+})
+
+const cardBookByTier = computed(() => {
+  const rows = []
+  for (let tier = 1; tier <= 6; tier += 1) {
+    const items = cardBookRows.value
+      .filter((row) => row.tier === tier)
+      .map((row, index) => ({
+        ...row,
+        slot: index + 1,
+      }))
+    rows.push({
+      tier,
+      items,
+      collected: items.filter((row) => row.owned).length,
     })
-    .filter(Boolean)
-    .sort((a, b) => {
-      if (b.tier !== a.tier) return b.tier - a.tier
-      if (b.level !== a.level) return b.level - a.level
-      return a.name.localeCompare(b.name)
-    })
+  }
+  return rows
 })
 
 const shopRows = computed(() => {
@@ -439,7 +513,14 @@ const shopRows = computed(() => {
 })
 
 const canRunAutoRoll = computed(() => {
-  return !!playerState.value
+  return autoUnlocked.value
+    && !!playerState.value
+    && !actionLoading.value
+    && manualPackPhase.value === 'ready'
+})
+const canOpenManual = computed(() => {
+  return !autoUnlocked.value
+    && !!playerState.value
     && !actionLoading.value
     && manualPackPhase.value === 'ready'
 })
@@ -455,11 +536,13 @@ onMounted(async () => {
   }
 
   showResetButton.value = readResetButtonPreference()
-  scheduleAutoRoll(350)
+  if (autoUnlocked.value) {
+    scheduleAutoRoll(120)
+  }
 
   if (LOCAL_ECONOMY_ENABLED) {
     syncTimer = window.setInterval(async () => {
-      if (!store.state.game.actionLoading) {
+      if (!store.state.game.actionLoading && !autoUnlocked.value) {
         await store.dispatch('game/syncPlayer')
       }
     }, 1000)
@@ -477,12 +560,28 @@ onUnmounted(() => {
   }
 })
 
-function scheduleAutoRoll(delayMs = BALANCE_CONFIG.manualOpenCooldownMs) {
+watch(autoUnlocked, (enabled) => {
+  if (!enabled) {
+    if (autoRollTimer) {
+      window.clearTimeout(autoRollTimer)
+      autoRollTimer = null
+    }
+    return
+  }
+
+  if (manualPackPhase.value === 'ready') {
+    scheduleAutoRoll(120)
+  }
+})
+
+function scheduleAutoRoll(delayMs = 120) {
   if (!viewActive) return
 
   if (autoRollTimer) {
     window.clearTimeout(autoRollTimer)
   }
+
+  if (!autoUnlocked.value) return
 
   autoRollTimer = window.setTimeout(() => {
     void runAutoRollTick()
@@ -493,21 +592,44 @@ async function runAutoRollTick() {
   if (!viewActive) return
 
   if (!canRunAutoRoll.value) {
-    scheduleAutoRoll(250)
+    scheduleAutoRoll(180)
     return
   }
 
   await runAutoRollCycle()
-  scheduleAutoRoll(BALANCE_CONFIG.manualOpenCooldownMs)
+  scheduleAutoRoll(80)
 }
 
 async function runAutoRollCycle() {
   if (!canRunAutoRoll.value) return
 
+  const cycle = getCycleDurations(autoLoopDelayMs.value)
   const previousDraw = store.state.game.openResult
-  manualPackPhase.value = 'opening'
   manualRevealDraw.value = null
-  await sleep(PACK_OPENING_ANIMATION_MS)
+  await store.dispatch('game/openPack', { source: 'auto' })
+
+  const draw = store.state.game.openResult
+  const hasFreshDraw = !store.state.game.error && draw && draw !== previousDraw
+
+  if (!hasFreshDraw) {
+    manualPackPhase.value = 'ready'
+    return
+  }
+
+  manualPackPhase.value = 'opening'
+  await sleep(cycle.openingMs)
+  manualRevealDraw.value = draw
+  manualPackPhase.value = 'reveal'
+  await sleep(cycle.revealMs)
+  manualPackPhase.value = 'ready'
+}
+
+async function openManualPack() {
+  if (!canOpenManual.value) return
+
+  const cycle = getCycleDurations(BALANCE_CONFIG.manualOpenCooldownMs)
+  const previousDraw = store.state.game.openResult
+  manualRevealDraw.value = null
   await store.dispatch('game/openPack', { source: 'manual' })
 
   const draw = store.state.game.openResult
@@ -518,9 +640,11 @@ async function runAutoRollCycle() {
     return
   }
 
+  manualPackPhase.value = 'opening'
+  await sleep(cycle.openingMs)
   manualRevealDraw.value = draw
   manualPackPhase.value = 'reveal'
-  await sleep(PACK_REVEAL_MS)
+  await sleep(cycle.revealMs)
   manualPackPhase.value = 'ready'
 }
 
@@ -537,7 +661,9 @@ async function resetAccount() {
   manualPackPhase.value = 'ready'
   manualRevealDraw.value = null
   await store.dispatch('game/resetAccount')
-  scheduleAutoRoll(500)
+  if (autoUnlocked.value) {
+    scheduleAutoRoll(300)
+  }
 }
 
 function persistResetButtonPreference() {
@@ -559,11 +685,20 @@ async function applyDebugAction(action) {
 }
 
 function packName(tier) {
-  return PACK_NAMES_BY_TIER[Number(tier)] || `Tier ${tier} Pack`
+  const normalized = Number(tier || 1)
+  return BALANCE_CONFIG.packTierNames?.[normalized] || `Tier ${normalized}`
+}
+
+function tierColor(tier) {
+  return TIER_COLOR_MAP[Number(tier || 1)] || 'var(--text-main)'
 }
 
 function termName(termKey) {
   return TERMS_BY_KEY[termKey]?.name || termKey
+}
+
+function termIcon(termKey) {
+  return TERMS_BY_KEY[termKey]?.icon || 'card'
 }
 
 function percent(value) {
@@ -576,6 +711,7 @@ function formatNumber(value) {
 
 function normalizeMutation(mutation) {
   const key = String(mutation || '').trim().toLowerCase()
+  if (key === 'glitched' || key === 'prismatic') return 'holo'
   return MUTATION_ORDER.includes(key) ? key : 'none'
 }
 
@@ -626,6 +762,13 @@ function formatTierOdds(weights) {
     .join(' · ')
 }
 
+function getCycleDurations(totalMs) {
+  const total = Math.max(500, Number(totalMs || 1500))
+  const openingMs = Math.max(220, Math.round(total * 0.45))
+  const revealMs = Math.max(220, total - openingMs)
+  return { openingMs, revealMs }
+}
+
 function sleep(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)
@@ -634,6 +777,15 @@ function sleep(ms) {
 </script>
 
 <style scoped>
+.status-strip {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 30;
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(120, 143, 194, 0.35);
+  box-shadow: 0 10px 24px rgba(23, 42, 94, 0.14);
+}
+
 .manual-pack {
   width: min(250px, 100%);
   min-height: 340px;
@@ -642,11 +794,25 @@ function sleep(ms) {
   border: 1px solid var(--border-soft);
   padding: 1.1rem 0.9rem;
   text-align: center;
-  box-shadow: 0 16px 28px rgba(31, 56, 128, 0.18);
+  box-shadow: 0 16px 28px rgba(31, 56, 128, 0.2);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
+}
+
+.manual-pack--interactive {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.manual-pack--interactive:disabled {
+  opacity: 0.78;
+  cursor: not-allowed;
+}
+
+.manual-pack--interactive:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 32px rgba(31, 56, 128, 0.24);
 }
 
 .manual-pack--ready {
@@ -670,7 +836,7 @@ function sleep(ms) {
   margin-bottom: 0.8rem;
   border-radius: 0.9rem;
   border: 1px solid rgba(255, 255, 255, 0.6);
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.16));
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.18));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 10px 20px rgba(19, 33, 89, 0.28);
   animation: pack-bob 1.8s ease-in-out infinite;
 }
@@ -715,6 +881,23 @@ function sleep(ms) {
   border: 3px solid rgba(255, 255, 255, 0.3);
   border-top-color: #ffffff;
   animation: pack-spin 0.9s linear infinite;
+}
+
+.card-book__missing {
+  opacity: 0.72;
+}
+
+.card-book__icon {
+  min-width: 2.1rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-soft);
+  background: rgba(63, 98, 217, 0.1);
+  color: #24335f;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.3rem 0.45rem;
+  text-align: center;
 }
 
 .reset-tools__toggle {

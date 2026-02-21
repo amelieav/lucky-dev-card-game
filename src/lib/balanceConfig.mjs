@@ -1,18 +1,27 @@
 export const BALANCE_CONFIG = {
   initialCoins: 100,
   idleIncomeCapSeconds: 12 * 60 * 60,
-  manualOpenCooldownMs: 1200,
+  manualOpenCooldownMs: 1500,
 
   // Legacy compatibility for existing card metadata consumers.
   baseBpMultiplier: 100,
 
   packTierNames: {
-    1: 'CSS Pack',
-    2: 'HTML Pack',
-    3: 'Python Pack',
-    4: 'Java Pack',
-    5: 'C# Pack',
-    6: 'C++ Pack',
+    1: 'Tier 1 Common',
+    2: 'Tier 2 Uncommon',
+    3: 'Tier 3 Rare',
+    4: 'Tier 4 Epic',
+    5: 'Tier 5 Legendary',
+    6: 'Tier 6 Mythic',
+  },
+
+  tierColors: {
+    1: '#8b6a4b',
+    2: '#3f9f59',
+    3: '#2f7ed8',
+    4: '#8a49c3',
+    5: '#d14f4f',
+    6: '#c79a1b',
   },
 
   tierWeightProfiles: {
@@ -30,80 +39,80 @@ export const BALANCE_CONFIG = {
   },
 
   rarityWeightsByTier: {
-    1: { common: 80, rare: 17, epic: 3, legendary: 0 },
-    2: { common: 70, rare: 22, epic: 7, legendary: 1 },
-    3: { common: 58, rare: 27, epic: 11, legendary: 4 },
-    4: { common: 44, rare: 31, epic: 17, legendary: 8 },
-    5: { common: 30, rare: 34, epic: 22, legendary: 14 },
-    6: { common: 18, rare: 31, epic: 30, legendary: 21 },
+    1: { common: 77, rare: 20, legendary: 3 },
+    2: { common: 77, rare: 20, legendary: 3 },
+    3: { common: 77, rare: 20, legendary: 3 },
+    4: { common: 77, rare: 20, legendary: 3 },
+    5: { common: 77, rare: 20, legendary: 3 },
+    6: { common: 77, rare: 20, legendary: 3 },
   },
-  luckShift: {
+  valueShift: {
     cap: 25,
-    common: -0.9,
-    rare: 0.45,
-    epic: 0.3,
-    legendary: 0.15,
-    minCommon: 5,
+    common: -1.2,
+    rare: 0.8,
+    legendary: 0.4,
+    minCommon: 25,
   },
 
   mutationWeights: {
-    none: 92,
-    foil: 6,
-    holo: 1.6,
-    glitched: 0.35,
-    prismatic: 0.05,
+    none: 90,
+    foil: 8,
+    holo: 2,
   },
   mutationShift: {
     cap: 25,
-    none: -0.55,
-    foil: 0.32,
-    holo: 0.15,
-    glitched: 0.06,
-    prismatic: 0.02,
+    none: -1.4,
+    foil: 0.9,
+    holo: 0.5,
+  },
+  mutationPassiveIncomePerSecond: {
+    foil: 1,
+    holo: 3,
   },
 
   rarityRewardMultipliers: {
     common: 1,
-    rare: 1.5,
-    epic: 2.3,
-    legendary: 3.6,
+    rare: 1.8,
+    legendary: 3.2,
   },
   mutationRewardMultipliers: {
     none: 1,
-    foil: 1.18,
-    holo: 1.45,
-    glitched: 1.9,
-    prismatic: 2.8,
+    foil: 1,
+    holo: 1,
   },
   cardBaseValueFactor: 0.06,
-  valueMultiplierPerLevel: 0.07,
+  valueMultiplierPerLevel: 0,
 
   autoOpen: {
     unlockCost: 225,
-    basePerSecond: 0.25,
-    perLevelPerSecond: 0.06,
+    baseIntervalSeconds: 2.5,
+    intervalReductionPerLevelSeconds: 0.5,
+    minIntervalSeconds: 0.5,
   },
 
   upgradeCaps: {
     auto_unlock: 1,
-    auto_speed: 30,
+    auto_speed: 4,
     tier_boost: 20,
-    luck_engine: 25,
-    mutation_lab: 25,
-    value_engine: 20,
+    mutation_upgrade: 25,
+    value_upgrade: 25,
   },
 
   upgradeCostCurves: {
-    auto_speed: { base: 35, growth: 1.33 },
-    tier_boost: { base: 15, growth: 1.42 },
-    luck_engine: { base: 18.75, growth: 1.36 },
-    mutation_lab: { base: 22.5, growth: 1.38 },
-    value_engine: { base: 30, growth: 1.4 },
+    auto_speed: { base: 120, growth: 1.45 },
+    tier_boost: { base: 25, growth: 1.42 },
+    mutation_upgrade: { base: 35, growth: 1.38 },
+    value_upgrade: { base: 40, growth: 1.4 },
   },
 }
 
-export function luckUpgradeCost(level) {
+export function valueUpgradeCost(level) {
   const currentLevel = Math.max(0, Number(level || 0))
-  const curve = BALANCE_CONFIG.upgradeCostCurves.luck_engine
+  const curve = BALANCE_CONFIG.upgradeCostCurves.value_upgrade
   return Math.floor(curve.base * Math.pow(curve.growth, currentLevel))
+}
+
+// Backward-compatible alias for older imports.
+export function luckUpgradeCost(level) {
+  return valueUpgradeCost(level)
 }

@@ -2,7 +2,6 @@ import { NICK_PARTS_A, NICK_PARTS_B, NICK_PARTS_C } from '../data/nicknameParts.
 import { TERMS, TERMS_BY_KEY } from '../data/terms.mjs'
 import { BALANCE_CONFIG } from './balanceConfig.mjs'
 import {
-  MUTATIONS,
   RARITIES,
   applyUpgrade,
   bestMutation,
@@ -11,6 +10,7 @@ import {
   getAutoOpensPerSecond,
   getEffectiveTierWeights,
   getHighestUnlockedTier,
+  getPassiveIncomeSummaryFromTerms,
   getMutationWeights,
   getRarityWeightsForTier,
   normalizeMutation,
@@ -79,19 +79,18 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
 
   return {
     coins: BALANCE_CONFIG.initialCoins,
-    luck_level: 0,
     mutation_level: 0,
     value_level: 0,
     tier_boost_level: 0,
     auto_unlocked: false,
     auto_speed_level: 0,
-    highest_tier_unlocked: 6,
+    highest_tier_unlocked: 1,
     packs_opened: 0,
     eggs_opened: 0,
     manual_opens: 0,
     auto_opens: 0,
     auto_open_progress: 0,
-    passive_rate_bp: 0,
+    passive_rate_cps: 0,
     last_tick_at: timestamp,
     created_at: timestamp,
     updated_at: timestamp,
@@ -132,13 +131,14 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
   merged.auto_open_progress = Math.max(0, Number(merged.auto_open_progress || 0))
   merged.auto_speed_level = Math.max(0, Number(merged.auto_speed_level || 0))
   merged.tier_boost_level = Math.max(0, Number(merged.tier_boost_level || 0))
-  merged.luck_level = Math.max(0, Number(merged.luck_level || 0))
   merged.mutation_level = Math.max(0, Number(merged.mutation_level || 0))
-  merged.value_level = Math.max(0, Number(merged.value_level || 0))
+  merged.value_level = Math.max(0, Number((merged.value_level ?? merged.luck_level) || 0))
+  merged.luck_level = merged.value_level
   merged.coins = Math.max(0, Number(merged.coins || 0))
   merged.auto_unlocked = Boolean(merged.auto_unlocked)
   merged.terms = merged.terms.map((row) => sanitizeTermRow(row))
   merged.highest_tier_unlocked = getHighestUnlockedTier(merged)
+  merged.passive_rate_cps = Math.max(0, Number(merged.passive_rate_cps || 0))
 
   return merged
 }
@@ -195,10 +195,12 @@ function sortTerms(terms) {
 }
 
 function toSnapshot(record, debugAllowed, nowMs = Date.now()) {
+  const passiveSummary = getPassiveIncomeSummaryFromTerms(record.terms)
+  record.passive_rate_cps = passiveSummary.totalRate
+
   return {
     state: {
       coins: record.coins,
-      luck_level: record.luck_level,
       mutation_level: record.mutation_level,
       value_level: record.value_level,
       tier_boost_level: record.tier_boost_level,
@@ -209,7 +211,10 @@ function toSnapshot(record, debugAllowed, nowMs = Date.now()) {
       eggs_opened: record.packs_opened,
       manual_opens: record.manual_opens,
       auto_opens: record.auto_opens,
-      passive_rate_bp: 0,
+      passive_rate_bp: passiveSummary.totalRate * 100,
+      passive_rate_cps: passiveSummary.totalRate,
+      passive_foil_cards: passiveSummary.foilCards,
+      passive_holo_cards: passiveSummary.holoCards,
       auto_open_progress: record.auto_open_progress,
       last_tick_at: record.last_tick_at,
       updated_at: record.updated_at,
@@ -295,8 +300,12 @@ function validateDebugOverride(override) {
     throw new Error(`Unknown rarity: ${override.rarity}`)
   }
 
-  if (override.mutation && !MUTATIONS.includes(override.mutation)) {
-    throw new Error(`Unknown mutation: ${override.mutation}`)
+  if (override.mutation) {
+    const normalizedMutation = normalizeMutation(override.mutation)
+    const rawMutation = String(override.mutation || '').trim().toLowerCase()
+    if (normalizedMutation === 'none' && rawMutation !== 'none') {
+      throw new Error(`Unknown mutation: ${override.mutation}`)
+    }
   }
 
   if (override.tier && (Number(override.tier) < 1 || Number(override.tier) > 6)) {
@@ -348,7 +357,7 @@ function applySinglePackOpen(
     if (chosenTerm) {
       chosenRarity = TERMS_BY_KEY[chosenTerm].rarity
     } else {
-      const rarityWeights = getRarityWeightsForTier(drawTier, record.luck_level)
+      const rarityWeights = getRarityWeightsForTier(drawTier, record.value_level)
       chosenRarity = pickFromWeightedMap(rarityWeights, rng) || 'common'
     }
   }
@@ -405,16 +414,26 @@ function applySinglePackOpen(
   }
 }
 
-function applyAutoProgress(record, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+function applyAutoProgress(record, {
+  debugAllowed = false,
+  rng = Math.random,
+  nowMs = Date.now(),
+  allowAutoDraws = true,
+} = {}) {
   const lastTick = Date.parse(record.last_tick_at || nowIso(nowMs))
   const elapsedSeconds = Math.max(0, Math.floor((nowMs - lastTick) / 1000))
   const cappedSeconds = Math.min(BALANCE_CONFIG.idleIncomeCapSeconds, elapsedSeconds)
+  const passiveSummary = getPassiveIncomeSummaryFromTerms(record.terms)
 
   let drawsApplied = 0
   let lastDraw = null
   let maxTierDrawn = 0
 
-  if (record.auto_unlocked && cappedSeconds > 0) {
+  if (cappedSeconds > 0 && passiveSummary.totalRate > 0) {
+    record.coins += passiveSummary.totalRate * cappedSeconds
+  }
+
+  if (allowAutoDraws && record.auto_unlocked && cappedSeconds > 0) {
     const openings = record.auto_open_progress + (cappedSeconds * getAutoOpensPerSecond(record))
     const wholeOpens = Math.max(0, Math.floor(openings))
     record.auto_open_progress = openings - wholeOpens
@@ -436,6 +455,7 @@ function applyAutoProgress(record, { debugAllowed = false, rng = Math.random, no
   if (drawsApplied === 0) {
     record.updated_at = nowIso(nowMs)
   }
+  record.passive_rate_cps = passiveSummary.totalRate
 
   return {
     drawsApplied,
@@ -446,9 +466,9 @@ function applyAutoProgress(record, { debugAllowed = false, rng = Math.random, no
 
 function resetProgress(record, nowMs = Date.now()) {
   record.coins = BALANCE_CONFIG.initialCoins
-  record.luck_level = 0
   record.mutation_level = 0
   record.value_level = 0
+  record.luck_level = 0
   record.tier_boost_level = 0
   record.auto_unlocked = false
   record.auto_speed_level = 0
@@ -458,7 +478,7 @@ function resetProgress(record, nowMs = Date.now()) {
   record.manual_opens = 0
   record.auto_opens = 0
   record.auto_open_progress = 0
-  record.passive_rate_bp = 0
+  record.passive_rate_cps = 0
   record.last_tick_at = nowIso(nowMs)
   record.updated_at = nowIso(nowMs)
   record.terms = []
@@ -499,7 +519,16 @@ export function openLocalPack(
   assertAuthenticatedUser(user)
 
   const record = readRecord(user, rng, nowMs)
-  applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  if (source !== 'auto') {
+    applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  } else {
+    applyAutoProgress(record, {
+      debugAllowed,
+      rng,
+      nowMs,
+      allowAutoDraws: false,
+    })
+  }
 
   const draw = applySinglePackOpen(record, {
     source,
@@ -563,7 +592,7 @@ export function openLocalEgg(
 
 export function upgradeLocalLuck(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
   return buyLocalUpgrade(user, {
-    upgradeKey: 'luck_engine',
+    upgradeKey: 'value_upgrade',
     debugAllowed,
     rng,
     nowMs,
@@ -639,7 +668,8 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
   } else if (actionType === 'set_coins') {
     record.coins = Math.max(0, Number(action.amount || 0))
   } else if (actionType === 'set_luck_level') {
-    record.luck_level = Math.max(0, Number(action.level || 0))
+    record.value_level = Math.max(0, Number(action.level || 0))
+    record.luck_level = record.value_level
   } else if (actionType === 'set_mutation_level') {
     record.mutation_level = Math.max(0, Number(action.level || 0))
   } else if (actionType === 'set_tier_boost_level') {
@@ -648,6 +678,7 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
     record.auto_speed_level = Math.max(0, Number(action.level || 0))
   } else if (actionType === 'set_value_level') {
     record.value_level = Math.max(0, Number(action.level || 0))
+    record.luck_level = record.value_level
   } else if (actionType === 'set_auto_unlocked') {
     record.auto_unlocked = Boolean(action.enabled)
   } else if (actionType === 'grant_term') {

@@ -52,7 +52,7 @@ export default {
                 rank: 1,
                 display_name: profile?.display_name || 'Local Player',
                 score: Number(stateRow?.coins || 0),
-                luck_level: Number(stateRow?.luck_level || 0),
+                value_level: Number(stateRow?.value_level || stateRow?.luck_level || 0),
                 highest_tier_unlocked: Number(stateRow?.highest_tier_unlocked || 1),
                 updated_at: stateRow?.updated_at,
               }]

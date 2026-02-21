@@ -1,56 +1,59 @@
 import { BALANCE_CONFIG } from './balanceConfig.mjs'
 
 export const TIERS = [1, 2, 3, 4, 5, 6]
-export const RARITIES = ['common', 'rare', 'epic', 'legendary']
-export const MUTATIONS = ['none', 'foil', 'holo', 'glitched', 'prismatic']
+export const RARITIES = ['common', 'rare', 'legendary']
+export const MUTATIONS = ['none', 'foil', 'holo']
 export const MUTATION_RANK = {
   none: 0,
   foil: 1,
   holo: 2,
-  glitched: 3,
-  prismatic: 4,
 }
 export const PACK_NAMES_BY_TIER = BALANCE_CONFIG.packTierNames
 
 export const SHOP_UPGRADES = [
   {
     key: 'auto_unlock',
-    label: 'Auto Opener Unlock',
-    description: 'Unlock passive auto-opening at 0.25 packs/sec.',
+    label: 'Auto Roll',
+    description: 'Unlock automatic opening.',
   },
   {
     key: 'auto_speed',
-    label: 'Auto Speed',
-    description: 'Increase auto-opening speed by +0.06 packs/sec per level.',
+    label: 'Opening Speed',
+    description: 'Reduce auto-open wait by 0.5s per level (to a 0.5s minimum).',
   },
   {
     key: 'tier_boost',
-    label: 'Tier Boost',
-    description: 'Increase chance to draw higher-tier packs.',
+    label: 'Tier Upgrade',
+    description: 'Increase the chance to draw higher-tier cards.',
   },
   {
-    key: 'luck_engine',
-    label: 'Luck Engine',
-    description: 'Shift rarity chances toward epic and legendary draws.',
+    key: 'mutation_upgrade',
+    label: 'Mutation Upgrade',
+    description: 'Increase foil/holo chance. Foil adds +1 cps, Holo adds +3 cps.',
   },
   {
-    key: 'mutation_lab',
-    label: 'Mutation Lab',
-    description: 'Increase chances of higher-value card mutations.',
-  },
-  {
-    key: 'value_engine',
-    label: 'Value Engine',
-    description: 'Increase final card reward multiplier by +7% each level.',
+    key: 'value_upgrade',
+    label: 'Value Upgrade',
+    description: 'Shift rarity odds away from common into rare and legendary.',
   },
 ]
+
+const LEGACY_UPGRADE_KEY_MAP = {
+  luck_engine: 'value_upgrade',
+  mutation_lab: 'mutation_upgrade',
+  value_engine: 'value_upgrade',
+}
 
 const UPGRADE_LEVEL_FIELD = {
   auto_speed: 'auto_speed_level',
   tier_boost: 'tier_boost_level',
-  luck_engine: 'luck_level',
-  mutation_lab: 'mutation_level',
-  value_engine: 'value_level',
+  mutation_upgrade: 'mutation_level',
+  value_upgrade: 'value_level',
+}
+
+function normalizeUpgradeKey(upgradeKey) {
+  const normalized = String(upgradeKey || '').trim().toLowerCase()
+  return LEGACY_UPGRADE_KEY_MAP[normalized] || normalized
 }
 
 function round4(value) {
@@ -103,7 +106,9 @@ function tierWeightsEqual(a, b) {
 }
 
 export function getHighestUnlockedTier(stateLike) {
-  return TIERS[TIERS.length - 1]
+  const weights = getEffectiveTierWeights(stateLike)
+  const available = TIERS.filter((tier) => Number(weights?.[tier] || 0) > 0)
+  return available.length ? available[available.length - 1] : 1
 }
 
 export function getEffectiveTierWeights(stateLike) {
@@ -140,38 +145,35 @@ export function getProgressToNextTier(stateLike) {
   }
 }
 
-export function getRarityWeightsForTier(drawTier, luckLevel = 0) {
+export function getRarityWeightsForTier(drawTier, valueLevel = 0) {
   const base = {
     ...(BALANCE_CONFIG.rarityWeightsByTier[drawTier] || BALANCE_CONFIG.rarityWeightsByTier[1]),
   }
-  const x = Math.min(BALANCE_CONFIG.luckShift.cap, Math.max(0, Number(luckLevel || 0)))
+  const x = Math.min(BALANCE_CONFIG.valueShift.cap, Math.max(0, Number(valueLevel || 0)))
 
   const common = Math.max(
-    BALANCE_CONFIG.luckShift.minCommon,
-    Number(base.common || 0) + (BALANCE_CONFIG.luckShift.common * x),
+    BALANCE_CONFIG.valueShift.minCommon,
+    Number(base.common || 0) + (BALANCE_CONFIG.valueShift.common * x),
   )
 
   const rest = {
-    rare: Math.max(0, Number(base.rare || 0) + (BALANCE_CONFIG.luckShift.rare * x)),
-    epic: Math.max(0, Number(base.epic || 0) + (BALANCE_CONFIG.luckShift.epic * x)),
-    legendary: Math.max(0, Number(base.legendary || 0) + (BALANCE_CONFIG.luckShift.legendary * x)),
+    rare: Math.max(0, Number(base.rare || 0) + (BALANCE_CONFIG.valueShift.rare * x)),
+    legendary: Math.max(0, Number(base.legendary || 0) + (BALANCE_CONFIG.valueShift.legendary * x)),
   }
 
   if (common >= 100) {
     return {
       common: 100,
       rare: 0,
-      epic: 0,
       legendary: 0,
     }
   }
 
-  const restTotal = rest.rare + rest.epic + rest.legendary
+  const restTotal = rest.rare + rest.legendary
   if (restTotal <= 0) {
     return {
       common: 100,
       rare: 0,
-      epic: 0,
       legendary: 0,
     }
   }
@@ -180,11 +182,10 @@ export function getRarityWeightsForTier(drawTier, luckLevel = 0) {
   const weights = {
     common: round4(common),
     rare: round4(rest.rare * scale),
-    epic: round4(rest.epic * scale),
     legendary: round4(rest.legendary * scale),
   }
 
-  const total = weights.common + weights.rare + weights.epic + weights.legendary
+  const total = weights.common + weights.rare + weights.legendary
   weights.legendary = round4(weights.legendary + (100 - total))
 
   return weights
@@ -197,8 +198,6 @@ export function getMutationWeights(mutationLevel = 0) {
   base.none = Number(base.none || 0) + (BALANCE_CONFIG.mutationShift.none * m)
   base.foil = Number(base.foil || 0) + (BALANCE_CONFIG.mutationShift.foil * m)
   base.holo = Number(base.holo || 0) + (BALANCE_CONFIG.mutationShift.holo * m)
-  base.glitched = Number(base.glitched || 0) + (BALANCE_CONFIG.mutationShift.glitched * m)
-  base.prismatic = Number(base.prismatic || 0) + (BALANCE_CONFIG.mutationShift.prismatic * m)
 
   return normalizeWeightMap(base)
 }
@@ -225,6 +224,7 @@ export function pickFromWeightedMap(weights, rng = Math.random) {
 
 export function normalizeMutation(mutation) {
   const key = String(mutation || '').trim().toLowerCase()
+  if (key === 'glitched' || key === 'prismatic') return 'holo'
   return MUTATIONS.includes(key) ? key : 'none'
 }
 
@@ -238,14 +238,50 @@ export function bestMutation(previousMutation, nextMutation) {
     : normalizeMutation(previousMutation)
 }
 
+export function getPassiveIncomeSummaryFromTerms(terms = []) {
+  let foilCards = 0
+  let holoCards = 0
+
+  for (const row of terms || []) {
+    const best = normalizeMutation(row?.best_mutation || row?.bestMutation || 'none')
+    if (best === 'holo') holoCards += 1
+    if (best === 'foil') foilCards += 1
+  }
+
+  const foilRate = foilCards * Number(BALANCE_CONFIG.mutationPassiveIncomePerSecond.foil || 0)
+  const holoRate = holoCards * Number(BALANCE_CONFIG.mutationPassiveIncomePerSecond.holo || 0)
+
+  return {
+    foilCards,
+    holoCards,
+    foilRate,
+    holoRate,
+    totalRate: foilRate + holoRate,
+  }
+}
+
 export function getValueMultiplier(valueLevel = 0) {
   return 1 + (Math.max(0, Number(valueLevel || 0)) * BALANCE_CONFIG.valueMultiplierPerLevel)
+}
+
+function getAutoOpenIntervalSeconds(speedLevel = 0) {
+  const level = Math.max(0, Number(speedLevel || 0))
+  const base = Number(BALANCE_CONFIG.autoOpen.baseIntervalSeconds || 2.5)
+  const reduction = Number(BALANCE_CONFIG.autoOpen.intervalReductionPerLevelSeconds || 0)
+  const minimum = Math.max(0.1, Number(BALANCE_CONFIG.autoOpen.minIntervalSeconds || 0.5))
+  return Math.max(minimum, base - (reduction * level))
+}
+
+export function getAutoOpenIntervalMs(stateLike) {
+  if (!stateLike?.auto_unlocked) return null
+  const speedLevel = Math.max(0, Number(stateLike.auto_speed_level || 0))
+  return Math.round(getAutoOpenIntervalSeconds(speedLevel) * 1000)
 }
 
 export function getAutoOpensPerSecond(stateLike) {
   if (!stateLike?.auto_unlocked) return 0
   const speedLevel = Math.max(0, Number(stateLike.auto_speed_level || 0))
-  return BALANCE_CONFIG.autoOpen.basePerSecond + (BALANCE_CONFIG.autoOpen.perLevelPerSecond * speedLevel)
+  return 1 / getAutoOpenIntervalSeconds(speedLevel)
 }
 
 export function getBaseCardValue(baseBp) {
@@ -255,46 +291,49 @@ export function getBaseCardValue(baseBp) {
 export function computeCardReward({ baseBp, rarity, mutation, valueLevel }) {
   const baseValue = getBaseCardValue(baseBp)
   const rarityMult = BALANCE_CONFIG.rarityRewardMultipliers[rarity] || 1
-  const mutationMult = BALANCE_CONFIG.mutationRewardMultipliers[mutation] || 1
+  const mutationMult = BALANCE_CONFIG.mutationRewardMultipliers[normalizeMutation(mutation)] || 1
   const valueMult = getValueMultiplier(valueLevel)
 
   return Math.floor(Math.max(1, baseValue * rarityMult * mutationMult * valueMult))
 }
 
 export function getUpgradeLevel(stateLike, upgradeKey) {
-  if (upgradeKey === 'auto_unlock') {
+  const normalizedKey = normalizeUpgradeKey(upgradeKey)
+  if (normalizedKey === 'auto_unlock') {
     return stateLike?.auto_unlocked ? 1 : 0
   }
 
-  const field = UPGRADE_LEVEL_FIELD[upgradeKey]
+  const field = UPGRADE_LEVEL_FIELD[normalizedKey]
   if (!field) return 0
   return Math.max(0, Number(stateLike?.[field] || 0))
 }
 
 export function getUpgradeCap(upgradeKey) {
-  return BALANCE_CONFIG.upgradeCaps[upgradeKey] || 0
+  return BALANCE_CONFIG.upgradeCaps[normalizeUpgradeKey(upgradeKey)] || 0
 }
 
 export function getUpgradeCost(stateLike, upgradeKey) {
-  if (upgradeKey === 'auto_unlock') {
+  const normalizedKey = normalizeUpgradeKey(upgradeKey)
+  if (normalizedKey === 'auto_unlock') {
     return stateLike?.auto_unlocked ? null : BALANCE_CONFIG.autoOpen.unlockCost
   }
 
-  const cap = getUpgradeCap(upgradeKey)
-  const level = getUpgradeLevel(stateLike, upgradeKey)
+  const cap = getUpgradeCap(normalizedKey)
+  const level = getUpgradeLevel(stateLike, normalizedKey)
   if (level >= cap) return null
 
-  const curve = BALANCE_CONFIG.upgradeCostCurves[upgradeKey]
+  const curve = BALANCE_CONFIG.upgradeCostCurves[normalizedKey]
   if (!curve) return null
 
   return Math.floor(curve.base * Math.pow(curve.growth, level))
 }
 
 export function canBuyUpgrade(stateLike, upgradeKey) {
-  const cost = getUpgradeCost(stateLike, upgradeKey)
+  const normalizedKey = normalizeUpgradeKey(upgradeKey)
+  const cost = getUpgradeCost(stateLike, normalizedKey)
   if (cost == null) return false
 
-  if (upgradeKey === 'auto_speed' && !stateLike?.auto_unlocked) {
+  if (normalizedKey === 'auto_speed' && !stateLike?.auto_unlocked) {
     return false
   }
 
@@ -302,12 +341,13 @@ export function canBuyUpgrade(stateLike, upgradeKey) {
 }
 
 export function applyUpgrade(stateLike, upgradeKey) {
-  const cost = getUpgradeCost(stateLike, upgradeKey)
+  const normalizedKey = normalizeUpgradeKey(upgradeKey)
+  const cost = getUpgradeCost(stateLike, normalizedKey)
   if (cost == null) {
     throw new Error('Upgrade is already maxed')
   }
 
-  if (upgradeKey === 'auto_speed' && !stateLike?.auto_unlocked) {
+  if (normalizedKey === 'auto_speed' && !stateLike?.auto_unlocked) {
     throw new Error('Unlock auto opener first')
   }
 
@@ -317,19 +357,19 @@ export function applyUpgrade(stateLike, upgradeKey) {
 
   stateLike.coins = Number(stateLike.coins || 0) - cost
 
-  if (upgradeKey === 'auto_unlock') {
+  if (normalizedKey === 'auto_unlock') {
     stateLike.auto_unlocked = true
   } else {
-    const field = UPGRADE_LEVEL_FIELD[upgradeKey]
+    const field = UPGRADE_LEVEL_FIELD[normalizedKey]
     stateLike[field] = Math.max(0, Number(stateLike[field] || 0)) + 1
   }
 
   stateLike.highest_tier_unlocked = getHighestUnlockedTier(stateLike)
 
   return {
-    upgrade_key: upgradeKey,
+    upgrade_key: normalizedKey,
     spent: cost,
-    level: getUpgradeLevel(stateLike, upgradeKey),
+    level: getUpgradeLevel(stateLike, normalizedKey),
   }
 }
 
@@ -338,34 +378,44 @@ function formatTierProfileForLevel(level) {
   return `T1 ${weights[1].toFixed(1)}% / T6 ${weights[6].toFixed(1)}%`
 }
 
+function formatRarityProfileForLevel(level) {
+  const rarity = getRarityWeightsForTier(1, level)
+  return `C ${rarity.common.toFixed(1)}% · R ${rarity.rare.toFixed(1)}% · L ${rarity.legendary.toFixed(1)}%`
+}
+
+function formatMutationProfileForLevel(level) {
+  const mutation = getMutationWeights(level)
+  return `Foil ${mutation.foil.toFixed(1)}% · Holo ${mutation.holo.toFixed(1)}%`
+}
+
 export function getUpgradeEffectLabel(upgradeKey, level) {
   const normalizedLevel = Math.max(0, Number(level || 0))
+  const normalizedKey = normalizeUpgradeKey(upgradeKey)
 
-  switch (upgradeKey) {
+  switch (normalizedKey) {
     case 'auto_unlock':
-      return normalizedLevel > 0 ? 'Enabled (0.25 packs/sec)' : 'Disabled'
+      return normalizedLevel > 0 ? `Enabled (1 pack / ${Number(BALANCE_CONFIG.autoOpen.baseIntervalSeconds || 2.5).toFixed(1)}s)` : 'Disabled'
     case 'auto_speed':
-      return `${(BALANCE_CONFIG.autoOpen.basePerSecond + (BALANCE_CONFIG.autoOpen.perLevelPerSecond * normalizedLevel)).toFixed(2)} packs/sec`
+      return `1 pack / ${getAutoOpenIntervalSeconds(normalizedLevel).toFixed(1)}s`
     case 'tier_boost':
       return formatTierProfileForLevel(normalizedLevel)
-    case 'luck_engine':
-      return `Luck Lv ${normalizedLevel}`
-    case 'mutation_lab':
-      return `Mutation Lv ${normalizedLevel}`
-    case 'value_engine':
-      return `x${getValueMultiplier(normalizedLevel).toFixed(2)} card value`
+    case 'mutation_upgrade':
+      return formatMutationProfileForLevel(normalizedLevel)
+    case 'value_upgrade':
+      return formatRarityProfileForLevel(normalizedLevel)
     default:
       return '-'
   }
 }
 
 export function getUpgradePreview(stateLike, upgradeKey) {
-  const currentLevel = getUpgradeLevel(stateLike, upgradeKey)
-  const cap = getUpgradeCap(upgradeKey)
+  const normalizedKey = normalizeUpgradeKey(upgradeKey)
+  const currentLevel = getUpgradeLevel(stateLike, normalizedKey)
+  const cap = getUpgradeCap(normalizedKey)
   const nextLevel = Math.min(cap, currentLevel + 1)
 
   return {
-    current: getUpgradeEffectLabel(upgradeKey, currentLevel),
-    next: currentLevel >= cap ? null : getUpgradeEffectLabel(upgradeKey, nextLevel),
+    current: getUpgradeEffectLabel(normalizedKey, currentLevel),
+    next: currentLevel >= cap ? null : getUpgradeEffectLabel(normalizedKey, nextLevel),
   }
 }

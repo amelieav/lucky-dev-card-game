@@ -74,7 +74,7 @@ begin
   ) then
     alter table public.player_terms
       add constraint player_terms_best_mutation_check
-      check (best_mutation in ('none', 'foil', 'holo', 'glitched', 'prismatic'));
+      check (best_mutation in ('none', 'foil', 'holo'));
   end if;
 end;
 $$;
@@ -104,73 +104,73 @@ create table if not exists public.term_catalog (
   term_key text primary key,
   display_name text not null,
   tier int not null check (tier between 1 and 6),
-  rarity text not null check (rarity in ('common', 'rare', 'epic', 'legendary')),
+  rarity text not null check (rarity in ('common', 'rare', 'legendary')),
   base_bp int not null check (base_bp >= 0)
 );
 
 -- GENERATED: term_catalog:start
 insert into public.term_catalog (term_key, display_name, tier, rarity, base_bp)
 values
-  ('if_statement', 'If Statement', 1, 'common', 50),
-  ('else_elif', 'Else / Elif', 1, 'common', 55),
-  ('for_loop', 'For Loop', 1, 'common', 60),
-  ('while_loop', 'While Loop', 1, 'common', 65),
-  ('variables', 'Variables', 1, 'common', 70),
-  ('constants', 'Constants', 1, 'rare', 75),
-  ('data_types', 'Data Types', 1, 'rare', 80),
-  ('operators', 'Operators', 1, 'rare', 85),
-  ('functions', 'Functions', 1, 'epic', 90),
-  ('return_values', 'Return Values', 1, 'epic', 95),
-  ('arrays', 'Arrays', 2, 'common', 90),
-  ('objects', 'Objects', 2, 'common', 97),
-  ('maps', 'Maps', 2, 'common', 104),
-  ('sets', 'Sets', 2, 'common', 111),
-  ('string_methods', 'String Methods', 2, 'rare', 118),
-  ('array_methods', 'Array Methods', 2, 'rare', 125),
-  ('scope', 'Scope', 2, 'rare', 132),
-  ('closures', 'Closures', 2, 'rare', 139),
-  ('recursion', 'Recursion', 2, 'epic', 146),
-  ('modules', 'Modules', 2, 'epic', 153),
-  ('callbacks', 'Callbacks', 3, 'common', 140),
-  ('promises', 'Promises', 3, 'common', 149),
-  ('async_await', 'Async/Await', 3, 'common', 158),
-  ('event_loop', 'Event Loop', 3, 'rare', 167),
-  ('http_basics', 'HTTP Basics', 3, 'rare', 176),
-  ('rest_apis', 'REST APIs', 3, 'rare', 185),
-  ('api_contracts', 'API Contracts', 3, 'rare', 194),
-  ('state_management', 'State Management', 3, 'epic', 203),
-  ('caching_basics', 'Caching Basics', 3, 'epic', 212),
-  ('error_handling', 'Error Handling', 3, 'legendary', 221),
-  ('git_workflow', 'Git Workflow', 4, 'rare', 210),
-  ('branching_strategy', 'Branching Strategy', 4, 'rare', 221),
-  ('pull_requests', 'Pull Requests', 4, 'rare', 232),
-  ('unit_testing', 'Unit Testing', 4, 'rare', 243),
-  ('integration_testing', 'Integration Testing', 4, 'epic', 254),
-  ('ci_pipelines', 'CI Pipelines', 4, 'epic', 265),
-  ('cd_pipelines', 'CD Pipelines', 4, 'epic', 276),
-  ('docker_basics', 'Docker Basics', 4, 'epic', 287),
-  ('observability', 'Observability', 4, 'legendary', 298),
-  ('performance_profiling', 'Performance Profiling', 4, 'legendary', 309),
-  ('gradient_descent', 'Gradient Descent', 5, 'rare', 300),
-  ('backpropagation', 'Backpropagation', 5, 'rare', 314),
-  ('activation_functions', 'Activation Functions', 5, 'epic', 328),
-  ('loss_functions', 'Loss Functions', 5, 'epic', 342),
-  ('optimizers', 'Optimizers (SGD/Adam)', 5, 'epic', 356),
-  ('regularization', 'Regularization', 5, 'epic', 370),
-  ('cnns', 'CNNs', 5, 'epic', 384),
-  ('rnns_lstms', 'RNNs/LSTMs', 5, 'legendary', 398),
-  ('attention', 'Attention', 5, 'legendary', 412),
-  ('transformers', 'Transformers', 5, 'legendary', 426),
-  ('tool_calling', 'Tool Calling', 6, 'epic', 420),
-  ('function_routing', 'Function Routing', 6, 'epic', 438),
-  ('planner_executor_agents', 'Planner-Executor Agents', 6, 'epic', 456),
-  ('multi_agent_coordination', 'Multi-Agent Coordination', 6, 'epic', 474),
-  ('reflection_loops', 'Reflection Loops', 6, 'legendary', 492),
-  ('agent_memory_architectures', 'Agent Memory Architectures', 6, 'legendary', 510),
-  ('rag_pipelines', 'RAG Pipelines', 6, 'legendary', 528),
-  ('agent_guardrails', 'Agent Guardrails', 6, 'legendary', 546),
-  ('agent_evaluation_harnesses', 'Agent Evaluation Harnesses', 6, 'legendary', 564),
-  ('autonomous_task_decomposition', 'Autonomous Task Decomposition', 6, 'legendary', 582)
+  ('hello_world', 'Hello World', 1, 'common', 60),
+  ('stack_overflow', 'Stack Overflow', 1, 'common', 69),
+  ('console_log', 'Console Log', 1, 'common', 78),
+  ('todo_comment', 'TODO Comment', 1, 'common', 87),
+  ('off_by_one_error', 'Off-by-One Error', 1, 'common', 96),
+  ('infinite_loop', 'Infinite Loop', 1, 'rare', 105),
+  ('rubber_duck', 'Rubber Duck', 1, 'rare', 114),
+  ('missing_semicolon', 'Missing Semicolon', 1, 'rare', 123),
+  ('copy_paste_dev', 'Copy-Paste Dev', 1, 'rare', 132),
+  ('git_commit', 'Git Commit', 1, 'legendary', 141),
+  ('merge_conflict', 'Merge Conflict', 2, 'common', 110),
+  ('npm_install', 'npm Install', 2, 'common', 119),
+  ('404_not_found', '404 Not Found', 2, 'common', 128),
+  ('debugger_breakpoint', 'Debugger Breakpoint', 2, 'common', 137),
+  ('json_parse_error', 'JSON Parse Error', 2, 'common', 146),
+  ('api_timeout', 'API Timeout', 2, 'rare', 155),
+  ('version_mismatch', 'Version Mismatch', 2, 'rare', 164),
+  ('environment_variable', 'Environment Variable', 2, 'rare', 173),
+  ('hotfix_friday', 'Hotfix Friday', 2, 'rare', 182),
+  ('regex_attempt', 'Regex Attempt', 2, 'legendary', 191),
+  ('async_await', 'Async Await', 3, 'common', 170),
+  ('rest_api', 'REST API', 3, 'common', 179),
+  ('unit_test', 'Unit Test', 3, 'common', 188),
+  ('docker_container', 'Docker Container', 3, 'common', 197),
+  ('ci_pipeline', 'CI Pipeline', 3, 'common', 206),
+  ('code_review', 'Code Review', 3, 'rare', 215),
+  ('refactor', 'Refactor', 3, 'rare', 224),
+  ('memory_leak', 'Memory Leak', 3, 'rare', 233),
+  ('sql_injection', 'SQL Injection', 3, 'rare', 242),
+  ('cache_miss', 'Cache Miss', 3, 'legendary', 251),
+  ('microservices', 'Microservices', 4, 'common', 240),
+  ('distributed_system', 'Distributed System', 4, 'common', 249),
+  ('event_loop', 'Event Loop', 4, 'common', 258),
+  ('race_condition', 'Race Condition', 4, 'common', 267),
+  ('load_balancer', 'Load Balancer', 4, 'common', 276),
+  ('tech_debt', 'Tech Debt', 4, 'rare', 285),
+  ('deadlock', 'Deadlock', 4, 'rare', 294),
+  ('observability', 'Observability', 4, 'rare', 303),
+  ('feature_flag', 'Feature Flag', 4, 'rare', 312),
+  ('blue_green_deploy', 'Blue-Green Deploy', 4, 'legendary', 321),
+  ('compiler', 'Compiler', 5, 'common', 320),
+  ('kernel', 'Kernel', 5, 'common', 329),
+  ('zero_day', 'Zero-Day', 5, 'common', 338),
+  ('concurrency_wizard', 'Concurrency Wizard', 5, 'common', 347),
+  ('performance_tuning', 'Performance Tuning', 5, 'common', 356),
+  ('ai_model', 'AI Model', 5, 'rare', 365),
+  ('bare_metal', 'Bare Metal', 5, 'rare', 374),
+  ('scalability', 'Scalability', 5, 'rare', 383),
+  ('production_hotfix', 'Production Hotfix', 5, 'rare', 392),
+  ('immutable_infrastructure', 'Immutable Infrastructure', 5, 'legendary', 401),
+  ('the_clean_code', 'The Clean Code', 6, 'common', 410),
+  ('infinite_uptime', 'Infinite Uptime', 6, 'common', 419),
+  ('no_merge_conflicts', 'No Merge Conflicts', 6, 'common', 428),
+  ('self_healing_system', 'Self-Healing System', 6, 'common', 437),
+  ('the_senior_who_knows_everything', 'The Senior Who Knows Everything', 6, 'common', 446),
+  ('the_one_who_uses_vim', 'The One Who Uses Vim', 6, 'rare', 455),
+  ('linus_mode', 'Linus Mode', 6, 'rare', 464),
+  ('the_bug_that_was_documentation', 'The Bug That Was Documentation', 6, 'rare', 473),
+  ('100_test_coverage', '100% Test Coverage', 6, 'rare', 482),
+  ('it_works_on_first_try', 'It Works On First Try', 6, 'legendary', 491)
 on conflict (term_key) do update
 set
   display_name = excluded.display_name,
@@ -362,8 +362,8 @@ as $$
   select case lower(coalesce($1, 'none'))
     when 'foil' then 'foil'
     when 'holo' then 'holo'
-    when 'glitched' then 'glitched'
-    when 'prismatic' then 'prismatic'
+    when 'glitched' then 'holo'
+    when 'prismatic' then 'holo'
     else 'none'
   end;
 $$;
@@ -377,8 +377,6 @@ as $$
     when 'none' then 0
     when 'foil' then 1
     when 'holo' then 2
-    when 'glitched' then 3
-    when 'prismatic' then 4
     else 0
   end;
 $$;
@@ -390,9 +388,8 @@ immutable
 as $$
   select case lower(coalesce($1, 'common'))
     when 'common' then 1.0
-    when 'rare' then 1.5
-    when 'epic' then 2.3
-    when 'legendary' then 3.6
+    when 'rare' then 1.8
+    when 'legendary' then 3.2
     else 1.0
   end;
 $$;
@@ -404,10 +401,8 @@ immutable
 as $$
   select case public.normalize_mutation($1)
     when 'none' then 1.0
-    when 'foil' then 1.18
-    when 'holo' then 1.45
-    when 'glitched' then 1.9
-    when 'prismatic' then 2.8
+    when 'foil' then 1.0
+    when 'holo' then 1.0
     else 1.0
   end;
 $$;
@@ -417,7 +412,7 @@ returns numeric
 language sql
 immutable
 as $$
-  select 1 + (greatest(0, coalesce($1, 0)) * 0.07);
+  select 1.0;
 $$;
 
 create or replace function public.card_reward(
@@ -649,16 +644,15 @@ $$;
 
 create or replace function public.rarity_weights(
   p_draw_tier int,
-  p_luck_level int
+  p_value_level int
 )
-returns table (common_w numeric, rare_w numeric, epic_w numeric, legendary_w numeric)
+returns table (common_w numeric, rare_w numeric, legendary_w numeric)
 language plpgsql
 immutable
 as $$
 declare
   base_common numeric;
   base_rare numeric;
-  base_epic numeric;
   base_legendary numeric;
   x numeric;
   common_fixed numeric;
@@ -668,34 +662,33 @@ declare
 begin
   case greatest(1, least(6, coalesce(p_draw_tier, 1)))
     when 1 then
-      base_common := 80; base_rare := 17; base_epic := 3; base_legendary := 0;
+      base_common := 77; base_rare := 20; base_legendary := 3;
     when 2 then
-      base_common := 70; base_rare := 22; base_epic := 7; base_legendary := 1;
+      base_common := 77; base_rare := 20; base_legendary := 3;
     when 3 then
-      base_common := 58; base_rare := 27; base_epic := 11; base_legendary := 4;
+      base_common := 77; base_rare := 20; base_legendary := 3;
     when 4 then
-      base_common := 44; base_rare := 31; base_epic := 17; base_legendary := 8;
+      base_common := 77; base_rare := 20; base_legendary := 3;
     when 5 then
-      base_common := 30; base_rare := 34; base_epic := 22; base_legendary := 14;
+      base_common := 77; base_rare := 20; base_legendary := 3;
     else
-      base_common := 18; base_rare := 31; base_epic := 30; base_legendary := 21;
+      base_common := 77; base_rare := 20; base_legendary := 3;
   end case;
 
-  x := least(25, greatest(0, coalesce(p_luck_level, 0)));
+  x := least(25, greatest(0, coalesce(p_value_level, 0)));
 
-  common_fixed := greatest(5, base_common - (0.9 * x));
-  rare_w := greatest(0, base_rare + (0.45 * x));
-  epic_w := greatest(0, base_epic + (0.30 * x));
-  legendary_w := greatest(0, base_legendary + (0.15 * x));
+  common_fixed := greatest(25, base_common - (1.2 * x));
+  rare_w := greatest(0, base_rare + (0.8 * x));
+  legendary_w := greatest(0, base_legendary + (0.4 * x));
 
   if common_fixed >= 100 then
-    common_w := 100; rare_w := 0; epic_w := 0; legendary_w := 0;
+    common_w := 100; rare_w := 0; legendary_w := 0;
     return next;
   end if;
 
-  rest_total := rare_w + epic_w + legendary_w;
+  rest_total := rare_w + legendary_w;
   if rest_total <= 0 then
-    common_w := 100; rare_w := 0; epic_w := 0; legendary_w := 0;
+    common_w := 100; rare_w := 0; legendary_w := 0;
     return next;
   end if;
 
@@ -703,10 +696,9 @@ begin
 
   common_w := common_fixed;
   rare_w := rare_w * scale;
-  epic_w := epic_w * scale;
   legendary_w := legendary_w * scale;
 
-  sum_total := common_w + rare_w + epic_w + legendary_w;
+  sum_total := common_w + rare_w + legendary_w;
   if sum_total <> 100 then
     legendary_w := legendary_w + (100 - sum_total);
   end if;
@@ -715,7 +707,7 @@ begin
 end;
 $$;
 
-create or replace function public.roll_rarity(p_egg_tier int, p_luck_level int)
+create or replace function public.roll_rarity(p_egg_tier int, p_value_level int)
 returns text
 language plpgsql
 volatile
@@ -723,25 +715,23 @@ as $$
 declare
   common_w numeric;
   rare_w numeric;
-  epic_w numeric;
   legendary_w numeric;
   roll numeric;
 begin
-  select rw.common_w, rw.rare_w, rw.epic_w, rw.legendary_w
-  into common_w, rare_w, epic_w, legendary_w
-  from public.rarity_weights(p_egg_tier, p_luck_level) rw;
+  select rw.common_w, rw.rare_w, rw.legendary_w
+  into common_w, rare_w, legendary_w
+  from public.rarity_weights(p_egg_tier, p_value_level) rw;
 
   roll := random() * 100;
 
   if roll < common_w then return 'common'; end if;
   if roll < (common_w + rare_w) then return 'rare'; end if;
-  if roll < (common_w + rare_w + epic_w) then return 'epic'; end if;
   return 'legendary';
 end;
 $$;
 
 create or replace function public.mutation_weights(p_mutation_level int)
-returns table (none_w numeric, foil_w numeric, holo_w numeric, glitched_w numeric, prismatic_w numeric)
+returns table (none_w numeric, foil_w numeric, holo_w numeric)
 language plpgsql
 immutable
 as $$
@@ -751,23 +741,19 @@ declare
 begin
   m := least(25, greatest(0, coalesce(p_mutation_level, 0)));
 
-  none_w := greatest(0, 92 - (0.55 * m));
-  foil_w := greatest(0, 6 + (0.32 * m));
-  holo_w := greatest(0, 1.6 + (0.15 * m));
-  glitched_w := greatest(0, 0.35 + (0.06 * m));
-  prismatic_w := greatest(0, 0.05 + (0.02 * m));
+  none_w := greatest(0, 90 - (1.4 * m));
+  foil_w := greatest(0, 8 + (0.9 * m));
+  holo_w := greatest(0, 2 + (0.5 * m));
 
-  sum_total := none_w + foil_w + holo_w + glitched_w + prismatic_w;
+  sum_total := none_w + foil_w + holo_w;
   if sum_total <= 0 then
-    none_w := 100; foil_w := 0; holo_w := 0; glitched_w := 0; prismatic_w := 0;
+    none_w := 100; foil_w := 0; holo_w := 0;
     return next;
   end if;
 
   none_w := (none_w / sum_total) * 100;
   foil_w := (foil_w / sum_total) * 100;
   holo_w := (holo_w / sum_total) * 100;
-  glitched_w := (glitched_w / sum_total) * 100;
-  prismatic_w := (prismatic_w / sum_total) * 100;
 
   return next;
 end;
@@ -782,12 +768,10 @@ declare
   none_w numeric;
   foil_w numeric;
   holo_w numeric;
-  glitched_w numeric;
-  prismatic_w numeric;
   roll numeric;
 begin
-  select mw.none_w, mw.foil_w, mw.holo_w, mw.glitched_w, mw.prismatic_w
-  into none_w, foil_w, holo_w, glitched_w, prismatic_w
+  select mw.none_w, mw.foil_w, mw.holo_w
+  into none_w, foil_w, holo_w
   from public.mutation_weights(p_mutation_level) mw;
 
   roll := random() * 100;
@@ -795,8 +779,7 @@ begin
   if roll < none_w then return 'none'; end if;
   if roll < (none_w + foil_w) then return 'foil'; end if;
   if roll < (none_w + foil_w + holo_w) then return 'holo'; end if;
-  if roll < (none_w + foil_w + holo_w + glitched_w) then return 'glitched'; end if;
-  return 'prismatic';
+  return 'holo';
 end;
 $$;
 
@@ -836,11 +819,13 @@ immutable
 as $$
   select case lower(coalesce($1, ''))
     when 'auto_unlock' then 1
-    when 'auto_speed' then 30
+    when 'auto_speed' then 4
     when 'tier_boost' then 20
+    when 'mutation_upgrade' then 25
+    when 'value_upgrade' then 25
     when 'luck_engine' then 25
     when 'mutation_lab' then 25
-    when 'value_engine' then 20
+    when 'value_engine' then 25
     else 0
   end;
 $$;
@@ -852,11 +837,13 @@ immutable
 as $$
   select case lower(coalesce(p_upgrade_key, ''))
     when 'auto_unlock' then case when p_auto_unlocked then null else 225::bigint end
-    when 'auto_speed' then floor((140 * power(1.33, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
-    when 'tier_boost' then floor((60 * power(1.42, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
-    when 'luck_engine' then floor((75 * power(1.36, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
-    when 'mutation_lab' then floor((90 * power(1.38, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
-    when 'value_engine' then floor((120 * power(1.40, greatest(0, coalesce(p_level, 0)))) / 4)::bigint
+    when 'auto_speed' then floor(120 * power(1.45, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'tier_boost' then floor(25 * power(1.42, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'mutation_upgrade' then floor(35 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'value_upgrade' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'luck_engine' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'mutation_lab' then floor(35 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'value_engine' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
     else null
   end;
 $$;
@@ -924,13 +911,26 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  foil_cards int := 0;
+  holo_cards int := 0;
+  passive_rate_cps int := 0;
 begin
+  select
+    count(*) filter (where public.normalize_mutation(best_mutation) = 'foil')::int,
+    count(*) filter (where public.normalize_mutation(best_mutation) = 'holo')::int
+  into foil_cards, holo_cards
+  from public.player_terms
+  where user_id = p_user_id;
+
+  passive_rate_cps := (foil_cards * 1) + (holo_cards * 3);
+
   update public.player_state
-  set passive_rate_bp = 0,
+  set passive_rate_bp = (passive_rate_cps * 100),
       updated_at = now()
   where user_id = p_user_id;
 
-  return 0;
+  return passive_rate_cps;
 end;
 $$;
 
@@ -945,6 +945,7 @@ declare
   term_row public.player_terms;
   elapsed_seconds int;
   capped_seconds int;
+  passive_rate_cps int := 0;
   openings numeric;
   whole_opens int;
   remainder numeric;
@@ -968,6 +969,15 @@ begin
 
   elapsed_seconds := greatest(0, extract(epoch from now() - state_row.last_tick_at)::int);
   capped_seconds := least(43200, elapsed_seconds);
+  passive_rate_cps := public.recompute_passive_rate_bp(p_user_id);
+
+  if capped_seconds > 0 and passive_rate_cps > 0 then
+    update public.player_state
+    set coins = coins + (passive_rate_cps * capped_seconds),
+        updated_at = now()
+    where user_id = p_user_id
+    returning * into state_row;
+  end if;
 
   if not state_row.auto_unlocked or capped_seconds <= 0 then
     update public.player_state
@@ -979,13 +989,16 @@ begin
   end if;
 
   openings := coalesce(state_row.auto_open_progress, 0)
-    + (capped_seconds * (0.25 + (0.06 * greatest(0, state_row.auto_speed_level))));
+    + (
+      capped_seconds
+      * (1.0 / greatest(0.5, 2.5 - (0.5 * greatest(0, state_row.auto_speed_level))))
+    );
   whole_opens := floor(openings)::int;
   remainder := openings - whole_opens;
 
   for i in 1..whole_opens loop
     draw_tier := public.pick_effective_tier(state_row.packs_opened, state_row.tier_boost_level);
-    draw_rarity := public.roll_rarity(draw_tier, state_row.luck_level);
+    draw_rarity := public.roll_rarity(draw_tier, state_row.value_level);
     draw_mutation := public.roll_mutation(state_row.mutation_level);
     draw_term_key := public.random_term_by_pool(draw_tier, draw_rarity);
 
@@ -1074,7 +1087,6 @@ as $$
   with state_row as (
     select
       coins,
-      luck_level,
       passive_rate_bp,
       highest_tier_unlocked,
       eggs_opened,
@@ -1084,6 +1096,7 @@ as $$
       tier_boost_level,
       mutation_level,
       value_level,
+      value_level as luck_level,
       auto_unlocked,
       auto_speed_level,
       auto_open_progress,
@@ -1235,11 +1248,11 @@ begin
     if chosen_term is not null then
       draw_rarity := public.term_rarity(chosen_term);
     else
-      draw_rarity := public.roll_rarity(draw_tier, state_row.luck_level);
+      draw_rarity := public.roll_rarity(draw_tier, state_row.value_level);
     end if;
   end if;
 
-  if draw_rarity not in ('common', 'rare', 'epic', 'legendary') then
+  if draw_rarity not in ('common', 'rare', 'legendary') then
     raise exception 'Invalid rarity: %', draw_rarity;
   end if;
 
@@ -1327,6 +1340,12 @@ begin
     raise exception 'Missing upgrade key';
   end if;
 
+  if key_name in ('luck_engine', 'value_engine') then
+    key_name := 'value_upgrade';
+  elsif key_name = 'mutation_lab' then
+    key_name := 'mutation_upgrade';
+  end if;
+
   perform public.ensure_player_initialized(uid);
   perform public.apply_auto_progress(uid);
 
@@ -1402,26 +1421,7 @@ begin
 
     next_level := current_level + 1;
 
-  elsif key_name = 'luck_engine' then
-    current_level := greatest(0, coalesce(state_row.luck_level, 0));
-    if current_level >= cap then
-      raise exception 'Upgrade is already maxed';
-    end if;
-
-    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked);
-    if state_row.coins < cost then
-      raise exception 'Not enough coins';
-    end if;
-
-    update public.player_state
-    set coins = coins - cost,
-        luck_level = luck_level + 1,
-        updated_at = now()
-    where user_id = uid;
-
-    next_level := current_level + 1;
-
-  elsif key_name = 'mutation_lab' then
+  elsif key_name = 'mutation_upgrade' then
     current_level := greatest(0, coalesce(state_row.mutation_level, 0));
     if current_level >= cap then
       raise exception 'Upgrade is already maxed';
@@ -1440,7 +1440,7 @@ begin
 
     next_level := current_level + 1;
 
-  elsif key_name = 'value_engine' then
+  elsif key_name = 'value_upgrade' then
     current_level := greatest(0, coalesce(state_row.value_level, 0));
     if current_level >= cap then
       raise exception 'Upgrade is already maxed';
@@ -1501,7 +1501,7 @@ security definer
 set search_path = public
 as $$
 begin
-  return public.buy_upgrade('luck_engine');
+  return public.buy_upgrade('value_upgrade');
 end;
 $$;
 
@@ -1664,7 +1664,7 @@ begin
   elsif action_type = 'set_luck_level' then
     target_level := greatest(0, least(25, coalesce((p_action ->> 'level')::int, 0)));
     update public.player_state
-    set luck_level = target_level,
+    set value_level = target_level,
         updated_at = now()
     where user_id = uid;
 
@@ -1684,14 +1684,14 @@ begin
     where user_id = uid;
 
   elsif action_type = 'set_auto_speed_level' then
-    target_level := greatest(0, least(30, coalesce((p_action ->> 'level')::int, 0)));
+    target_level := greatest(0, least(4, coalesce((p_action ->> 'level')::int, 0)));
     update public.player_state
     set auto_speed_level = target_level,
         updated_at = now()
     where user_id = uid;
 
   elsif action_type = 'set_value_level' then
-    target_level := greatest(0, least(20, coalesce((p_action ->> 'level')::int, 0)));
+    target_level := greatest(0, least(25, coalesce((p_action ->> 'level')::int, 0)));
     update public.player_state
     set value_level = target_level,
         updated_at = now()
@@ -1766,7 +1766,7 @@ select
   )::int as rank,
   pp.display_name,
   ps.coins::bigint as score,
-  ps.luck_level,
+  ps.value_level,
   ps.highest_tier_unlocked,
   ps.updated_at
 from public.player_state ps
@@ -1777,7 +1777,7 @@ returns table (
   rank int,
   display_name text,
   score bigint,
-  luck_level int,
+  value_level int,
   highest_tier_unlocked int,
   updated_at timestamptz
 )
@@ -1789,7 +1789,7 @@ as $$
     l.rank,
     l.display_name,
     l.score,
-    l.luck_level,
+    l.value_level,
     l.highest_tier_unlocked,
     l.updated_at
   from public.leaderboard_v1 l

@@ -19,7 +19,7 @@ function user(id) {
 test('bootstrap creates a local snapshot with pack defaults', () => {
   const snapshot = bootstrapLocalPlayer(user('pack-bootstrap'), { nowMs: 1_000 })
   assert.equal(snapshot.state.coins, 100)
-  assert.equal(snapshot.state.luck_level, 0)
+  assert.equal(snapshot.state.value_level, 0)
   assert.equal(snapshot.state.packs_opened, 0)
   assert.equal(snapshot.state.auto_unlocked, false)
 })
@@ -33,7 +33,7 @@ test('manual pack open is free and awards coins', () => {
     debugAllowed: true,
     debugOverride: {
       tier: 1,
-      term_key: 'if_statement',
+      term_key: 'hello_world',
       rarity: 'common',
       mutation: 'none',
     },
@@ -54,13 +54,13 @@ test('duplicates increase copies and level', () => {
     openLocalPack(account, {
       source: 'manual',
       debugAllowed: true,
-      debugOverride: { tier: 1, term_key: 'if_statement', rarity: 'common', mutation: 'none' },
+      debugOverride: { tier: 1, term_key: 'hello_world', rarity: 'common', mutation: 'none' },
       nowMs: 1_000 + i,
     })
   }
 
   const snapshot = bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 2_000 })
-  const row = snapshot.terms.find((term) => term.term_key === 'if_statement')
+  const row = snapshot.terms.find((term) => term.term_key === 'hello_world')
 
   assert.equal(row?.copies, 4)
   assert.equal(row?.level, 2)
@@ -73,28 +73,51 @@ test('collection tracks highest mutation received per card', () => {
   openLocalPack(account, {
     source: 'manual',
     debugAllowed: true,
-    debugOverride: { tier: 1, term_key: 'if_statement', rarity: 'common', mutation: 'foil' },
+    debugOverride: { tier: 1, term_key: 'hello_world', rarity: 'common', mutation: 'foil' },
     nowMs: 1_000,
   })
 
   openLocalPack(account, {
     source: 'manual',
     debugAllowed: true,
-    debugOverride: { tier: 1, term_key: 'if_statement', rarity: 'common', mutation: 'none' },
+    debugOverride: { tier: 1, term_key: 'hello_world', rarity: 'common', mutation: 'none' },
     nowMs: 2_000,
   })
 
   openLocalPack(account, {
     source: 'manual',
     debugAllowed: true,
-    debugOverride: { tier: 1, term_key: 'if_statement', rarity: 'common', mutation: 'prismatic' },
+    debugOverride: { tier: 1, term_key: 'hello_world', rarity: 'common', mutation: 'holo' },
     nowMs: 3_000,
   })
 
   const snapshot = bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 4_000 })
-  const row = snapshot.terms.find((term) => term.term_key === 'if_statement')
+  const row = snapshot.terms.find((term) => term.term_key === 'hello_world')
 
-  assert.equal(row?.best_mutation, 'prismatic')
+  assert.equal(row?.best_mutation, 'holo')
+})
+
+test('foil and holo mutations generate passive coins over time', () => {
+  const account = user('pack-passive-income')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 1, term_key: 'hello_world', rarity: 'common', mutation: 'foil' },
+    nowMs: 1_000,
+  })
+
+  const second = openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 1, term_key: 'stack_overflow', rarity: 'common', mutation: 'holo' },
+    nowMs: 2_000,
+  })
+
+  const synced = syncLocalPlayer(account, { debugAllowed: true, nowMs: 6_000 })
+  assert.equal(synced.snapshot.state.passive_rate_cps, 4)
+  assert.equal(synced.snapshot.state.coins - second.snapshot.state.coins, 16)
 })
 
 test('auto opener applies draws during sync ticks', () => {

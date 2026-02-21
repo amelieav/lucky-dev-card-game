@@ -26,12 +26,12 @@
       </div>
 
       <div class="grid gap-2 sm:grid-cols-3">
-        <input v-model.number="setLuckLevel" class="form-input" type="number" min="0" placeholder="Luck level" />
+        <input v-model.number="setValueLevel" class="form-input" type="number" min="0" placeholder="Value level" />
         <input v-model.number="setMutationLevel" class="form-input" type="number" min="0" placeholder="Mutation level" />
         <input v-model.number="setTierBoostLevel" class="form-input" type="number" min="0" placeholder="Tier boost level" />
       </div>
       <div class="grid gap-2 sm:grid-cols-3">
-        <button class="btn-secondary" type="button" :disabled="loading" @click="emitApply({ type: 'set_luck_level', level: setLuckLevel })">Set Luck</button>
+        <button class="btn-secondary" type="button" :disabled="loading" @click="emitApply({ type: 'set_value_level', level: setValueLevel })">Set Value</button>
         <button class="btn-secondary" type="button" :disabled="loading" @click="emitApply({ type: 'set_mutation_level', level: setMutationLevel })">Set Mutation</button>
         <button class="btn-secondary" type="button" :disabled="loading" @click="emitApply({ type: 'set_tier_boost_level', level: setTierBoostLevel })">Set Tier Boost</button>
       </div>
@@ -51,7 +51,6 @@
           <option value="">Any rarity</option>
           <option value="common">Common</option>
           <option value="rare">Rare</option>
-          <option value="epic">Epic</option>
           <option value="legendary">Legendary</option>
         </select>
         <select v-model="forcedMutation" class="form-select">
@@ -59,8 +58,6 @@
           <option value="none">None</option>
           <option value="foil">Foil</option>
           <option value="holo">Holo</option>
-          <option value="glitched">Glitched</option>
-          <option value="prismatic">Prismatic</option>
         </select>
         <select v-model="forcedTermKey" class="form-select">
           <option value="">Any term</option>
@@ -93,7 +90,7 @@ const emit = defineEmits(['toggle', 'apply'])
 
 const addCoinsAmount = ref(1000)
 const setCoinsAmount = ref(0)
-const setLuckLevel = ref(0)
+const setValueLevel = ref(0)
 const setMutationLevel = ref(0)
 const setTierBoostLevel = ref(0)
 const grantTermKey = ref('')

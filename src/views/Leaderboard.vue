@@ -17,7 +17,7 @@
             <th class="px-2 py-2">Rank</th>
             <th class="px-2 py-2">Player</th>
             <th class="px-2 py-2">Score</th>
-            <th class="px-2 py-2">Luck</th>
+            <th class="px-2 py-2">Value</th>
             <th class="px-2 py-2">Tier</th>
           </tr>
         </thead>
@@ -26,7 +26,7 @@
             <td class="px-2 py-2">{{ row.rank }}</td>
             <td class="px-2 py-2 font-medium">{{ row.display_name }}</td>
             <td class="px-2 py-2">{{ formatNumber(row.score) }}</td>
-            <td class="px-2 py-2">Lv {{ row.luck_level }}</td>
+            <td class="px-2 py-2">Lv {{ row.value_level || row.luck_level || 0 }}</td>
             <td class="px-2 py-2">{{ row.highest_tier_unlocked }}</td>
           </tr>
         </tbody>

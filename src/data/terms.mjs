@@ -1,72 +1,126 @@
 import { BALANCE_CONFIG } from '../lib/balanceConfig.mjs'
 
-export const TERMS = [
-  { key: 'if_statement', name: 'If Statement', tier: 1, rarity: 'common', baseBp: 50 },
-  { key: 'else_elif', name: 'Else / Elif', tier: 1, rarity: 'common', baseBp: 55 },
-  { key: 'for_loop', name: 'For Loop', tier: 1, rarity: 'common', baseBp: 60 },
-  { key: 'while_loop', name: 'While Loop', tier: 1, rarity: 'common', baseBp: 65 },
-  { key: 'variables', name: 'Variables', tier: 1, rarity: 'common', baseBp: 70 },
-  { key: 'constants', name: 'Constants', tier: 1, rarity: 'rare', baseBp: 75 },
-  { key: 'data_types', name: 'Data Types', tier: 1, rarity: 'rare', baseBp: 80 },
-  { key: 'operators', name: 'Operators', tier: 1, rarity: 'rare', baseBp: 85 },
-  { key: 'functions', name: 'Functions', tier: 1, rarity: 'epic', baseBp: 90 },
-  { key: 'return_values', name: 'Return Values', tier: 1, rarity: 'epic', baseBp: 95 },
+const TIER_NAMES = {
+  1: [
+    'Hello World',
+    'Stack Overflow',
+    'Console Log',
+    'TODO Comment',
+    'Off-by-One Error',
+    'Infinite Loop',
+    'Rubber Duck',
+    'Missing Semicolon',
+    'Copy-Paste Dev',
+    'Git Commit',
+  ],
+  2: [
+    'Merge Conflict',
+    'npm Install',
+    '404 Not Found',
+    'Debugger Breakpoint',
+    'JSON Parse Error',
+    'API Timeout',
+    'Version Mismatch',
+    'Environment Variable',
+    'Hotfix Friday',
+    'Regex Attempt',
+  ],
+  3: [
+    'Async Await',
+    'REST API',
+    'Unit Test',
+    'Docker Container',
+    'CI Pipeline',
+    'Code Review',
+    'Refactor',
+    'Memory Leak',
+    'SQL Injection',
+    'Cache Miss',
+  ],
+  4: [
+    'Microservices',
+    'Distributed System',
+    'Event Loop',
+    'Race Condition',
+    'Load Balancer',
+    'Tech Debt',
+    'Deadlock',
+    'Observability',
+    'Feature Flag',
+    'Blue-Green Deploy',
+  ],
+  5: [
+    'Compiler',
+    'Kernel',
+    'Zero-Day',
+    'Concurrency Wizard',
+    'Performance Tuning',
+    'AI Model',
+    'Bare Metal',
+    'Scalability',
+    'Production Hotfix',
+    'Immutable Infrastructure',
+  ],
+  6: [
+    'The Clean Code',
+    'Infinite Uptime',
+    'No Merge Conflicts',
+    'Self-Healing System',
+    'The Senior Who Knows Everything',
+    'The One Who Uses Vim',
+    'Linus Mode',
+    'The Bug That Was Documentation',
+    '100% Test Coverage',
+    'It Works On First Try',
+  ],
+}
 
-  { key: 'arrays', name: 'Arrays', tier: 2, rarity: 'common', baseBp: 90 },
-  { key: 'objects', name: 'Objects', tier: 2, rarity: 'common', baseBp: 97 },
-  { key: 'maps', name: 'Maps', tier: 2, rarity: 'common', baseBp: 104 },
-  { key: 'sets', name: 'Sets', tier: 2, rarity: 'common', baseBp: 111 },
-  { key: 'string_methods', name: 'String Methods', tier: 2, rarity: 'rare', baseBp: 118 },
-  { key: 'array_methods', name: 'Array Methods', tier: 2, rarity: 'rare', baseBp: 125 },
-  { key: 'scope', name: 'Scope', tier: 2, rarity: 'rare', baseBp: 132 },
-  { key: 'closures', name: 'Closures', tier: 2, rarity: 'rare', baseBp: 139 },
-  { key: 'recursion', name: 'Recursion', tier: 2, rarity: 'epic', baseBp: 146 },
-  { key: 'modules', name: 'Modules', tier: 2, rarity: 'epic', baseBp: 153 },
+const TIER_ICON_SET = {
+  1: ['print()', 'Q&A', 'log>', 'TODO', 'i+1', 'loop', 'duck', ';', 'copy', 'git'],
+  2: ['<<<<', 'npm', '404', 'dbg', '{ }', 'api', 'v1.2', 'ENV', 'hotfix', '.*'],
+  3: ['await', 'REST', 'test', 'ctr', 'CI', 'PR', 'ref', 'mem', 'SQL', 'cache'],
+  4: ['svc', 'dist', 'evt', 'race', 'LB', 'debt', 'lock', 'obs', 'flag', 'bg'],
+  5: ['cc', 'kern', '0day', 'wiz', 'perf', 'AI', 'metal', 'scale', 'prod', 'infra'],
+  6: ['clean', 'up', 'merge', 'heal', 'senior', 'vim', 'linus', 'docbug', '100%', 'first'],
+}
 
-  { key: 'callbacks', name: 'Callbacks', tier: 3, rarity: 'common', baseBp: 140 },
-  { key: 'promises', name: 'Promises', tier: 3, rarity: 'common', baseBp: 149 },
-  { key: 'async_await', name: 'Async/Await', tier: 3, rarity: 'common', baseBp: 158 },
-  { key: 'event_loop', name: 'Event Loop', tier: 3, rarity: 'rare', baseBp: 167 },
-  { key: 'http_basics', name: 'HTTP Basics', tier: 3, rarity: 'rare', baseBp: 176 },
-  { key: 'rest_apis', name: 'REST APIs', tier: 3, rarity: 'rare', baseBp: 185 },
-  { key: 'api_contracts', name: 'API Contracts', tier: 3, rarity: 'rare', baseBp: 194 },
-  { key: 'state_management', name: 'State Management', tier: 3, rarity: 'epic', baseBp: 203 },
-  { key: 'caching_basics', name: 'Caching Basics', tier: 3, rarity: 'epic', baseBp: 212 },
-  { key: 'error_handling', name: 'Error Handling', tier: 3, rarity: 'legendary', baseBp: 221 },
+const TIER_BASE_BP = {
+  1: 60,
+  2: 110,
+  3: 170,
+  4: 240,
+  5: 320,
+  6: 410,
+}
 
-  { key: 'git_workflow', name: 'Git Workflow', tier: 4, rarity: 'rare', baseBp: 210 },
-  { key: 'branching_strategy', name: 'Branching Strategy', tier: 4, rarity: 'rare', baseBp: 221 },
-  { key: 'pull_requests', name: 'Pull Requests', tier: 4, rarity: 'rare', baseBp: 232 },
-  { key: 'unit_testing', name: 'Unit Testing', tier: 4, rarity: 'rare', baseBp: 243 },
-  { key: 'integration_testing', name: 'Integration Testing', tier: 4, rarity: 'epic', baseBp: 254 },
-  { key: 'ci_pipelines', name: 'CI Pipelines', tier: 4, rarity: 'epic', baseBp: 265 },
-  { key: 'cd_pipelines', name: 'CD Pipelines', tier: 4, rarity: 'epic', baseBp: 276 },
-  { key: 'docker_basics', name: 'Docker Basics', tier: 4, rarity: 'epic', baseBp: 287 },
-  { key: 'observability', name: 'Observability', tier: 4, rarity: 'legendary', baseBp: 298 },
-  { key: 'performance_profiling', name: 'Performance Profiling', tier: 4, rarity: 'legendary', baseBp: 309 },
+function termRarityByTierIndex(index) {
+  if (index <= 4) return 'common'
+  if (index <= 8) return 'rare'
+  return 'legendary'
+}
 
-  { key: 'gradient_descent', name: 'Gradient Descent', tier: 5, rarity: 'rare', baseBp: 300 },
-  { key: 'backpropagation', name: 'Backpropagation', tier: 5, rarity: 'rare', baseBp: 314 },
-  { key: 'activation_functions', name: 'Activation Functions', tier: 5, rarity: 'epic', baseBp: 328 },
-  { key: 'loss_functions', name: 'Loss Functions', tier: 5, rarity: 'epic', baseBp: 342 },
-  { key: 'optimizers', name: 'Optimizers (SGD/Adam)', tier: 5, rarity: 'epic', baseBp: 356 },
-  { key: 'regularization', name: 'Regularization', tier: 5, rarity: 'epic', baseBp: 370 },
-  { key: 'cnns', name: 'CNNs', tier: 5, rarity: 'epic', baseBp: 384 },
-  { key: 'rnns_lstms', name: 'RNNs/LSTMs', tier: 5, rarity: 'legendary', baseBp: 398 },
-  { key: 'attention', name: 'Attention', tier: 5, rarity: 'legendary', baseBp: 412 },
-  { key: 'transformers', name: 'Transformers', tier: 5, rarity: 'legendary', baseBp: 426 },
+function keyFromName(name) {
+  return String(name || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
 
-  { key: 'tool_calling', name: 'Tool Calling', tier: 6, rarity: 'epic', baseBp: 420 },
-  { key: 'function_routing', name: 'Function Routing', tier: 6, rarity: 'epic', baseBp: 438 },
-  { key: 'planner_executor_agents', name: 'Planner-Executor Agents', tier: 6, rarity: 'epic', baseBp: 456 },
-  { key: 'multi_agent_coordination', name: 'Multi-Agent Coordination', tier: 6, rarity: 'epic', baseBp: 474 },
-  { key: 'reflection_loops', name: 'Reflection Loops', tier: 6, rarity: 'legendary', baseBp: 492 },
-  { key: 'agent_memory_architectures', name: 'Agent Memory Architectures', tier: 6, rarity: 'legendary', baseBp: 510 },
-  { key: 'rag_pipelines', name: 'RAG Pipelines', tier: 6, rarity: 'legendary', baseBp: 528 },
-  { key: 'agent_guardrails', name: 'Agent Guardrails', tier: 6, rarity: 'legendary', baseBp: 546 },
-  { key: 'agent_evaluation_harnesses', name: 'Agent Evaluation Harnesses', tier: 6, rarity: 'legendary', baseBp: 564 },
-  { key: 'autonomous_task_decomposition', name: 'Autonomous Task Decomposition', tier: 6, rarity: 'legendary', baseBp: 582 },
-]
+export const TERMS = [1, 2, 3, 4, 5, 6].flatMap((tier) => {
+  const names = TIER_NAMES[tier] || []
+  const icons = TIER_ICON_SET[tier] || []
+  const tierBaseBp = Number(TIER_BASE_BP[tier] || 50)
+
+  return names.map((name, index) => ({
+    key: keyFromName(name),
+    name,
+    tier,
+    rarity: termRarityByTierIndex(index),
+    icon: icons[index] || `T${tier}`,
+    baseBp: tierBaseBp + (index * 9),
+  }))
+})
 
 export const BASE_BP_MULTIPLIER = BALANCE_CONFIG.baseBpMultiplier
 
@@ -78,6 +132,5 @@ export const TERMS_BY_KEY = TERMS.reduce((acc, term) => {
 export const RARITY_COLORS = {
   common: 'var(--rarity-common)',
   rare: 'var(--rarity-rare)',
-  epic: 'var(--rarity-epic)',
   legendary: 'var(--rarity-legendary)',
 }

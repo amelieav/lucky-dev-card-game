@@ -4,7 +4,7 @@
       <p class="text-xs uppercase text-muted" style="letter-spacing:0.18em;">Lucky Agent</p>
       <h1 class="mt-2 text-2xl font-semibold">Magic link sign in</h1>
       <p class="mt-2 text-sm text-muted">
-        Sign in to save your progression, luck upgrades, and leaderboard identity.
+        Sign in to save your progression, upgrades, and leaderboard identity.
       </p>
 
       <form class="mt-5 space-y-3" @submit.prevent="handleSubmit">

@@ -213,7 +213,7 @@ export default {
     },
 
     async upgradeLuck({ dispatch }) {
-      return dispatch('buyUpgrade', { upgradeKey: 'luck_engine' })
+      return dispatch('buyUpgrade', { upgradeKey: 'value_upgrade' })
     },
 
     async updateNickname({ commit, rootState }, parts) {

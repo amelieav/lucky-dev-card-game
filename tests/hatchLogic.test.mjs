@@ -4,6 +4,8 @@ import {
   applyUpgrade,
   computeCardReward,
   getBaseTierWeightsForBoostLevel,
+  getAutoOpenIntervalMs,
+  getAutoOpensPerSecond,
   getEffectiveTierWeights,
   getHighestUnlockedTier,
   getMutationWeights,
@@ -21,9 +23,10 @@ function assertApproxHundred(value) {
   assert.ok(Math.abs(value - 100) < 0.0005, `Expected ~100, got ${value}`)
 }
 
-test('all pack tiers stay available from the start', () => {
-  assert.equal(getHighestUnlockedTier({ packs_opened: 0, tier_boost_level: 0 }), 6)
-  assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 2 }), 6)
+test('highest available tier follows non-zero pack odds', () => {
+  assert.equal(getHighestUnlockedTier({ packs_opened: 0, tier_boost_level: 0 }), 1)
+  assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 1 }), 2)
+  assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 10 }), 5)
   assert.equal(getHighestUnlockedTier({ packs_opened: 1900, tier_boost_level: 13 }), 6)
 })
 
@@ -69,11 +72,11 @@ test('mutation weights stay normalized and improve with mutation level', () => {
 
   assertApproxHundred(sum(Object.values(base)))
   assertApproxHundred(sum(Object.values(upgraded)))
-  assert.ok(upgraded.prismatic > base.prismatic)
-  assert.ok(upgraded.glitched > base.glitched)
+  assert.ok(upgraded.holo > base.holo)
+  assert.ok(upgraded.foil > base.foil)
 })
 
-test('reward formula combines rarity, mutation, and value engine', () => {
+test('reward formula combines rarity and card tier value', () => {
   const baseline = computeCardReward({
     baseBp: 100,
     rarity: 'common',
@@ -84,7 +87,7 @@ test('reward formula combines rarity, mutation, and value engine', () => {
   const boosted = computeCardReward({
     baseBp: 100,
     rarity: 'legendary',
-    mutation: 'prismatic',
+    mutation: 'holo',
     valueLevel: 10,
   })
 
@@ -98,7 +101,6 @@ test('upgrade cost curve increases and preview reports current/next effect', () 
     auto_unlocked: true,
     auto_speed_level: 0,
     tier_boost_level: 0,
-    luck_level: 0,
     mutation_level: 0,
     value_level: 0,
     packs_opened: 0,
@@ -110,9 +112,22 @@ test('upgrade cost curve increases and preview reports current/next effect', () 
 
   assert.ok(cost1 > cost0)
 
-  const preview = getUpgradePreview(state, 'value_engine')
-  assert.ok(preview.current.includes('x'))
-  assert.ok(preview.next.includes('x'))
+  const preview = getUpgradePreview(state, 'value_upgrade')
+  assert.ok(preview.current.includes('C'))
+  assert.ok(preview.next.includes('C'))
+})
+
+test('auto speed reduces wait time to a 0.5s floor', () => {
+  const locked = getAutoOpenIntervalMs({ auto_unlocked: false, auto_speed_level: 0 })
+  const base = getAutoOpenIntervalMs({ auto_unlocked: true, auto_speed_level: 0 })
+  const level2 = getAutoOpenIntervalMs({ auto_unlocked: true, auto_speed_level: 2 })
+  const level8 = getAutoOpenIntervalMs({ auto_unlocked: true, auto_speed_level: 8 })
+
+  assert.equal(locked, null)
+  assert.equal(base, 2500)
+  assert.equal(level2, 1500)
+  assert.equal(level8, 500)
+  assert.equal(getAutoOpensPerSecond({ auto_unlocked: true, auto_speed_level: 8 }), 2)
 })
 
 test('applyUpgrade mutates state and spends coins', () => {
@@ -121,7 +136,6 @@ test('applyUpgrade mutates state and spends coins', () => {
     auto_unlocked: false,
     auto_speed_level: 0,
     tier_boost_level: 0,
-    luck_level: 0,
     mutation_level: 0,
     value_level: 0,
     packs_opened: 0,
@@ -138,7 +152,7 @@ test('applyUpgrade mutates state and spends coins', () => {
 
 test('progress reports no lock gates for pack tiers', () => {
   const progress = getProgressToNextTier({ packs_opened: 180, tier_boost_level: 3 })
-  assert.equal(progress.highestTier, 6)
+  assert.equal(progress.highestTier, 2)
   assert.equal(progress.nextTier, null)
   assert.equal(progress.remainingPacks, 0)
   assert.equal(progress.remainingTierBoost, 0)
