@@ -70,12 +70,16 @@
             <p class="manual-pack__hint">Rolling card tier, rarity, and mutation</p>
           </template>
 
-          <template v-else-if="manualRevealDraw">
-            <p class="manual-pack__eyebrow">{{ packName(manualRevealDraw.tier) }}</p>
-            <p class="manual-pack__title">{{ termIcon(manualRevealDraw.term_key) }} {{ termName(manualRevealDraw.term_key) }}</p>
-            <p class="manual-pack__hint">{{ manualRevealDraw.rarity }} · {{ manualRevealDraw.mutation }}</p>
-            <p class="manual-pack__reward">+{{ formatNumber(manualRevealDraw.reward) }} coins</p>
-          </template>
+          <term-card
+            v-else-if="manualRevealCard"
+            class="manual-pack__preview-card"
+            :name="manualRevealCard.name"
+            :tier="manualRevealCard.tier"
+            :rarity="manualRevealCard.rarity"
+            :mutation="manualRevealCard.mutation"
+            :icon="manualRevealCard.icon"
+            :coins="manualRevealCard.coins"
+          />
         </div>
 
         <button
@@ -100,12 +104,16 @@
             <p class="manual-pack__hint">Rolling card tier, rarity, and mutation</p>
           </template>
 
-          <template v-else-if="manualRevealDraw">
-            <p class="manual-pack__eyebrow">{{ packName(manualRevealDraw.tier) }}</p>
-            <p class="manual-pack__title">{{ termIcon(manualRevealDraw.term_key) }} {{ termName(manualRevealDraw.term_key) }}</p>
-            <p class="manual-pack__hint">{{ manualRevealDraw.rarity }} · {{ manualRevealDraw.mutation }}</p>
-            <p class="manual-pack__reward">+{{ formatNumber(manualRevealDraw.reward) }} coins</p>
-          </template>
+          <term-card
+            v-else-if="manualRevealCard"
+            class="manual-pack__preview-card"
+            :name="manualRevealCard.name"
+            :tier="manualRevealCard.tier"
+            :rarity="manualRevealCard.rarity"
+            :mutation="manualRevealCard.mutation"
+            :icon="manualRevealCard.icon"
+            :coins="manualRevealCard.coins"
+          />
         </button>
 
         <div v-if="recentDraws.length" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
@@ -116,7 +124,9 @@
               :key="`recent-${index}-${draw.term_key}-${draw.copies}-${draw.level}-${draw.reward}`"
               class="rounded-md border border-soft bg-white/70 px-2 py-1.5"
             >
-              <p class="text-xs font-semibold">{{ termIcon(draw.term_key) }} {{ termName(draw.term_key) }}</p>
+              <p class="text-xs font-semibold">
+                <i :class="[termIcon(draw.term_key), 'mr-1']" aria-hidden="true"></i>{{ termName(draw.term_key) }}
+              </p>
               <p class="text-[11px] text-muted">
                 {{ draw.rarity }} · {{ draw.mutation }} · {{ packName(draw.tier) }} · +{{ formatNumber(draw.reward) }} coins
               </p>
@@ -240,40 +250,21 @@
           </div>
 
           <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-            <article
-              v-for="item in tierRow.items"
-              :key="item.termKey"
-              class="rounded-lg border p-3"
-              :class="item.owned ? 'border-soft bg-white' : 'border-dashed border-soft bg-white/45 card-book__missing'"
-              :style="item.owned ? cardMutationStyle(item.bestMutation) : null"
-            >
-              <div class="flex items-start justify-between gap-2">
-                <p class="text-xs font-semibold">{{ item.owned ? item.name : 'Unknown Card' }}</p>
-                <span class="card-book__icon">{{ item.owned ? item.icon : '?' }}</span>
+            <div v-for="item in tierRow.items" :key="item.termKey" class="space-y-1">
+              <term-card
+                :name="item.name"
+                :tier="item.tier"
+                :rarity="item.rarity"
+                :mutation="item.bestMutation"
+                :icon="item.icon"
+                :coins="item.value"
+                :unknown="!item.owned"
+              />
+              <div class="rounded-md border border-soft bg-white/70 px-2 py-1 text-[11px] text-muted">
+                <p>Slot {{ item.slot }} · Copies {{ item.copies }}</p>
+                <p>Best Mutation: {{ mutationLabel(item.bestMutation) }}</p>
               </div>
-
-              <p class="mt-1 text-[11px] text-muted">{{ item.owned ? item.name : `Slot ${item.slot}` }}</p>
-              <p class="text-[11px] text-muted">
-                <span class="rounded-full px-1.5 py-0.5 text-white" :style="{ background: rarityColor(item.rarity) }">{{ item.rarity }}</span>
-                · Value {{ item.value }}
-              </p>
-
-              <div class="mt-2 grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <p class="text-muted">Copies</p>
-                  <p class="font-semibold">{{ item.copies }}</p>
-                </div>
-                <div>
-                  <p class="text-muted">Mutation</p>
-                  <span
-                    class="rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                    :style="mutationBadgeStyle(item.bestMutation)"
-                  >
-                    {{ mutationLabel(item.bestMutation) }}
-                  </span>
-                </div>
-              </div>
-            </article>
+            </div>
           </div>
         </section>
       </div>
@@ -297,7 +288,8 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import DebugPanel from '../components/game/DebugPanel.vue'
-import { RARITY_COLORS, TERMS, TERMS_BY_KEY } from '../data/terms'
+import TermCard from '../components/game/TermCard.vue'
+import { TERMS, TERMS_BY_KEY } from '../data/terms'
 import { BALANCE_CONFIG } from '../lib/balanceConfig.mjs'
 import {
   SHOP_UPGRADES,
@@ -316,29 +308,6 @@ import {
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 const MUTATION_ORDER = ['none', 'foil', 'holo']
 const TIER_COLOR_MAP = BALANCE_CONFIG.tierColors || {}
-const MUTATION_STYLE_MAP = {
-  none: {
-    badgeText: '#5f6f93',
-    badgeBg: 'rgba(95, 111, 147, 0.1)',
-    badgeBorder: 'rgba(95, 111, 147, 0.24)',
-    cardBorder: 'var(--border-soft)',
-    cardBg: 'linear-gradient(140deg, rgba(255,255,255,1), rgba(255,255,255,1))',
-  },
-  foil: {
-    badgeText: '#1b5fb8',
-    badgeBg: 'rgba(64, 150, 246, 0.14)',
-    badgeBorder: 'rgba(64, 150, 246, 0.35)',
-    cardBorder: 'rgba(64, 150, 246, 0.3)',
-    cardBg: 'linear-gradient(140deg, rgba(64,150,246,0.08), rgba(255,255,255,1) 55%)',
-  },
-  holo: {
-    badgeText: '#1f7f89',
-    badgeBg: 'rgba(53, 189, 206, 0.14)',
-    badgeBorder: 'rgba(53, 189, 206, 0.35)',
-    cardBorder: 'rgba(53, 189, 206, 0.33)',
-    cardBg: 'linear-gradient(140deg, rgba(53,189,206,0.08), rgba(255,255,255,1) 55%)',
-  },
-}
 
 const store = useStore()
 const manualPackPhase = ref('ready')
@@ -421,6 +390,21 @@ const rarityRows = computed(() => {
     })
   }
   return rows
+})
+
+const manualRevealCard = computed(() => {
+  if (!manualRevealDraw.value) return null
+  const term = TERMS_BY_KEY[manualRevealDraw.value.term_key]
+  if (!term) return null
+
+  return {
+    name: term.name,
+    tier: Number(manualRevealDraw.value.tier || term.tier || 1),
+    rarity: manualRevealDraw.value.rarity || term.rarity || 'common',
+    mutation: normalizeMutation(manualRevealDraw.value.mutation || 'none'),
+    icon: term.icon || 'fa-solid fa-circle-question',
+    coins: Number(manualRevealDraw.value.reward || 0),
+  }
 })
 
 const ownedTermsByKey = computed(() => {
@@ -698,7 +682,7 @@ function termName(termKey) {
 }
 
 function termIcon(termKey) {
-  return TERMS_BY_KEY[termKey]?.icon || 'card'
+  return TERMS_BY_KEY[termKey]?.icon || 'fa-solid fa-circle-question'
 }
 
 function percent(value) {
@@ -717,33 +701,8 @@ function normalizeMutation(mutation) {
 
 function mutationLabel(mutation) {
   const normalized = normalizeMutation(mutation)
-  if (normalized === 'none') return 'Base'
+  if (normalized === 'none') return 'None'
   return normalized.charAt(0).toUpperCase() + normalized.slice(1)
-}
-
-function mutationStyle(mutation) {
-  return MUTATION_STYLE_MAP[normalizeMutation(mutation)] || MUTATION_STYLE_MAP.none
-}
-
-function mutationBadgeStyle(mutation) {
-  const style = mutationStyle(mutation)
-  return {
-    color: style.badgeText,
-    backgroundColor: style.badgeBg,
-    border: `1px solid ${style.badgeBorder}`,
-  }
-}
-
-function cardMutationStyle(mutation) {
-  const style = mutationStyle(mutation)
-  return {
-    borderColor: style.cardBorder,
-    background: style.cardBg,
-  }
-}
-
-function rarityColor(rarity) {
-  return RARITY_COLORS[rarity] || 'var(--rarity-common)'
 }
 
 function areTierWeightsEqual(a, b) {
@@ -873,6 +832,10 @@ function sleep(ms) {
   font-weight: 700;
 }
 
+.manual-pack__preview-card {
+  width: min(188px, 92%);
+}
+
 .manual-pack__spinner {
   width: 40px;
   height: 40px;
@@ -881,23 +844,6 @@ function sleep(ms) {
   border: 3px solid rgba(255, 255, 255, 0.3);
   border-top-color: #ffffff;
   animation: pack-spin 0.9s linear infinite;
-}
-
-.card-book__missing {
-  opacity: 0.72;
-}
-
-.card-book__icon {
-  min-width: 2.1rem;
-  border-radius: 9999px;
-  border: 1px solid var(--border-soft);
-  background: rgba(63, 98, 217, 0.1);
-  color: #24335f;
-  font-size: 0.62rem;
-  font-weight: 700;
-  line-height: 1;
-  padding: 0.3rem 0.45rem;
-  text-align: center;
 }
 
 .reset-tools__toggle {
