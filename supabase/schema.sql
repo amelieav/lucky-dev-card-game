@@ -1759,39 +1759,128 @@ $$;
 
 drop view if exists public.leaderboard_v1;
 create view public.leaderboard_v1 as
+with signup_order as (
+  select
+    pp.user_id,
+    row_number() over (
+      order by pp.created_at asc, pp.user_id asc
+    )::int as player_number
+  from public.player_profile pp
+),
+best_card as (
+  select
+    pt.user_id,
+    pt.term_key as best_term_key,
+    tc.display_name as best_term_name,
+    tc.tier as best_term_tier,
+    tc.rarity as best_term_rarity,
+    public.mutation_rank(pt.best_mutation) as best_mutation_rank,
+    pt.best_mutation as best_term_mutation,
+    pt.copies as best_term_copies,
+    row_number() over (
+      partition by pt.user_id
+      order by
+        tc.tier desc,
+        case tc.rarity
+          when 'legendary' then 3
+          when 'rare' then 2
+          else 1
+        end desc,
+        public.mutation_rank(pt.best_mutation) desc,
+        pt.copies desc,
+        pt.term_key asc
+    ) as row_num
+  from public.player_terms pt
+  join public.term_catalog tc on tc.term_key = pt.term_key
+)
 select
   row_number() over (
-    order by ps.coins desc,
-             ps.updated_at asc
+    order by
+      coalesce(bc.best_term_tier, 0) desc,
+      case coalesce(bc.best_term_rarity, 'common')
+        when 'legendary' then 3
+        when 'rare' then 2
+        else 1
+      end desc,
+      coalesce(bc.best_mutation_rank, 0) desc,
+      coalesce(bc.best_term_copies, 0) desc,
+      ps.coins desc,
+      so.player_number asc
   )::int as rank,
+  count(*) over ()::int as total_players,
+  ps.user_id,
   pp.display_name,
   ps.coins::bigint as score,
   ps.value_level,
   ps.highest_tier_unlocked,
-  ps.updated_at
+  ps.updated_at,
+  so.player_number,
+  bc.best_term_key,
+  bc.best_term_name,
+  coalesce(bc.best_term_tier, 0)::int as best_term_tier,
+  coalesce(bc.best_term_rarity, 'common') as best_term_rarity,
+  coalesce(bc.best_term_mutation, 'none') as best_term_mutation,
+  coalesce(bc.best_term_copies, 0)::int as best_term_copies
 from public.player_state ps
-join public.player_profile pp on pp.user_id = ps.user_id;
+join public.player_profile pp on pp.user_id = ps.user_id
+join signup_order so on so.user_id = ps.user_id
+left join best_card bc on bc.user_id = ps.user_id and bc.row_num = 1;
 
 create or replace function public.get_leaderboard(p_limit int default 50)
 returns table (
   rank int,
+  total_players int,
+  user_id uuid,
   display_name text,
   score bigint,
   value_level int,
   highest_tier_unlocked int,
-  updated_at timestamptz
+  updated_at timestamptz,
+  player_number int,
+  best_term_key text,
+  best_term_name text,
+  best_term_tier int,
+  best_term_rarity text,
+  best_term_mutation text,
+  best_term_copies int,
+  viewer_player_number int,
+  is_you boolean
 )
 language sql
 security definer
 set search_path = public
 as $$
+  with viewer_meta as (
+    select
+      so.player_number as viewer_player_number
+    from (
+      select
+        pp.user_id,
+        row_number() over (
+          order by pp.created_at asc, pp.user_id asc
+        )::int as player_number
+      from public.player_profile pp
+    ) so
+    where so.user_id = auth.uid()
+  )
   select
     l.rank,
+    l.total_players,
+    l.user_id,
     l.display_name,
     l.score,
     l.value_level,
     l.highest_tier_unlocked,
-    l.updated_at
+    l.updated_at,
+    l.player_number,
+    l.best_term_key,
+    l.best_term_name,
+    l.best_term_tier,
+    l.best_term_rarity,
+    l.best_term_mutation,
+    l.best_term_copies,
+    (select vm.viewer_player_number from viewer_meta vm),
+    (l.user_id = auth.uid()) as is_you
   from public.leaderboard_v1 l
   order by l.rank asc
   limit greatest(1, least(coalesce(p_limit, 50), 100));

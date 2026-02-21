@@ -514,12 +514,19 @@ export function syncLocalPlayer(user, { debugAllowed = false, rng = Math.random,
 
 export function openLocalPack(
   user,
-  { source = 'manual', debugOverride = null, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
+  {
+    source = 'manual',
+    debugOverride = null,
+    debugAllowed = false,
+    allowAutoProgress = true,
+    rng = Math.random,
+    nowMs = Date.now(),
+  } = {},
 ) {
   assertAuthenticatedUser(user)
 
   const record = readRecord(user, rng, nowMs)
-  if (source !== 'auto') {
+  if (source !== 'auto' && allowAutoProgress) {
     applyAutoProgress(record, { debugAllowed, rng, nowMs })
   } else {
     applyAutoProgress(record, {

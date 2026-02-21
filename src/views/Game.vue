@@ -46,11 +46,20 @@
           <div class="text-right">
             <p class="text-xs text-muted">{{ autoUnlocked ? 'Loop Cadence' : 'Open Mode' }}</p>
             <p class="text-sm font-semibold">{{ loopCadenceLabel }}</p>
+            <button
+              v-if="autoUnlocked"
+              class="btn-secondary mt-2"
+              type="button"
+              :disabled="actionLoading"
+              @click="toggleAutoRoll"
+            >
+              {{ autoRollEnabled ? 'Pause Auto' : 'Resume Auto' }}
+            </button>
           </div>
         </div>
 
         <div
-          v-if="autoUnlocked"
+          v-if="autoUnlocked && autoRollEnabled"
           class="manual-pack mt-4"
           :class="`manual-pack--${manualPackPhase}`"
           role="status"
@@ -58,9 +67,9 @@
         >
           <template v-if="manualPackPhase === 'ready'">
             <div class="manual-pack__card" aria-hidden="true"></div>
-            <p class="manual-pack__eyebrow">Card pack ready</p>
-            <p class="manual-pack__title">Waiting for next roll...</p>
-            <p class="manual-pack__hint">Tier is decided by probability</p>
+            <p class="manual-pack__eyebrow">{{ autoRollEnabled ? 'Card pack ready' : 'Auto roll paused' }}</p>
+            <p class="manual-pack__title">{{ autoRollEnabled ? 'Waiting for next roll...' : 'Press Resume Auto' }}</p>
+            <p class="manual-pack__hint">{{ autoRollEnabled ? 'Tier is decided by probability' : 'Auto opener is unlocked but paused' }}</p>
           </template>
 
           <template v-else-if="manualPackPhase === 'opening'">
@@ -92,9 +101,9 @@
         >
           <template v-if="manualPackPhase === 'ready'">
             <div class="manual-pack__card" aria-hidden="true"></div>
-            <p class="manual-pack__eyebrow">Card pack ready</p>
-            <p class="manual-pack__title">Tap to open</p>
-            <p class="manual-pack__hint">Tier is decided by probability</p>
+            <p class="manual-pack__eyebrow">{{ autoUnlocked ? 'Auto roll paused' : 'Card pack ready' }}</p>
+            <p class="manual-pack__title">{{ autoUnlocked ? 'Tap to open manually' : 'Tap to open' }}</p>
+            <p class="manual-pack__hint">{{ autoUnlocked ? 'Resume auto anytime from the button above' : 'Tier is decided by probability' }}</p>
           </template>
 
           <template v-else-if="manualPackPhase === 'opening'">
@@ -118,47 +127,24 @@
 
         <div v-if="recentDraws.length" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
           <p class="text-[11px] uppercase tracking-wide text-muted">Recent opened cards</p>
-          <div class="mt-2 space-y-1.5">
+          <div class="recent-mini-strip mt-2">
             <div
               v-for="(draw, index) in recentDraws"
               :key="`recent-${index}-${draw.term_key}-${draw.copies}-${draw.level}-${draw.reward}`"
-              class="rounded-md border border-soft bg-white/70 px-2 py-1.5"
+              class="recent-mini-card"
+              :class="`recent-mini-card--${normalizeMutation(draw.mutation)}`"
             >
-              <p class="text-xs font-semibold">
-                <i :class="[termIcon(draw.term_key), 'mr-1']" aria-hidden="true"></i>{{ termName(draw.term_key) }}
+              <i :class="[termIcon(draw.term_key), 'recent-mini-card__icon']" aria-hidden="true"></i>
+              <p class="recent-mini-card__rarity" :class="`recent-mini-card__rarity--${normalizeRarity(draw.rarity)}`">
+                {{ normalizeRarity(draw.rarity) }}
               </p>
-              <p class="text-[11px] text-muted">
-                {{ draw.rarity }} · {{ draw.mutation }} · {{ packName(draw.tier) }} · +{{ formatNumber(draw.reward) }} coins
+              <p class="recent-mini-card__mutation">
+                {{ mutationStateLabel(draw.mutation) }}
               </p>
             </div>
           </div>
         </div>
 
-        <div class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
-          <label class="reset-tools__toggle">
-            <input
-              v-model="showResetButton"
-              type="checkbox"
-              class="h-4 w-4"
-              @change="persistResetButtonPreference"
-            />
-            <span>Show reset button (testing)</span>
-          </label>
-
-          <button
-            v-if="showResetButton"
-            class="btn-danger mt-2"
-            type="button"
-            :disabled="!canResetAccount"
-            @click="resetAccount"
-          >
-            Reset Profile
-          </button>
-
-          <p v-if="showResetButton" class="mt-1 text-[11px] text-muted">
-            Resets coins, cards, upgrades, and progress back to a fresh profile.
-          </p>
-        </div>
       </section>
 
       <aside class="card p-4 text-sm">
@@ -249,7 +235,7 @@
             <p class="text-xs text-muted">{{ tierRow.collected }}/{{ tierRow.items.length }} found</p>
           </div>
 
-          <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <div v-for="item in tierRow.items" :key="item.termKey" class="space-y-1">
               <term-card
                 :name="item.name"
@@ -312,9 +298,12 @@ const TIER_COLOR_MAP = BALANCE_CONFIG.tierColors || {}
 const store = useStore()
 const manualPackPhase = ref('ready')
 const manualRevealDraw = ref(null)
-const showResetButton = ref(false)
+const displayedRecentDraws = ref([])
+const autoRollEnabled = ref(true)
 
-const RESET_BUTTON_PREF_KEY = 'lucky_agent_show_reset_button'
+const REVEAL_READ_MS = 2750
+const MANUAL_OPENING_EXTRA_MS = 500
+const AUTO_OPENING_MS = 420
 
 let autoRollTimer = null
 let syncTimer = null
@@ -325,7 +314,7 @@ const playerState = computed(() => snapshot.value?.state || null)
 const playerTerms = computed(() => snapshot.value?.terms || [])
 const gameError = computed(() => store.state.game.error)
 const actionLoading = computed(() => store.state.game.actionLoading)
-const recentDraws = computed(() => store.state.game.recentDraws || [])
+const recentDraws = computed(() => displayedRecentDraws.value)
 
 const debugEnabled = computed(() => store.state.debug.enabled)
 const debugPanelOpen = computed(() => store.state.debug.panelOpen)
@@ -346,10 +335,12 @@ const autoLoopDelayMs = computed(() => {
 })
 const autoRateLabel = computed(() => {
   if (!autoUnlocked.value) return 'Locked'
+  if (!autoRollEnabled.value) return `Paused (${(autoLoopDelayMs.value / 1000).toFixed(1)}s wait)`
   return `1 pack / ${(autoLoopDelayMs.value / 1000).toFixed(1)}s`
 })
 const loopCadenceLabel = computed(() => {
   if (!autoUnlocked.value) return `1 click / ${(BALANCE_CONFIG.manualOpenCooldownMs / 1000).toFixed(1)}s`
+  if (!autoRollEnabled.value) return `Paused · ${(autoLoopDelayMs.value / 1000).toFixed(1)}s wait`
   return `1 pack / ${(autoLoopDelayMs.value / 1000).toFixed(1)}s`
 })
 
@@ -498,17 +489,17 @@ const shopRows = computed(() => {
 
 const canRunAutoRoll = computed(() => {
   return autoUnlocked.value
+    && autoRollEnabled.value
     && !!playerState.value
     && !actionLoading.value
     && manualPackPhase.value === 'ready'
 })
 const canOpenManual = computed(() => {
-  return !autoUnlocked.value
+  return (!autoUnlocked.value || !autoRollEnabled.value)
     && !!playerState.value
     && !actionLoading.value
     && manualPackPhase.value === 'ready'
 })
-const canResetAccount = computed(() => !!playerState.value && !actionLoading.value)
 
 const termOptions = TERMS.map((term) => ({ key: term.key, name: term.name }))
 
@@ -519,8 +510,9 @@ onMounted(async () => {
     await store.dispatch('game/bootstrapPlayer')
   }
 
-  showResetButton.value = readResetButtonPreference()
-  if (autoUnlocked.value) {
+  displayedRecentDraws.value = [...(store.state.game.recentDraws || [])]
+
+  if (autoUnlocked.value && autoRollEnabled.value) {
     scheduleAutoRoll(120)
   }
 
@@ -546,6 +538,7 @@ onUnmounted(() => {
 
 watch(autoUnlocked, (enabled) => {
   if (!enabled) {
+    autoRollEnabled.value = true
     if (autoRollTimer) {
       window.clearTimeout(autoRollTimer)
       autoRollTimer = null
@@ -553,7 +546,28 @@ watch(autoUnlocked, (enabled) => {
     return
   }
 
+  if (manualPackPhase.value === 'ready' && autoRollEnabled.value) {
+    scheduleAutoRoll(120)
+  }
+})
+
+watch(autoLoopDelayMs, () => {
+  if (!autoUnlocked.value || !autoRollEnabled.value) return
   if (manualPackPhase.value === 'ready') {
+    scheduleAutoRoll(120)
+  }
+})
+
+watch(autoRollEnabled, (enabled) => {
+  if (!enabled) {
+    if (autoRollTimer) {
+      window.clearTimeout(autoRollTimer)
+      autoRollTimer = null
+    }
+    return
+  }
+
+  if (autoUnlocked.value && manualPackPhase.value === 'ready') {
     scheduleAutoRoll(120)
   }
 })
@@ -565,7 +579,7 @@ function scheduleAutoRoll(delayMs = 120) {
     window.clearTimeout(autoRollTimer)
   }
 
-  if (!autoUnlocked.value) return
+  if (!autoUnlocked.value || !autoRollEnabled.value) return
 
   autoRollTimer = window.setTimeout(() => {
     void runAutoRollTick()
@@ -587,7 +601,12 @@ async function runAutoRollTick() {
 async function runAutoRollCycle() {
   if (!canRunAutoRoll.value) return
 
-  const cycle = getCycleDurations(autoLoopDelayMs.value)
+  const waitMs = Math.max(0, Number(autoLoopDelayMs.value || 0))
+  if (waitMs > 0) {
+    await sleep(waitMs)
+    if (!canRunAutoRoll.value) return
+  }
+
   const previousDraw = store.state.game.openResult
   manualRevealDraw.value = null
   await store.dispatch('game/openPack', { source: 'auto' })
@@ -597,15 +616,23 @@ async function runAutoRollCycle() {
 
   if (!hasFreshDraw) {
     manualPackPhase.value = 'ready'
+    if (autoUnlocked.value && autoRollEnabled.value) {
+      scheduleAutoRoll(120)
+    }
     return
   }
 
   manualPackPhase.value = 'opening'
-  await sleep(cycle.openingMs)
+  await sleep(AUTO_OPENING_MS)
+  if (!viewActive) return
   manualRevealDraw.value = draw
   manualPackPhase.value = 'reveal'
-  await sleep(cycle.revealMs)
+  await sleep(REVEAL_READ_MS)
   manualPackPhase.value = 'ready'
+  appendRecentDraw(draw)
+  if (autoUnlocked.value && autoRollEnabled.value) {
+    scheduleAutoRoll(120)
+  }
 }
 
 async function openManualPack() {
@@ -614,50 +641,47 @@ async function openManualPack() {
   const cycle = getCycleDurations(BALANCE_CONFIG.manualOpenCooldownMs)
   const previousDraw = store.state.game.openResult
   manualRevealDraw.value = null
-  await store.dispatch('game/openPack', { source: 'manual' })
+  await store.dispatch('game/openPack', {
+    source: 'manual',
+    pauseAutoProgress: autoUnlocked.value && !autoRollEnabled.value,
+  })
 
   const draw = store.state.game.openResult
   const hasFreshDraw = !store.state.game.error && draw && draw !== previousDraw
 
   if (!hasFreshDraw) {
     manualPackPhase.value = 'ready'
+    if (autoUnlocked.value && autoRollEnabled.value) {
+      scheduleAutoRoll(120)
+    }
     return
   }
 
   manualPackPhase.value = 'opening'
-  await sleep(cycle.openingMs)
+  await sleep(cycle.openingMs + MANUAL_OPENING_EXTRA_MS)
   manualRevealDraw.value = draw
   manualPackPhase.value = 'reveal'
-  await sleep(cycle.revealMs)
+  await sleep(REVEAL_READ_MS)
   manualPackPhase.value = 'ready'
+  appendRecentDraw(draw)
+  if (autoUnlocked.value && autoRollEnabled.value) {
+    scheduleAutoRoll(120)
+  }
 }
 
 async function buyUpgrade(upgradeKey) {
   await store.dispatch('game/buyUpgrade', { upgradeKey })
 }
 
-async function resetAccount() {
-  if (!canResetAccount.value) return
-
-  const confirmed = window.confirm('Reset your profile to a fresh new state? This cannot be undone.')
-  if (!confirmed) return
-
-  manualPackPhase.value = 'ready'
-  manualRevealDraw.value = null
-  await store.dispatch('game/resetAccount')
-  if (autoUnlocked.value) {
-    scheduleAutoRoll(300)
-  }
+function toggleAutoRoll() {
+  if (!autoUnlocked.value) return
+  autoRollEnabled.value = !autoRollEnabled.value
 }
 
-function persistResetButtonPreference() {
-  if (typeof window === 'undefined' || !window.localStorage) return
-  window.localStorage.setItem(RESET_BUTTON_PREF_KEY, showResetButton.value ? '1' : '0')
-}
-
-function readResetButtonPreference() {
-  if (typeof window === 'undefined' || !window.localStorage) return false
-  return window.localStorage.getItem(RESET_BUTTON_PREF_KEY) === '1'
+function appendRecentDraw(draw) {
+  if (!draw) return
+  displayedRecentDraws.value = [draw, ...displayedRecentDraws.value]
+    .slice(0, 5)
 }
 
 async function toggleDebugPanel() {
@@ -703,6 +727,19 @@ function mutationLabel(mutation) {
   const normalized = normalizeMutation(mutation)
   if (normalized === 'none') return 'None'
   return normalized.charAt(0).toUpperCase() + normalized.slice(1)
+}
+
+function mutationStateLabel(mutation) {
+  const normalized = normalizeMutation(mutation)
+  if (normalized === 'foil') return 'FOIL'
+  if (normalized === 'holo') return 'HOLO'
+  return 'NO EFFECT'
+}
+
+function normalizeRarity(rarity) {
+  const key = String(rarity || '').trim().toLowerCase()
+  if (key === 'rare' || key === 'legendary') return key
+  return 'common'
 }
 
 function areTierWeightsEqual(a, b) {
@@ -833,7 +870,73 @@ function sleep(ms) {
 }
 
 .manual-pack__preview-card {
-  width: min(188px, 92%);
+  width: min(228px, 96%);
+}
+
+.recent-mini-strip {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.recent-mini-card {
+  min-width: 76px;
+  border-radius: 0.7rem;
+  border: 1px solid var(--border-soft);
+  background: rgba(255, 255, 255, 0.82);
+  padding: 0.38rem 0.34rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.14rem;
+}
+
+.recent-mini-card__icon {
+  font-size: 1rem;
+  color: #172342;
+}
+
+.recent-mini-card__rarity {
+  font-size: 0.56rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 800;
+}
+
+.recent-mini-card__rarity--common {
+  color: #f08a24;
+}
+
+.recent-mini-card__rarity--rare {
+  color: #d64242;
+}
+
+.recent-mini-card__rarity--legendary {
+  color: #7e4bc9;
+}
+
+.recent-mini-card__mutation {
+  font-size: 0.52rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #4a5f8c;
+  font-weight: 700;
+}
+
+.recent-mini-card--foil {
+  background:
+    linear-gradient(145deg, rgba(255, 230, 190, 0.9), rgba(255, 255, 255, 0.88)),
+    rgba(255, 255, 255, 0.82);
+}
+
+.recent-mini-card--holo {
+  background:
+    linear-gradient(145deg, rgba(218, 246, 255, 0.9), rgba(247, 224, 255, 0.82), rgba(255, 255, 255, 0.86)),
+    rgba(255, 255, 255, 0.82);
 }
 
 .manual-pack__spinner {
@@ -844,29 +947,6 @@ function sleep(ms) {
   border: 3px solid rgba(255, 255, 255, 0.3);
   border-top-color: #ffffff;
   animation: pack-spin 0.9s linear infinite;
-}
-
-.reset-tools__toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.78rem;
-  color: var(--text-main);
-}
-
-.btn-danger {
-  border-radius: 0.75rem;
-  border: 1px solid #f7b0b7;
-  background: #d8404f;
-  color: #ffffff;
-  padding: 0.5rem 0.8rem;
-  font-weight: 700;
-  font-size: 0.82rem;
-}
-
-.btn-danger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 @keyframes pack-spin {

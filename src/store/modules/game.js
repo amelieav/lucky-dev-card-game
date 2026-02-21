@@ -135,7 +135,7 @@ export default {
       }
     },
 
-    async openPack({ commit, rootState }, { source = 'manual', debugOverride = null } = {}) {
+    async openPack({ commit, rootState }, { source = 'manual', debugOverride = null, pauseAutoProgress = false } = {}) {
       commit('setActionLoading', true)
       commit('setError', null)
 
@@ -147,6 +147,7 @@ export default {
               source,
               debugOverride: override,
               debugAllowed: rootState.debug.enabled,
+              allowAutoProgress: !pauseAutoProgress,
             })
           : await apiOpenPack({ source, debugOverride: override })
         const snapshot = normalizeSnapshot(data)
