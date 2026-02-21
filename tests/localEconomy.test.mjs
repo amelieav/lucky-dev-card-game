@@ -4,6 +4,7 @@ import {
   bootstrapLocalPlayer,
   buyLocalUpgrade,
   debugApplyLocal,
+  keepAliveLocalPlayer,
   openLocalPack,
   syncLocalPlayer,
   updateLocalNickname,
@@ -118,6 +119,25 @@ test('foil and holo mutations generate passive coins over time', () => {
   const synced = syncLocalPlayer(account, { debugAllowed: true, nowMs: 6_000 })
   assert.equal(synced.snapshot.state.passive_rate_cps, 4)
   assert.equal(synced.snapshot.state.coins - second.snapshot.state.coins, 16)
+})
+
+test('passive income accrues only during active heartbeat windows', () => {
+  const account = user('pack-active-window')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 1, term_key: 'hello_world', rarity: 'common', mutation: 'holo' },
+    nowMs: 1_000,
+  })
+
+  const atFive = keepAliveLocalPlayer(account, { debugAllowed: true, nowMs: 5_000 })
+  const atThirty = keepAliveLocalPlayer(account, { debugAllowed: true, nowMs: 30_000 })
+
+  assert.equal(atFive.snapshot.state.passive_rate_cps, 3)
+  assert.equal(atFive.snapshot.state.coins, 115)
+  assert.equal(atThirty.snapshot.state.coins, 160)
 })
 
 test('auto opener applies draws during sync ticks', () => {

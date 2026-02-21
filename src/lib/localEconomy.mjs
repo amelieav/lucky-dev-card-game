@@ -19,6 +19,7 @@ import {
 
 const STORAGE_PREFIX = 'lucky_agent_local_pack_economy_v1'
 const LEGACY_STORAGE_PREFIX = 'lucky_agent_local_economy_v1'
+const ACTIVE_WINDOW_SECONDS = 15
 const memoryStorage = new Map()
 
 const TERMS_BY_TIER = TERMS.reduce((acc, term) => {
@@ -91,6 +92,7 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
     auto_opens: 0,
     auto_open_progress: 0,
     passive_rate_cps: 0,
+    active_until_at: timestamp,
     last_tick_at: timestamp,
     created_at: timestamp,
     updated_at: timestamp,
@@ -136,6 +138,8 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
   merged.luck_level = merged.value_level
   merged.coins = Math.max(0, Number(merged.coins || 0))
   merged.auto_unlocked = Boolean(merged.auto_unlocked)
+  const activeUntilMs = Date.parse(merged.active_until_at || '')
+  merged.active_until_at = Number.isFinite(activeUntilMs) ? nowIso(activeUntilMs) : nowIso(nowMs)
   merged.terms = merged.terms.map((row) => sanitizeTermRow(row))
   merged.highest_tier_unlocked = getHighestUnlockedTier(merged)
   merged.passive_rate_cps = Math.max(0, Number(merged.passive_rate_cps || 0))
@@ -216,6 +220,7 @@ function toSnapshot(record, debugAllowed, nowMs = Date.now()) {
       passive_foil_cards: passiveSummary.foilCards,
       passive_holo_cards: passiveSummary.holoCards,
       auto_open_progress: record.auto_open_progress,
+      active_until_at: record.active_until_at,
       last_tick_at: record.last_tick_at,
       updated_at: record.updated_at,
     },
@@ -311,6 +316,31 @@ function validateDebugOverride(override) {
   if (override.tier && (Number(override.tier) < 1 || Number(override.tier) > 6)) {
     throw new Error('Invalid pack tier')
   }
+}
+
+function clampActiveWindowSeconds(windowSeconds = ACTIVE_WINDOW_SECONDS) {
+  return Math.max(5, Math.min(120, Math.floor(Number(windowSeconds || ACTIVE_WINDOW_SECONDS))))
+}
+
+function touchRecordActivity(record, { nowMs = Date.now(), windowSeconds = ACTIVE_WINDOW_SECONDS } = {}) {
+  const windowMs = clampActiveWindowSeconds(windowSeconds) * 1000
+  const currentActiveUntilMs = Date.parse(record.active_until_at || '')
+  const fallbackActiveUntilMs = nowMs
+  const activeUntilMs = Number.isFinite(currentActiveUntilMs) ? currentActiveUntilMs : fallbackActiveUntilMs
+  const nextActiveUntilMs = Math.max(activeUntilMs, nowMs + windowMs)
+  record.active_until_at = nowIso(nextActiveUntilMs)
+}
+
+function activeElapsedSeconds(record, nowMs = Date.now()) {
+  const lastTickMs = Date.parse(record.last_tick_at || nowIso(nowMs))
+  if (!Number.isFinite(lastTickMs)) return 0
+
+  const activeUntilMs = Date.parse(record.active_until_at || '')
+  const effectiveNowMs = Number.isFinite(activeUntilMs)
+    ? Math.min(nowMs, activeUntilMs)
+    : nowMs
+
+  return Math.max(0, Math.floor((effectiveNowMs - lastTickMs) / 1000))
 }
 
 function applySinglePackOpen(
@@ -420,8 +450,7 @@ function applyAutoProgress(record, {
   nowMs = Date.now(),
   allowAutoDraws = true,
 } = {}) {
-  const lastTick = Date.parse(record.last_tick_at || nowIso(nowMs))
-  const elapsedSeconds = Math.max(0, Math.floor((nowMs - lastTick) / 1000))
+  const elapsedSeconds = activeElapsedSeconds(record, nowMs)
   const cappedSeconds = Math.min(BALANCE_CONFIG.idleIncomeCapSeconds, elapsedSeconds)
   const passiveSummary = getPassiveIncomeSummaryFromTerms(record.terms)
 
@@ -479,6 +508,7 @@ function resetProgress(record, nowMs = Date.now()) {
   record.auto_opens = 0
   record.auto_open_progress = 0
   record.passive_rate_cps = 0
+  record.active_until_at = nowIso(nowMs)
   record.last_tick_at = nowIso(nowMs)
   record.updated_at = nowIso(nowMs)
   record.terms = []
@@ -490,6 +520,7 @@ export function bootstrapLocalPlayer(user, { debugAllowed = false, rng = Math.ra
 
   const record = readRecord(user, rng, nowMs)
   applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  touchRecordActivity(record, { nowMs })
   record.highest_tier_unlocked = getHighestUnlockedTier(record)
   writeRecord(user, record)
 
@@ -501,6 +532,7 @@ export function syncLocalPlayer(user, { debugAllowed = false, rng = Math.random,
 
   const record = readRecord(user, rng, nowMs)
   const { drawsApplied, lastDraw, maxTierDrawn } = applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  touchRecordActivity(record, { nowMs })
   record.highest_tier_unlocked = getHighestUnlockedTier(record)
   writeRecord(user, record)
 
@@ -536,6 +568,7 @@ export function openLocalPack(
       allowAutoDraws: false,
     })
   }
+  touchRecordActivity(record, { nowMs })
 
   const draw = applySinglePackOpen(record, {
     source,
@@ -562,6 +595,7 @@ export function buyLocalUpgrade(
 
   const record = readRecord(user, rng, nowMs)
   applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  touchRecordActivity(record, { nowMs })
 
   if (!canBuyUpgrade(record, upgradeKey)) {
     throw new Error('Upgrade unavailable or not enough coins')
@@ -611,6 +645,7 @@ export function updateLocalNickname(user, parts, { debugAllowed = false, rng = M
   validateNicknameParts(parts)
 
   const record = readRecord(user, rng, nowMs)
+  touchRecordActivity(record, { nowMs })
   const timestamp = nowIso(nowMs)
 
   record.profile = {
@@ -669,6 +704,7 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
 
   const record = readRecord(user, rng, nowMs)
   applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  touchRecordActivity(record, { nowMs })
 
   if (actionType === 'add_coins') {
     record.coins += Math.max(0, Number(action.amount || 0))
@@ -723,5 +759,30 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
   return {
     snapshot: toSnapshot(record, debugAllowed, nowMs),
     debug_action: actionType,
+  }
+}
+
+export function keepAliveLocalPlayer(
+  user,
+  { debugAllowed = false, rng = Math.random, nowMs = Date.now(), windowSeconds = ACTIVE_WINDOW_SECONDS } = {},
+) {
+  assertAuthenticatedUser(user)
+
+  const record = readRecord(user, rng, nowMs)
+  applyAutoProgress(record, {
+    debugAllowed,
+    rng,
+    nowMs,
+    allowAutoDraws: false,
+  })
+  touchRecordActivity(record, { nowMs, windowSeconds })
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+  writeRecord(user, record)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    draws_applied: 0,
+    draw: null,
+    draw_max_tier: 0,
   }
 }

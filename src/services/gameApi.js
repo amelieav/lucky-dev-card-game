@@ -21,6 +21,20 @@ export async function bootstrapPlayer() {
   return unwrap(await supabase.rpc('bootstrap_player'))
 }
 
+export async function keepAlive() {
+  const primary = await supabase.rpc('keep_alive')
+
+  if (!primary.error) {
+    return primary.data
+  }
+
+  if (!isMissingRpcError(primary.error, 'keep_alive')) {
+    throw primary.error
+  }
+
+  return null
+}
+
 export async function openPack({ source = 'manual', debugOverride = null } = {}) {
   const primary = await supabase.rpc('open_pack', {
     p_source: source,

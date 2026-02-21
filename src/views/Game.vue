@@ -354,7 +354,11 @@ const playerCoinsDisplay = computed(() => {
   const lastTickMs = Date.parse(playerState.value?.last_tick_at || '')
   if (!Number.isFinite(lastTickMs)) return baseCoins
 
-  const elapsedSeconds = Math.max(0, Math.floor((liveNowMs.value - lastTickMs) / 1000))
+  const activeUntilMs = Date.parse(playerState.value?.active_until_at || '')
+  const effectiveNowMs = Number.isFinite(activeUntilMs)
+    ? Math.min(liveNowMs.value, activeUntilMs)
+    : liveNowMs.value
+  const elapsedSeconds = Math.max(0, Math.floor((effectiveNowMs - lastTickMs) / 1000))
   return baseCoins + (elapsedSeconds * passiveRateCps.value)
 })
 const leaderboardPosition = computed(() => {

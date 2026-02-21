@@ -2,6 +2,7 @@ import {
   bootstrapPlayer as apiBootstrapPlayer,
   buyUpgrade as apiBuyUpgrade,
   debugApply as apiDebugApply,
+  keepAlive as apiKeepAlive,
   openPack as apiOpenPack,
   resetAccount as apiResetAccount,
   updateNickname as apiUpdateNickname,
@@ -10,6 +11,7 @@ import {
   bootstrapLocalPlayer,
   buyLocalUpgrade,
   debugApplyLocal,
+  keepAliveLocalPlayer,
   openLocalPack,
   resetLocalAccount,
   syncLocalPlayer,
@@ -132,6 +134,27 @@ export default {
         }
       } catch (error) {
         commit('setError', error.message || 'Unable to sync player state.')
+      }
+    },
+
+    async keepAlive({ commit, rootState }) {
+      try {
+        const user = rootState.auth.user
+        if (!user?.id) return
+
+        const data = LOCAL_ECONOMY_ENABLED
+          ? keepAliveLocalPlayer(user, { debugAllowed: rootState.debug.enabled })
+          : await apiKeepAlive()
+        if (!data) return
+
+        const snapshot = normalizeSnapshot(data)
+        commit('applySnapshot', snapshot)
+
+        if (data?.draw) {
+          commit('setOpenResult', data.draw)
+        }
+      } catch (_) {
+        // Keep-alive must be non-disruptive; explicit actions surface actionable errors.
       }
     },
 

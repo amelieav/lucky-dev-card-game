@@ -29,6 +29,7 @@ create table if not exists public.player_state (
   auto_unlocked boolean not null default false,
   auto_speed_level int not null default 0,
   auto_open_progress numeric not null default 0,
+  active_until_at timestamptz not null default now(),
   last_tick_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -43,6 +44,7 @@ alter table public.player_state add column if not exists value_level int not nul
 alter table public.player_state add column if not exists auto_unlocked boolean not null default false;
 alter table public.player_state add column if not exists auto_speed_level int not null default 0;
 alter table public.player_state add column if not exists auto_open_progress numeric not null default 0;
+alter table public.player_state add column if not exists active_until_at timestamptz not null default now();
 
 update public.player_state
 set packs_opened = eggs_opened
@@ -1005,6 +1007,21 @@ begin
 end;
 $$;
 
+create or replace function public.touch_player_activity(p_user_id uuid, p_window_seconds int default 15)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  window_seconds int := greatest(5, least(coalesce(p_window_seconds, 15), 120));
+begin
+  update public.player_state
+  set active_until_at = greatest(coalesce(active_until_at, now()), now() + make_interval(secs => window_seconds))
+  where user_id = p_user_id;
+end;
+$$;
+
 create or replace function public.apply_auto_progress(p_user_id uuid)
 returns jsonb
 language plpgsql
@@ -1014,6 +1031,7 @@ as $$
 declare
   state_row public.player_state;
   term_row public.player_terms;
+  effective_now timestamptz;
   elapsed_seconds int;
   capped_seconds int;
   passive_rate_cps int := 0;
@@ -1038,7 +1056,8 @@ begin
     return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
   end if;
 
-  elapsed_seconds := greatest(0, extract(epoch from now() - state_row.last_tick_at)::int);
+  effective_now := least(now(), coalesce(state_row.active_until_at, now()));
+  elapsed_seconds := greatest(0, extract(epoch from effective_now - state_row.last_tick_at)::int);
   capped_seconds := least(43200, elapsed_seconds);
   passive_rate_cps := public.recompute_passive_rate_bp(p_user_id);
 
@@ -1144,6 +1163,7 @@ set search_path = public
 as $$
 declare
   state_row public.player_state;
+  effective_now timestamptz;
   elapsed_seconds int;
   capped_seconds int;
   passive_rate_cps int := 0;
@@ -1157,7 +1177,8 @@ begin
     return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
   end if;
 
-  elapsed_seconds := greatest(0, extract(epoch from now() - state_row.last_tick_at)::int);
+  effective_now := least(now(), coalesce(state_row.active_until_at, now()));
+  elapsed_seconds := greatest(0, extract(epoch from effective_now - state_row.last_tick_at)::int);
   capped_seconds := least(43200, elapsed_seconds);
   passive_rate_cps := public.recompute_passive_rate_bp(p_user_id);
 
@@ -1215,6 +1236,7 @@ as $$
       auto_unlocked,
       auto_speed_level,
       auto_open_progress,
+      active_until_at,
       last_tick_at,
       updated_at
     from public.player_state
@@ -1272,6 +1294,29 @@ begin
 
   perform public.ensure_player_initialized(uid);
   perform public.apply_auto_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  return public.player_snapshot(uid);
+end;
+$$;
+
+create or replace function public.keep_alive()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_passive_progress(uid);
+  perform public.touch_player_activity(uid, 15);
 
   return public.player_snapshot(uid);
 end;
@@ -1313,6 +1358,7 @@ begin
   else
     perform public.apply_auto_progress(uid);
   end if;
+  perform public.touch_player_activity(uid, 15);
 
   select * into state_row
   from public.player_state
@@ -1467,6 +1513,7 @@ begin
 
   perform public.ensure_player_initialized(uid);
   perform public.apply_auto_progress(uid);
+  perform public.touch_player_activity(uid, 15);
 
   select * into state_row
   from public.player_state
@@ -1639,6 +1686,7 @@ begin
   end if;
 
   perform public.ensure_player_initialized(uid);
+  perform public.touch_player_activity(uid, 15);
 
   if not (p_a = any(public.allowed_nick_part_a())) then
     raise exception 'Invalid nickname part A';
@@ -1700,6 +1748,7 @@ begin
       auto_unlocked = false,
       auto_speed_level = 0,
       auto_open_progress = 0,
+      active_until_at = now(),
       last_tick_at = now(),
       updated_at = now()
   where user_id = uid;
@@ -2008,6 +2057,7 @@ as $$
 $$;
 
 grant execute on function public.bootstrap_player() to authenticated;
+grant execute on function public.keep_alive() to authenticated;
 grant execute on function public.open_pack(text, jsonb) to authenticated;
 grant execute on function public.buy_upgrade(text) to authenticated;
 grant execute on function public.open_egg(int, jsonb) to authenticated;
