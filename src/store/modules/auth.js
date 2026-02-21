@@ -12,6 +12,29 @@ import {
 let authListener = null
 let initAuthPromise = null
 
+function isLockAcquireTimeout(error) {
+  if (!error) return false
+  if (error.isAcquireTimeout) return true
+  const message = String(error.message || '').toLowerCase()
+  return message.includes('lockmanager') && message.includes('timed out')
+}
+
+async function withSingleRetryOnLockTimeout(task) {
+  try {
+    const first = await task()
+    if (!isLockAcquireTimeout(first?.error)) {
+      return first
+    }
+  } catch (error) {
+    if (!isLockAcquireTimeout(error)) {
+      throw error
+    }
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  return task()
+}
+
 export default {
   namespaced: true,
   state: () => ({
@@ -59,6 +82,7 @@ export default {
       initAuthPromise = (async () => {
         commit('setLoading', true)
         commit('setError', null)
+        let initialized = false
 
         try {
           const code = getCodeFromUrl()
@@ -68,16 +92,16 @@ export default {
           const refreshToken = getRefreshTokenFromUrl()
 
           if (code) {
-            const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+            const { error: exchangeError } = await withSingleRetryOnLockTimeout(() => supabase.auth.exchangeCodeForSession(code))
             if (exchangeError) {
               throw exchangeError
             }
             cleanupAuthParamsFromUrl()
           } else if (tokenHash && otpType) {
-            const { error: verifyError } = await supabase.auth.verifyOtp({
+            const { error: verifyError } = await withSingleRetryOnLockTimeout(() => supabase.auth.verifyOtp({
               token_hash: tokenHash,
               type: otpType,
-            })
+            }))
 
             if (verifyError) {
               throw verifyError
@@ -85,10 +109,10 @@ export default {
 
             cleanupAuthParamsFromUrl()
           } else if (accessToken && refreshToken) {
-            const { error: setSessionError } = await supabase.auth.setSession({
+            const { error: setSessionError } = await withSingleRetryOnLockTimeout(() => supabase.auth.setSession({
               access_token: accessToken,
               refresh_token: refreshToken,
-            })
+            }))
 
             if (setSessionError) {
               throw setSessionError
@@ -97,7 +121,7 @@ export default {
             cleanupAuthParamsFromUrl()
           }
 
-          const { data, error } = await supabase.auth.getSession()
+          const { data, error } = await withSingleRetryOnLockTimeout(() => supabase.auth.getSession())
           if (error) {
             throw error
           }
@@ -120,10 +144,11 @@ export default {
           if (data?.session?.user) {
             await dispatch('game/bootstrapPlayer', null, { root: true })
           }
+          initialized = true
         } catch (error) {
           commit('setError', error.message || 'Unable to initialize authentication.')
         } finally {
-          commit('setInitialized', true)
+          commit('setInitialized', initialized)
           commit('setLoading', false)
           initAuthPromise = null
         }

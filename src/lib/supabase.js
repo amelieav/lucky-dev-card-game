@@ -6,6 +6,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 const fallbackUrl = 'http://localhost:54321'
 const fallbackAnonKey = 'public-anon-key'
 const hasSupabaseEnv = Boolean(supabaseUrl && supabaseAnonKey)
+const bypassBrowserAuthLock = async (_name, _acquireTimeout, fn) => fn()
 
 if (!hasSupabaseEnv) {
   const message = 'Supabase environment variables are missing. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.'
@@ -25,7 +26,8 @@ export const supabase = createClient(
     auth: {
       // URL auth params are processed manually in auth/initAuth.
       detectSessionInUrl: false,
-      lockAcquireTimeout: 30000,
+      // Avoid Web Locks API timeouts in environments where lock acquisition stalls.
+      lock: bypassBrowserAuthLock,
     },
   },
 )
