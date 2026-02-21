@@ -179,6 +179,83 @@ set
   base_bp = excluded.base_bp;
 -- GENERATED: term_catalog:end
 
+-- Remove any legacy terms that are no longer part of the active catalog.
+delete from public.term_catalog tc
+where not exists (
+  select 1
+  from (values
+    ('hello_world'),
+    ('stack_overflow'),
+    ('console_log'),
+    ('todo_comment'),
+    ('off_by_one_error'),
+    ('infinite_loop'),
+    ('rubber_duck'),
+    ('missing_semicolon'),
+    ('copy_paste_dev'),
+    ('git_commit'),
+    ('merge_conflict'),
+    ('npm_install'),
+    ('404_not_found'),
+    ('debugger_breakpoint'),
+    ('json_parse_error'),
+    ('api_timeout'),
+    ('version_mismatch'),
+    ('environment_variable'),
+    ('hotfix_friday'),
+    ('regex_attempt'),
+    ('async_await'),
+    ('rest_api'),
+    ('unit_test'),
+    ('docker_container'),
+    ('ci_pipeline'),
+    ('code_review'),
+    ('refactor'),
+    ('memory_leak'),
+    ('sql_injection'),
+    ('cache_miss'),
+    ('microservices'),
+    ('distributed_system'),
+    ('event_loop'),
+    ('race_condition'),
+    ('load_balancer'),
+    ('tech_debt'),
+    ('deadlock'),
+    ('observability'),
+    ('feature_flag'),
+    ('blue_green_deploy'),
+    ('compiler'),
+    ('kernel'),
+    ('zero_day'),
+    ('concurrency_wizard'),
+    ('performance_tuning'),
+    ('ai_model'),
+    ('bare_metal'),
+    ('scalability'),
+    ('production_hotfix'),
+    ('immutable_infrastructure'),
+    ('the_clean_code'),
+    ('infinite_uptime'),
+    ('no_merge_conflicts'),
+    ('self_healing_system'),
+    ('the_senior_who_knows_everything'),
+    ('the_one_who_uses_vim'),
+    ('linus_mode'),
+    ('the_bug_that_was_documentation'),
+    ('100_test_coverage'),
+    ('it_works_on_first_try')
+  ) as canonical(term_key)
+  where canonical.term_key = tc.term_key
+);
+
+-- Drop orphaned player_terms rows that reference removed legacy term keys.
+delete from public.player_terms pt
+where not exists (
+  select 1
+  from public.term_catalog tc
+  where tc.term_key = pt.term_key
+);
+
 drop trigger if exists player_state_updated_at on public.player_state;
 create trigger player_state_updated_at
 before update on public.player_state

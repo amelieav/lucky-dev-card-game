@@ -126,7 +126,7 @@
         </button>
 
         <div v-if="recentDraws.length" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
-          <p class="text-[11px] uppercase tracking-wide text-muted">Recent opened cards</p>
+          <p class="text-[11px] uppercase tracking-wide text-muted">Recently opened cards</p>
           <div class="recent-mini-strip mt-2">
             <div
               v-for="(draw, index) in recentDraws"
@@ -386,14 +386,13 @@ const rarityRows = computed(() => {
 const manualRevealCard = computed(() => {
   if (!manualRevealDraw.value) return null
   const term = TERMS_BY_KEY[manualRevealDraw.value.term_key]
-  if (!term) return null
 
   return {
-    name: term.name,
-    tier: Number(manualRevealDraw.value.tier || term.tier || 1),
-    rarity: manualRevealDraw.value.rarity || term.rarity || 'common',
+    name: term?.name || manualRevealDraw.value.term_name || manualRevealDraw.value.term_key || 'Unknown Card',
+    tier: Number(manualRevealDraw.value.tier || term?.tier || 1),
+    rarity: manualRevealDraw.value.rarity || term?.rarity || 'common',
     mutation: normalizeMutation(manualRevealDraw.value.mutation || 'none'),
-    icon: term.icon || 'help-circle',
+    icon: term?.icon || 'help-circle',
     coins: Number(manualRevealDraw.value.reward || 0),
   }
 })
