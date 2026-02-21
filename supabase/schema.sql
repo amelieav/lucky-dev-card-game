@@ -675,7 +675,7 @@ begin
 end;
 $$;
 
-create or replace function public.roll_rarity(p_draw_tier int, p_luck_level int)
+create or replace function public.roll_rarity(p_egg_tier int, p_luck_level int)
 returns text
 language plpgsql
 volatile
@@ -689,7 +689,7 @@ declare
 begin
   select rw.common_w, rw.rare_w, rw.epic_w, rw.legendary_w
   into common_w, rare_w, epic_w, legendary_w
-  from public.rarity_weights(p_draw_tier, p_luck_level) rw;
+  from public.rarity_weights(p_egg_tier, p_luck_level) rw;
 
   roll := random() * 100;
 
@@ -760,7 +760,7 @@ begin
 end;
 $$;
 
-create or replace function public.random_term_by_pool(p_pack_tier int, p_rarity text)
+create or replace function public.random_term_by_pool(p_egg_tier int, p_rarity text)
 returns text
 language plpgsql
 volatile
@@ -771,7 +771,7 @@ begin
   select tc.term_key
   into chosen_term
   from public.term_catalog tc
-  where tc.tier = p_pack_tier
+  where tc.tier = p_egg_tier
     and tc.rarity = lower(coalesce(p_rarity, 'common'))
   order by random()
   limit 1;
@@ -780,7 +780,7 @@ begin
     select tc.term_key
     into chosen_term
     from public.term_catalog tc
-    where tc.tier = p_pack_tier
+    where tc.tier = p_egg_tier
     order by random()
     limit 1;
   end if;
