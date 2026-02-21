@@ -57,25 +57,43 @@
         </div>
 
         <button
-          class="btn-primary mt-4"
+          class="manual-pack mt-4"
+          :class="`manual-pack--${manualPackPhase}`"
           type="button"
           :disabled="!canOpenManual"
           @click="openManualPack"
         >
-          <span v-if="actionLoading">Opening...</span>
-          <span v-else-if="manualCooldownRemainingMs > 0">Cooldown {{ (manualCooldownRemainingMs / 1000).toFixed(1) }}s</span>
-          <span v-else>Open Pack</span>
+          <template v-if="manualPackPhase === 'ready'">
+            <p class="manual-pack__eyebrow">Next pack ready</p>
+            <p class="manual-pack__title">{{ nextManualPackLabel }}</p>
+            <p class="manual-pack__hint" v-if="manualCooldownRemainingMs > 0">
+              Cooldown {{ (manualCooldownRemainingMs / 1000).toFixed(1) }}s
+            </p>
+            <p class="manual-pack__hint" v-else>Tap to open</p>
+          </template>
+
+          <template v-else-if="manualPackPhase === 'opening'">
+            <div class="manual-pack__spinner" aria-hidden="true"></div>
+            <p class="manual-pack__title">Opening pack...</p>
+            <p class="manual-pack__hint">Rolling tier, rarity, and mutation</p>
+          </template>
+
+          <template v-else-if="manualRevealDraw">
+            <p class="manual-pack__eyebrow">{{ packName(manualRevealDraw.tier) }}</p>
+            <p class="manual-pack__title">{{ termName(manualRevealDraw.term_key) }}</p>
+            <p class="manual-pack__hint">{{ manualRevealDraw.rarity }} · {{ manualRevealDraw.mutation }}</p>
+            <p class="manual-pack__reward">+{{ formatNumber(manualRevealDraw.reward) }} coins</p>
+          </template>
         </button>
 
-        <div v-if="lastDraw" class="mt-4 rounded-xl border border-soft bg-panel-soft p-3">
-          <p class="text-xs uppercase tracking-wide text-muted">Latest Draw</p>
-          <p class="mt-1 text-base font-semibold">
-            {{ packName(lastDraw.tier) }} · {{ termName(lastDraw.term_key) }}
+        <div v-if="lastDraw && manualPackPhase === 'ready'" class="mt-3 rounded-lg border border-soft bg-panel-soft p-2">
+          <p class="text-[11px] uppercase tracking-wide text-muted">Last opened card</p>
+          <p class="mt-1 text-sm font-semibold">
+            {{ termName(lastDraw.term_key) }}
           </p>
           <p class="mt-1 text-xs text-muted">
-            {{ lastDraw.rarity }} · {{ lastDraw.mutation }} · +{{ formatNumber(lastDraw.reward) }} coins
+            {{ lastDraw.rarity }} · {{ lastDraw.mutation }} · {{ packName(lastDraw.tier) }}
           </p>
-          <p class="mt-1 text-xs text-muted">Copies {{ lastDraw.copies }} · Level {{ lastDraw.level }} · {{ lastDraw.source }}</p>
         </div>
       </section>
 
@@ -286,6 +304,11 @@ const MUTATION_STYLE_MAP = {
 const store = useStore()
 const nowMs = ref(Date.now())
 const manualLockedUntilMs = ref(0)
+const manualPackPhase = ref('ready')
+const manualRevealDraw = ref(null)
+
+const PACK_OPENING_ANIMATION_MS = 600
+const PACK_REVEAL_MS = 1500
 
 let clockTimer = null
 let syncTimer = null
@@ -398,8 +421,12 @@ const shopRows = computed(() => {
 })
 
 const manualCooldownRemainingMs = computed(() => Math.max(0, manualLockedUntilMs.value - nowMs.value))
+const nextManualPackLabel = computed(() => packName(highestTierUnlocked.value || 1))
 const canOpenManual = computed(() => {
-  return !!playerState.value && !actionLoading.value && manualCooldownRemainingMs.value <= 0
+  return !!playerState.value
+    && !actionLoading.value
+    && manualPackPhase.value === 'ready'
+    && manualCooldownRemainingMs.value <= 0
 })
 
 const termOptions = TERMS.map((term) => ({ key: term.key, name: term.name }))
@@ -436,8 +463,25 @@ onUnmounted(() => {
 async function openManualPack() {
   if (!canOpenManual.value) return
 
+  const previousDraw = store.state.game.openResult
+  manualPackPhase.value = 'opening'
+  manualRevealDraw.value = null
   manualLockedUntilMs.value = Date.now() + BALANCE_CONFIG.manualOpenCooldownMs
+  await sleep(PACK_OPENING_ANIMATION_MS)
   await store.dispatch('game/openPack', { source: 'manual' })
+
+  const draw = store.state.game.openResult
+  const hasFreshDraw = !store.state.game.error && draw && draw !== previousDraw
+
+  if (!hasFreshDraw) {
+    manualPackPhase.value = 'ready'
+    return
+  }
+
+  manualRevealDraw.value = draw
+  manualPackPhase.value = 'reveal'
+  await sleep(PACK_REVEAL_MS)
+  manualPackPhase.value = 'ready'
 }
 
 async function buyUpgrade(upgradeKey) {
@@ -519,4 +563,95 @@ function formatTierOdds(weights) {
     .map((tier) => `${packName(tier)} ${Number(weights[tier]).toFixed(1)}%`)
     .join(' · ')
 }
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
 </script>
+
+<style scoped>
+.manual-pack {
+  width: 100%;
+  min-height: 180px;
+  border-radius: 1rem;
+  border: 1px solid var(--border-soft);
+  padding: 1rem;
+  text-align: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.manual-pack:disabled {
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+.manual-pack:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(31, 56, 128, 0.18);
+}
+
+.manual-pack--ready {
+  color: #ffffff;
+  background: linear-gradient(145deg, #4a6fe8, #3858c7);
+}
+
+.manual-pack--opening {
+  color: #ffffff;
+  background: linear-gradient(145deg, #324279, #24335f);
+}
+
+.manual-pack--reveal {
+  color: var(--text-main);
+  background: linear-gradient(145deg, #ffffff, #ecf3ff);
+}
+
+.manual-pack__eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.68rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.manual-pack__title {
+  margin: 0.35rem 0 0;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.manual-pack__hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+  opacity: 0.88;
+}
+
+.manual-pack__reward {
+  margin: 0.5rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.manual-pack__spinner {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 0.6rem;
+  border-radius: 9999px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  animation: pack-spin 0.9s linear infinite;
+}
+
+@keyframes pack-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>
