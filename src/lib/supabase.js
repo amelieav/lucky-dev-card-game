@@ -21,4 +21,11 @@ if (!hasSupabaseEnv) {
 export const supabase = createClient(
   supabaseUrl || fallbackUrl,
   supabaseAnonKey || fallbackAnonKey,
+  {
+    auth: {
+      // URL auth params are processed manually in auth/initAuth.
+      detectSessionInUrl: false,
+      lockAcquireTimeout: 30000,
+    },
+  },
 )

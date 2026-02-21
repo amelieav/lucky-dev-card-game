@@ -10,6 +10,7 @@ import {
 } from '../../lib/auth'
 
 let authListener = null
+let initAuthPromise = null
 
 export default {
   namespaced: true,
@@ -51,75 +52,84 @@ export default {
         return
       }
 
-      commit('setLoading', true)
-      commit('setError', null)
-
-      try {
-        const code = getCodeFromUrl()
-        const tokenHash = getTokenHashFromUrl()
-        const otpType = getOtpTypeFromUrl()
-        const accessToken = getAccessTokenFromUrl()
-        const refreshToken = getRefreshTokenFromUrl()
-
-        if (code) {
-          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-          if (exchangeError) {
-            throw exchangeError
-          }
-          cleanupAuthParamsFromUrl()
-        } else if (tokenHash && otpType) {
-          const { error: verifyError } = await supabase.auth.verifyOtp({
-            token_hash: tokenHash,
-            type: otpType,
-          })
-
-          if (verifyError) {
-            throw verifyError
-          }
-
-          cleanupAuthParamsFromUrl()
-        } else if (accessToken && refreshToken) {
-          const { error: setSessionError } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          })
-
-          if (setSessionError) {
-            throw setSessionError
-          }
-
-          cleanupAuthParamsFromUrl()
-        }
-
-        const { data, error } = await supabase.auth.getSession()
-        if (error) {
-          throw error
-        }
-
-        commit('setSession', data?.session || null)
-
-        if (!authListener) {
-          const { data: listener } = supabase.auth.onAuthStateChange(async (_, session) => {
-            commit('setSession', session)
-            if (session?.user) {
-              await dispatch('game/bootstrapPlayer', null, { root: true })
-            } else {
-              commit('game/clear', null, { root: true })
-              commit('leaderboard/clear', null, { root: true })
-            }
-          })
-          authListener = listener
-        }
-
-        if (data?.session?.user) {
-          await dispatch('game/bootstrapPlayer', null, { root: true })
-        }
-      } catch (error) {
-        commit('setError', error.message || 'Unable to initialize authentication.')
-      } finally {
-        commit('setInitialized', true)
-        commit('setLoading', false)
+      if (initAuthPromise) {
+        return initAuthPromise
       }
+
+      initAuthPromise = (async () => {
+        commit('setLoading', true)
+        commit('setError', null)
+
+        try {
+          const code = getCodeFromUrl()
+          const tokenHash = getTokenHashFromUrl()
+          const otpType = getOtpTypeFromUrl()
+          const accessToken = getAccessTokenFromUrl()
+          const refreshToken = getRefreshTokenFromUrl()
+
+          if (code) {
+            const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+            if (exchangeError) {
+              throw exchangeError
+            }
+            cleanupAuthParamsFromUrl()
+          } else if (tokenHash && otpType) {
+            const { error: verifyError } = await supabase.auth.verifyOtp({
+              token_hash: tokenHash,
+              type: otpType,
+            })
+
+            if (verifyError) {
+              throw verifyError
+            }
+
+            cleanupAuthParamsFromUrl()
+          } else if (accessToken && refreshToken) {
+            const { error: setSessionError } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+            })
+
+            if (setSessionError) {
+              throw setSessionError
+            }
+
+            cleanupAuthParamsFromUrl()
+          }
+
+          const { data, error } = await supabase.auth.getSession()
+          if (error) {
+            throw error
+          }
+
+          commit('setSession', data?.session || null)
+
+          if (!authListener) {
+            const { data: listener } = supabase.auth.onAuthStateChange(async (_, session) => {
+              commit('setSession', session)
+              if (session?.user) {
+                await dispatch('game/bootstrapPlayer', null, { root: true })
+              } else {
+                commit('game/clear', null, { root: true })
+                commit('leaderboard/clear', null, { root: true })
+              }
+            })
+            authListener = listener
+          }
+
+          if (data?.session?.user) {
+            await dispatch('game/bootstrapPlayer', null, { root: true })
+          }
+        } catch (error) {
+          commit('setError', error.message || 'Unable to initialize authentication.')
+        } finally {
+          commit('setInitialized', true)
+          commit('setLoading', false)
+          initAuthPromise = null
+        }
+      })()
+
+      return initAuthPromise
     },
 
     async sendMagicLink({ commit }, email) {

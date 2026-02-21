@@ -746,15 +746,15 @@ begin
     when 1 then
       base_common := 77; base_rare := 20; base_legendary := 3;
     when 2 then
-      base_common := 77; base_rare := 20; base_legendary := 3;
+      base_common := 79.5; base_rare := 18.5; base_legendary := 2;
     when 3 then
-      base_common := 77; base_rare := 20; base_legendary := 3;
+      base_common := 82; base_rare := 16.5; base_legendary := 1.5;
     when 4 then
-      base_common := 77; base_rare := 20; base_legendary := 3;
+      base_common := 84.5; base_rare := 14.5; base_legendary := 1;
     when 5 then
-      base_common := 77; base_rare := 20; base_legendary := 3;
+      base_common := 87; base_rare := 12.2; base_legendary := 0.8;
     else
-      base_common := 77; base_rare := 20; base_legendary := 3;
+      base_common := 89.5; base_rare := 9.9; base_legendary := 0.6;
   end case;
 
   x := least(25, greatest(0, coalesce(p_value_level, 0)));

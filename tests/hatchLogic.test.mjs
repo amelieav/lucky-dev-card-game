@@ -66,6 +66,21 @@ test('rarity weights stay normalized and common floor holds', () => {
   assert.ok(highLuck.legendary > lowLuck.legendary)
 })
 
+test('base rarity defaults get stricter on higher tiers', () => {
+  const tier1 = getRarityWeightsForTier(1, 0)
+  const tier2 = getRarityWeightsForTier(2, 0)
+  const tier6 = getRarityWeightsForTier(6, 0)
+
+  assertApproxHundred(sum(Object.values(tier1)))
+  assertApproxHundred(sum(Object.values(tier2)))
+  assertApproxHundred(sum(Object.values(tier6)))
+
+  assert.ok(tier2.rare < tier1.rare)
+  assert.ok(tier2.legendary < tier1.legendary)
+  assert.ok(tier6.rare < tier2.rare)
+  assert.ok(tier6.legendary < tier2.legendary)
+})
+
 test('mutation weights stay normalized and improve with mutation level', () => {
   const base = getMutationWeights(0)
   const upgraded = getMutationWeights(25)

@@ -40,11 +40,11 @@ export const BALANCE_CONFIG = {
 
   rarityWeightsByTier: {
     1: { common: 77, rare: 20, legendary: 3 },
-    2: { common: 77, rare: 20, legendary: 3 },
-    3: { common: 77, rare: 20, legendary: 3 },
-    4: { common: 77, rare: 20, legendary: 3 },
-    5: { common: 77, rare: 20, legendary: 3 },
-    6: { common: 77, rare: 20, legendary: 3 },
+    2: { common: 79.5, rare: 18.5, legendary: 2 },
+    3: { common: 82, rare: 16.5, legendary: 1.5 },
+    4: { common: 84.5, rare: 14.5, legendary: 1 },
+    5: { common: 87, rare: 12.2, legendary: 0.8 },
+    6: { common: 89.5, rare: 9.9, legendary: 0.6 },
   },
   valueShift: {
     cap: 25,
