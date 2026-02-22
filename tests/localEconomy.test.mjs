@@ -5,6 +5,7 @@ import {
   buyLocalUpgrade,
   debugApplyLocal,
   keepAliveLocalPlayer,
+  loseLocalCard,
   openLocalPack,
   syncLocalPlayer,
   updateLocalNickname,
@@ -138,6 +139,28 @@ test('passive income accrues only during active heartbeat windows', () => {
   assert.equal(atFive.snapshot.state.passive_rate_cps, 3)
   assert.equal(atFive.snapshot.state.coins, 115)
   assert.equal(atThirty.snapshot.state.coins, 160)
+})
+
+test('losing a card removes it completely from collection', () => {
+  const account = user('pack-loss')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 2, term_key: 'merge_conflict', rarity: 'common', mutation: 'holo' },
+    nowMs: 1_000,
+  })
+
+  const lost = loseLocalCard(account, {
+    termKey: 'merge_conflict',
+    debugAllowed: true,
+    nowMs: 2_000,
+  })
+
+  const row = lost.snapshot.terms.find((term) => term.term_key === 'merge_conflict')
+  assert.equal(lost.loss.removed, true)
+  assert.equal(row, undefined)
 })
 
 test('auto opener applies draws during sync ticks', () => {

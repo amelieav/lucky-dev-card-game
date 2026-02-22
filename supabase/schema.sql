@@ -1480,6 +1480,49 @@ begin
 end;
 $$;
 
+create or replace function public.lose_card(p_term_key text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  normalized_term text;
+  removed_count int := 0;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  normalized_term := nullif(trim(coalesce(p_term_key, '')), '');
+  if normalized_term is null then
+    raise exception 'Missing term key';
+  end if;
+
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_passive_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  delete from public.player_terms
+  where user_id = uid
+    and term_key = normalized_term;
+
+  get diagnostics removed_count = row_count;
+
+  perform public.recompute_passive_rate_bp(uid);
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'loss', jsonb_build_object(
+      'term_key', normalized_term,
+      'removed', removed_count > 0
+    )
+  );
+end;
+$$;
+
 create or replace function public.buy_upgrade(p_upgrade_key text)
 returns jsonb
 language plpgsql
@@ -2059,6 +2102,7 @@ $$;
 grant execute on function public.bootstrap_player() to authenticated;
 grant execute on function public.keep_alive() to authenticated;
 grant execute on function public.open_pack(text, jsonb) to authenticated;
+grant execute on function public.lose_card(text) to authenticated;
 grant execute on function public.buy_upgrade(text) to authenticated;
 grant execute on function public.open_egg(int, jsonb) to authenticated;
 grant execute on function public.upgrade_luck() to authenticated;

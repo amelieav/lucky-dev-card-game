@@ -1,6 +1,20 @@
 export function getMagicLinkRedirectTo() {
   if (typeof window === 'undefined') return undefined
 
+  const hostname = String(window.location.hostname || '').toLowerCase()
+  const isLocalHost = hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '0.0.0.0'
+  const runningLocally = Boolean(import.meta.env.DEV || isLocalHost)
+
+  if (runningLocally) {
+    const localRedirect = import.meta.env.VITE_AUTH_REDIRECT_URL_LOCAL
+    if (localRedirect) return localRedirect
+
+    const base = import.meta.env.BASE_URL || '/'
+    return new URL(base, window.location.origin).toString()
+  }
+
   // Explicit override for environments where URL rewriting is strict.
   const configuredRedirect = import.meta.env.VITE_AUTH_REDIRECT_URL
   if (configuredRedirect) return configuredRedirect

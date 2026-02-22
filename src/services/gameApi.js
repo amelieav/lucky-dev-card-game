@@ -56,6 +56,27 @@ export async function openPack({ source = 'manual', debugOverride = null } = {})
   }))
 }
 
+export async function loseCard(termKey) {
+  const normalized = String(termKey || '').trim()
+  if (!normalized) {
+    throw new Error('Missing term key')
+  }
+
+  const primary = await supabase.rpc('lose_card', {
+    p_term_key: normalized,
+  })
+
+  if (!primary.error) {
+    return primary.data
+  }
+
+  if (!isMissingRpcError(primary.error, 'lose_card')) {
+    throw primary.error
+  }
+
+  throw new Error('Card loss RPC is not available on this backend yet')
+}
+
 export async function buyUpgrade({ upgradeKey } = {}) {
   const primary = await supabase.rpc('buy_upgrade', {
     p_upgrade_key: upgradeKey,

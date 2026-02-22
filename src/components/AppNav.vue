@@ -18,6 +18,9 @@
       </nav>
 
       <div class="flex items-center gap-3" v-if="isAuthed">
+        <span class="duck-stolen-metric" title="Total cards stolen by duck raids">
+          cards stolen by a duck: {{ duckCardsStolen }}
+        </span>
         <span
           class="afk-debug"
           :class="isAfk ? 'afk-debug--afk' : 'afk-debug--active'"
@@ -45,6 +48,7 @@ const KEEP_ALIVE_MS = 5_000
 
 const isAuthed = computed(() => !!store.state.auth.user)
 const userEmail = computed(() => store.state.auth.user?.email || '')
+const duckCardsStolen = computed(() => Math.max(0, Number(store.state.game.duckTheftStats?.count || 0)))
 const nowMs = ref(Date.now())
 const lastMouseMoveMs = ref(Date.now())
 const isAfk = computed(() => {
@@ -90,6 +94,7 @@ onMounted(() => {
   }, AFK_TICK_MS)
 
   if (isAuthed.value) {
+    store.dispatch('game/hydrateDuckTheftStats')
     startKeepAlive()
     void runKeepAliveTick()
   }
@@ -117,6 +122,7 @@ watch(isAuthed, (authed) => {
     return
   }
 
+  store.dispatch('game/hydrateDuckTheftStats')
   startKeepAlive()
   void runKeepAliveTick()
 })
@@ -156,6 +162,18 @@ async function handleSignOut() {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.duck-stolen-metric {
+  border-radius: 9999px;
+  border: 1px solid rgba(120, 143, 194, 0.35);
+  background: rgba(91, 123, 192, 0.09);
+  padding: 0.2rem 0.6rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #34517f;
+  white-space: nowrap;
 }
 
 .afk-debug--active {

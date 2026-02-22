@@ -762,6 +762,48 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
   }
 }
 
+export function loseLocalCard(user, { termKey, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+  assertAuthenticatedUser(user)
+
+  const targetKey = String(termKey || '').trim()
+  if (!targetKey) {
+    throw new Error('Missing term key')
+  }
+
+  const record = readRecord(user, rng, nowMs)
+  applyAutoProgress(record, {
+    debugAllowed,
+    rng,
+    nowMs,
+    allowAutoDraws: false,
+  })
+  touchRecordActivity(record, { nowMs })
+
+  const idx = record.terms.findIndex((row) => row.term_key === targetKey)
+  if (idx === -1) {
+    return {
+      snapshot: toSnapshot(record, debugAllowed, nowMs),
+      loss: {
+        term_key: targetKey,
+        removed: false,
+      },
+    }
+  }
+
+  record.terms.splice(idx, 1)
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+  record.updated_at = nowIso(nowMs)
+  writeRecord(user, record)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    loss: {
+      term_key: targetKey,
+      removed: true,
+    },
+  }
+}
+
 export function keepAliveLocalPlayer(
   user,
   { debugAllowed = false, rng = Math.random, nowMs = Date.now(), windowSeconds = ACTIVE_WINDOW_SECONDS } = {},

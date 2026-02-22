@@ -57,6 +57,10 @@
     <p v-else-if="viewerPlayerNumber" class="mt-4 text-sm text-muted">
       You are player number {{ viewerPlayerNumber }}<span v-if="totalPlayers"> of {{ totalPlayers }}</span>.
     </p>
+    <p class="mt-2 text-sm text-muted">
+      Highest card stolen by the duck:
+      <span class="font-semibold text-main">{{ duckHighestCardLabel }}</span>
+    </p>
   </section>
 </template>
 
@@ -73,6 +77,15 @@ let refreshTimer = null
 const rows = computed(() => store.state.leaderboard.rows)
 const loading = computed(() => store.state.leaderboard.loading)
 const error = computed(() => store.state.leaderboard.error)
+const duckHighestStolen = computed(() => store.state.game.duckTheftStats?.highest || null)
+const duckHighestCardLabel = computed(() => {
+  if (!duckHighestStolen.value) return 'None yet'
+  const entry = duckHighestStolen.value
+  const tier = Number(entry.tier || 0)
+  const rarity = String(entry.rarity || 'common').toLowerCase()
+  const effect = mutationLabel(entry.mutation)
+  return `${entry.name} · T${tier || '?'} · ${rarity} · ${effect}`
+})
 const viewerPlayerNumber = computed(() => {
   const rowWithViewerMeta = rows.value.find((row) => row?.viewer_player_number != null)
   if (rowWithViewerMeta) return Number(rowWithViewerMeta.viewer_player_number)
@@ -88,6 +101,7 @@ const totalPlayers = computed(() => {
 })
 
 onMounted(async () => {
+  await store.dispatch('game/hydrateDuckTheftStats')
   await refreshLeaderboard(true)
   startAutoRefresh()
 })

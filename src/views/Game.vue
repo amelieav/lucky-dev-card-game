@@ -5,6 +5,24 @@
       <div class="legendary-sparkle__layer legendary-sparkle__layer--b"></div>
     </div>
 
+    <div v-if="chickRaid.active" class="duck-raid" aria-live="polite">
+      <p class="duck-raid__note">{{ chickRaid.message }}</p>
+      <article v-if="showDuckRaidCard" class="duck-raid__card" :style="duckRaidCardStyle" aria-hidden="true">
+        <p class="duck-raid__card-name">{{ duckRaidCardTitle }}</p>
+        <p class="duck-raid__card-meta">{{ duckRaidCardMeta }}</p>
+      </article>
+      <button
+        ref="duckRaidActorRef"
+        class="duck-raid__actor"
+        type="button"
+        :style="duckRaidStyle"
+        title="Click the duck before it escapes with your card"
+        @click="scareDuck"
+      >
+        <img :src="duckRaidFrameSrc" alt="Duck raider" class="duck-raid__img" />
+      </button>
+    </div>
+
     <div class="card p-4 status-strip">
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
@@ -191,7 +209,7 @@
       </aside>
     </div>
 
-    <section class="card p-5">
+    <section ref="cardBookSectionRef" class="card p-5">
       <div class="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">Shop</h2>
@@ -244,7 +262,16 @@
           </div>
 
           <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <div v-for="item in tierRow.items" :key="item.termKey" class="space-y-1">
+            <div
+              v-for="item in tierRow.items"
+              :key="item.termKey"
+              :ref="(el) => setCardBookItemRef(item.termKey, el)"
+              class="space-y-1 card-book-slot"
+              :class="{
+                'card-book-slot--targeted': chickRaid.targetTermKey === item.termKey,
+                'card-book-slot--snatched': chickRaid.targetTermKey === item.termKey && (chickRaid.stage === 'bite' || chickRaid.stage === 'drag'),
+              }"
+            >
               <term-card
                 :name="item.name"
                 :tier="item.tier"
@@ -279,7 +306,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import DebugPanel from '../components/game/DebugPanel.vue'
 import TermCard from '../components/game/TermCard.vue'
@@ -315,6 +342,22 @@ const AUTO_OPENING_MS = 420
 const LEGENDARY_SPARKLE_MS = 5000
 const LEADERBOARD_REFRESH_MS = 15000
 const LIVE_METRICS_TICK_MS = 500
+const CHICK_INACTIVITY_MIN_MS = 60_000
+const CHICK_INACTIVITY_MAX_MS = 180_000
+const CHICK_MONITOR_MS = 1000
+const CHICK_COOLDOWN_MS = 8000
+const DUCK_RAID_FRAMES = {
+  walk: ['/ducks/walk1.png', '/ducks/walk2.png', '/ducks/walk3.png', '/ducks/walk4.png'],
+  drag: ['/ducks/drag1.png', '/ducks/drag2.png', '/ducks/drag3.png', '/ducks/drag4.png'],
+  cry: ['/ducks/cry1.png', '/ducks/cry2.png'],
+  runaway: ['/ducks/runaway1.png', '/ducks/runaway2.png', '/ducks/runaway3.png', '/ducks/runaway4.png'],
+}
+const CHICK_APPROACH_MS = 10500
+const CHICK_DRAG_MS = 7000
+const CHICK_ESCAPE_MS = 7000
+const CHICK_FLEE_MS = 5000
+const CHICK_SCARED_MS = 2000
+const CHICK_ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel']
 
 let autoRollTimer = null
 let syncTimer = null
@@ -322,6 +365,32 @@ let viewActive = true
 let legendarySparkleTimer = null
 let leaderboardRefreshTimer = null
 let metricsTickTimer = null
+let chickMonitorTimer = null
+let chickFailTimer = null
+let chickPhaseTimer = null
+let duckFrameTimer = null
+const cardBookItemRefs = new Map()
+const cardBookSectionRef = ref(null)
+const lastMouseActivityMs = ref(Date.now())
+const chickInactivityTargetMs = ref(getRandomChickInactivityMs())
+const lastChickRaidMs = ref(0)
+const duckFrameIndex = ref({
+  walk: 0,
+  drag: 0,
+  cry: 0,
+  runaway: 0,
+})
+const duckRaidActorRef = ref(null)
+const chickRaid = ref({
+  active: false,
+  stage: 'idle',
+  message: '',
+  targetTermKey: null,
+  targetName: '',
+  x: 105,
+  y: 14,
+  transitionMs: 300,
+})
 
 const snapshot = computed(() => store.state.game.snapshot)
 const playerState = computed(() => snapshot.value?.state || null)
@@ -385,6 +454,46 @@ const legendarySparkleStyle = computed(() => ({
   '--legendary-origin-x': `${legendaryOrigin.value.x}%`,
   '--legendary-origin-y': `${legendaryOrigin.value.y}%`,
 }))
+const duckRaidStyle = computed(() => ({
+  left: `${Number(chickRaid.value.x || 50)}%`,
+  top: `${Number(chickRaid.value.y || 50)}%`,
+  '--duck-raid-transition-ms': `${Math.max(80, Number(chickRaid.value.transitionMs || 300))}ms`,
+  '--duck-raid-facing-scale': chickRaid.value.stage === 'flee' ? '-1' : '1',
+}))
+const duckRaidFrameKey = computed(() => {
+  if (chickRaid.value.stage === 'scared') return 'cry'
+  if (chickRaid.value.stage === 'flee') return 'walk'
+  if (chickRaid.value.stage === 'escaped') return 'runaway'
+  if (chickRaid.value.stage === 'bite' || chickRaid.value.stage === 'drag') return 'drag'
+  return 'walk'
+})
+const duckRaidFrameSrc = computed(() => {
+  const key = duckRaidFrameKey.value
+  const frames = DUCK_RAID_FRAMES[key] || []
+  if (!frames.length) return ''
+  const idx = Number(duckFrameIndex.value[key] || 0) % frames.length
+  return frames[idx]
+})
+const duckRaidTargetCard = computed(() => {
+  if (!chickRaid.value.targetTermKey) return null
+  return cardBookRows.value.find((item) => item.termKey === chickRaid.value.targetTermKey) || null
+})
+const showDuckRaidCard = computed(() => {
+  return ['drag', 'escaped'].includes(chickRaid.value.stage) && !!duckRaidTargetCard.value
+})
+const duckRaidCardStyle = computed(() => ({
+  left: `${Number(chickRaid.value.x || 50)}%`,
+  top: `${Number(chickRaid.value.y || 50)}%`,
+  '--duck-raid-transition-ms': `${Math.max(80, Number(chickRaid.value.transitionMs || 300))}ms`,
+}))
+const duckRaidCardTitle = computed(() => {
+  return duckRaidTargetCard.value?.name || chickRaid.value.targetName || 'Unknown Card'
+})
+const duckRaidCardMeta = computed(() => {
+  const tier = Number(duckRaidTargetCard.value?.tier || 0)
+  const rarity = normalizeRarity(duckRaidTargetCard.value?.rarity || 'common')
+  return `T${tier || '?'} · ${rarity}`
+})
 
 const autoLoopDelayMs = computed(() => {
   return autoUnlocked.value
@@ -569,6 +678,9 @@ onMounted(async () => {
   await store.dispatch('leaderboard/fetch', { force: true, limit: 100 })
 
   displayedRecentDraws.value = [...(store.state.game.recentDraws || [])]
+  lastMouseActivityMs.value = Date.now()
+  chickInactivityTargetMs.value = getRandomChickInactivityMs()
+  bindActivityListeners()
 
   metricsTickTimer = window.setInterval(() => {
     liveNowMs.value = Date.now()
@@ -590,10 +702,24 @@ onMounted(async () => {
       }
     }, 1000)
   }
+
+  chickMonitorTimer = window.setInterval(() => {
+    void maybeStartChickRaid()
+  }, CHICK_MONITOR_MS)
+
+  duckFrameTimer = window.setInterval(() => {
+    duckFrameIndex.value = {
+      walk: (duckFrameIndex.value.walk + 1) % DUCK_RAID_FRAMES.walk.length,
+      drag: (duckFrameIndex.value.drag + 1) % DUCK_RAID_FRAMES.drag.length,
+      cry: (duckFrameIndex.value.cry + 1) % DUCK_RAID_FRAMES.cry.length,
+      runaway: (duckFrameIndex.value.runaway + 1) % DUCK_RAID_FRAMES.runaway.length,
+    }
+  }, 180)
 })
 
 onUnmounted(() => {
   viewActive = false
+  unbindActivityListeners()
   if (autoRollTimer) {
     window.clearTimeout(autoRollTimer)
   }
@@ -615,6 +741,17 @@ onUnmounted(() => {
   if (metricsTickTimer) {
     window.clearInterval(metricsTickTimer)
     metricsTickTimer = null
+  }
+
+  clearChickRaidTimers()
+  if (chickMonitorTimer) {
+    window.clearInterval(chickMonitorTimer)
+    chickMonitorTimer = null
+  }
+
+  if (duckFrameTimer) {
+    window.clearInterval(duckFrameTimer)
+    duckFrameTimer = null
   }
 })
 
@@ -762,6 +899,297 @@ function toggleAutoRoll() {
   autoRollEnabled.value = !autoRollEnabled.value
 }
 
+function setCardBookItemRef(termKey, el) {
+  if (!termKey) return
+  if (el) {
+    cardBookItemRefs.set(termKey, el)
+    return
+  }
+
+  cardBookItemRefs.delete(termKey)
+}
+
+function noteUserActivity() {
+  lastMouseActivityMs.value = Date.now()
+  chickInactivityTargetMs.value = getRandomChickInactivityMs()
+}
+
+function bindActivityListeners() {
+  if (typeof window === 'undefined') return
+
+  for (const eventName of CHICK_ACTIVITY_EVENTS) {
+    window.addEventListener(eventName, noteUserActivity, { passive: true })
+  }
+}
+
+function unbindActivityListeners() {
+  if (typeof window === 'undefined') return
+
+  for (const eventName of CHICK_ACTIVITY_EVENTS) {
+    window.removeEventListener(eventName, noteUserActivity)
+  }
+}
+
+function clearChickRaidTimers() {
+  if (chickFailTimer) {
+    window.clearTimeout(chickFailTimer)
+    chickFailTimer = null
+  }
+
+  if (chickPhaseTimer) {
+    window.clearTimeout(chickPhaseTimer)
+    chickPhaseTimer = null
+  }
+}
+
+function getDuckActorViewportPoint() {
+  if (!duckRaidActorRef.value || typeof window === 'undefined') return null
+  const rect = duckRaidActorRef.value.getBoundingClientRect()
+  if (!rect.width || !rect.height || !window.innerWidth || !window.innerHeight) return null
+
+  const x = ((rect.left + (rect.width / 2)) / window.innerWidth) * 100
+  const y = ((rect.top + (rect.height / 2)) / window.innerHeight) * 100
+  return {
+    x: Math.max(-20, Math.min(120, x)),
+    y: Math.max(-10, Math.min(110, y)),
+  }
+}
+
+function resetChickRaid() {
+  clearChickRaidTimers()
+  lastMouseActivityMs.value = Date.now()
+  chickInactivityTargetMs.value = getRandomChickInactivityMs()
+  chickRaid.value = {
+    active: false,
+    stage: 'idle',
+    message: '',
+    targetTermKey: null,
+    targetName: '',
+    x: 105,
+    y: 14,
+    transitionMs: 300,
+  }
+}
+
+function updateChickRaid(patch) {
+  chickRaid.value = {
+    ...chickRaid.value,
+    ...patch,
+  }
+}
+
+function pickChickTargetCard() {
+  for (let tier = 6; tier >= 1; tier -= 1) {
+    const tierRow = cardBookByTier.value.find((row) => row.tier === tier)
+    if (!tierRow) continue
+
+    const tierIsCompleted = tierRow.items.length > 0 && tierRow.collected === tierRow.items.length
+    if (!tierIsCompleted) continue
+
+    const completedCards = tierRow.items.filter((item) => item.owned && Number(item.copies || 0) > 0)
+    if (completedCards.length === 0) continue
+
+    return {
+      card: completedCards[Math.floor(Math.random() * completedCards.length)],
+      source: 'completed',
+      tier,
+    }
+  }
+
+  // Fallback so the feature remains testable before any tier is fully completed.
+  for (let tier = 6; tier >= 1; tier -= 1) {
+    const tierRow = cardBookByTier.value.find((row) => row.tier === tier)
+    if (!tierRow) continue
+
+    const ownedCards = tierRow.items.filter((item) => item.owned && Number(item.copies || 0) > 0)
+    if (ownedCards.length === 0) continue
+
+    return {
+      card: ownedCards[Math.floor(Math.random() * ownedCards.length)],
+      source: 'fallback-owned',
+      tier,
+    }
+  }
+
+  return null
+}
+
+async function maybeStartChickRaid() {
+  if (!viewActive || !currentUserId.value) return
+  if (chickRaid.value.active) return
+  if (actionLoading.value) return
+
+  const now = Date.now()
+  if ((now - lastMouseActivityMs.value) < chickInactivityTargetMs.value) return
+  if ((now - lastChickRaidMs.value) < CHICK_COOLDOWN_MS) return
+
+  const targetChoice = pickChickTargetCard()
+  if (!targetChoice?.card) return
+
+  await launchChickRaid(targetChoice.card, targetChoice)
+}
+
+async function launchChickRaid(targetCard, targetChoice = { source: 'completed', tier: Number(targetCard?.tier || 1) }) {
+  if (!targetCard || chickRaid.value.active) return
+
+  lastChickRaidMs.value = Date.now()
+  updateChickRaid({
+    active: true,
+    stage: 'spawn',
+    message: 'A duck appears...',
+    targetTermKey: targetCard.termKey,
+    targetName: targetCard.name,
+    x: -12,
+    y: 20,
+    transitionMs: 120,
+  })
+
+  await nextTick()
+  await scrollToTargetCard(targetCard.termKey)
+  if (!chickRaid.value.active) return
+
+  const targetEl = cardBookItemRefs.get(targetCard.termKey)
+  const targetPoint = getElementViewportPoint(targetEl) || { x: 55, y: 76 }
+  const spawnY = Math.max(10, Math.min(88, targetPoint.y - 8))
+  const targetLabel = targetChoice.source === 'completed'
+    ? `highest completed tier (T${targetChoice.tier})`
+    : `highest available owned tier (fallback T${targetChoice.tier})`
+
+  updateChickRaid({
+    stage: 'spawn',
+    message: `Duck found target in ${targetLabel}.`,
+    x: -12,
+    y: spawnY,
+    transitionMs: 140,
+  })
+  await sleep(100)
+  if (!chickRaid.value.active) return
+
+  updateChickRaid({
+    stage: 'approach',
+    message: `Duck waddling toward ${targetCard.name}...`,
+    x: Math.max(6, targetPoint.x - 2),
+    y: targetPoint.y,
+    transitionMs: CHICK_APPROACH_MS,
+  })
+  await sleep(CHICK_APPROACH_MS)
+  if (!chickRaid.value.active) return
+
+  updateChickRaid({
+    stage: 'drag',
+    message: `Duck bites and drags ${targetCard.name} back left! Click the duck!`,
+    x: Math.max(6, targetPoint.x - 2),
+    y: targetPoint.y,
+    transitionMs: 120,
+  })
+  await sleep(30)
+  if (!chickRaid.value.active) return
+
+  updateChickRaid({
+    stage: 'drag',
+    message: `Duck bites and drags ${targetCard.name} back left! Click the duck!`,
+    x: -16,
+    y: Math.min(92, targetPoint.y + 12),
+    transitionMs: CHICK_DRAG_MS,
+  })
+
+  chickFailTimer = window.setTimeout(() => {
+    void completeChickTheft(targetCard)
+  }, CHICK_DRAG_MS + 40)
+}
+
+async function completeChickTheft(targetCard) {
+  if (!chickRaid.value.active) return
+
+  clearChickRaidTimers()
+  try {
+    await store.dispatch('game/loseCard', { termKey: targetCard.termKey })
+    await store.dispatch('game/recordDuckTheft', {
+      termKey: targetCard.termKey,
+      name: targetCard.name,
+      value: Number(targetCard.value || 0),
+      tier: Number(targetCard.tier || 0),
+      rarity: normalizeRarity(targetCard.rarity),
+      mutation: normalizeMutation(targetCard.bestMutation),
+    })
+  } catch (_) {
+    // Ignore: UI already surfaces an error via game store.
+  }
+
+  updateChickRaid({
+    stage: 'escaped',
+    message: `${targetCard.name} was stolen!`,
+    x: -24,
+    y: Math.min(96, Number(chickRaid.value.y || 70) + 3),
+    transitionMs: CHICK_ESCAPE_MS,
+  })
+
+  chickPhaseTimer = window.setTimeout(() => {
+    resetChickRaid()
+  }, CHICK_ESCAPE_MS + 120)
+}
+
+function scareDuck() {
+  if (!chickRaid.value.active) return
+
+  clearChickRaidTimers()
+  const actorPoint = getDuckActorViewportPoint()
+  const holdX = Number(actorPoint?.x ?? chickRaid.value.x ?? 50)
+  const holdY = Number(actorPoint?.y ?? chickRaid.value.y ?? 50)
+  updateChickRaid({
+    stage: 'scared',
+    message: 'Duck is crying...',
+    x: holdX,
+    y: holdY,
+    transitionMs: 0,
+  })
+
+  chickPhaseTimer = window.setTimeout(() => {
+    updateChickRaid({
+      stage: 'flee',
+      message: 'Duck is waddling away.',
+      x: -24,
+      y: Math.max(2, holdY - 10),
+      transitionMs: CHICK_FLEE_MS,
+    })
+    chickPhaseTimer = window.setTimeout(() => {
+      resetChickRaid()
+    }, CHICK_FLEE_MS + 80)
+  }, CHICK_SCARED_MS)
+}
+
+async function scrollToTargetCard(termKey) {
+  const sectionEl = cardBookSectionRef.value
+  if (sectionEl?.scrollIntoView) {
+    sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    await sleep(520)
+  }
+
+  await nextTick()
+  const targetEl = cardBookItemRefs.get(termKey)
+  if (targetEl?.scrollIntoView) {
+    targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    await sleep(520)
+  }
+}
+
+function getElementViewportPoint(el) {
+  if (!el || typeof window === 'undefined') return null
+
+  const rect = el.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0 || window.innerWidth <= 0 || window.innerHeight <= 0) {
+    return null
+  }
+
+  const x = ((rect.left + (rect.width / 2)) / window.innerWidth) * 100
+  const y = ((rect.top + (rect.height / 2)) / window.innerHeight) * 100
+
+  return {
+    x: Math.max(4, Math.min(96, x)),
+    y: Math.max(6, Math.min(94, y)),
+  }
+}
+
 function appendRecentDraw(draw) {
   if (!draw) return
   displayedRecentDraws.value = [draw, ...displayedRecentDraws.value]
@@ -904,6 +1332,12 @@ function sleep(ms) {
     window.setTimeout(resolve, ms)
   })
 }
+
+function getRandomChickInactivityMs() {
+  const min = Math.max(0, CHICK_INACTIVITY_MIN_MS)
+  const max = Math.max(min, CHICK_INACTIVITY_MAX_MS)
+  return Math.floor(Math.random() * (max - min + 1)) + min
+}
 </script>
 
 <style scoped>
@@ -939,6 +1373,107 @@ function sleep(ms) {
 .leaderboard-tile--other {
   background: #eaf2ff;
   border-color: #adbfeb;
+}
+
+.duck-raid {
+  position: fixed;
+  inset: 0;
+  z-index: 78;
+  pointer-events: none;
+}
+
+.duck-raid__note {
+  position: fixed;
+  right: 1rem;
+  top: 4.8rem;
+  margin: 0;
+  padding: 0.35rem 0.58rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(120, 143, 194, 0.35);
+  background: rgba(255, 255, 255, 0.93);
+  box-shadow: 0 8px 18px rgba(26, 44, 91, 0.15);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #243a6d;
+  pointer-events: none;
+}
+
+.duck-raid__actor {
+  position: fixed;
+  transform: translate(-50%, -50%) scaleX(var(--duck-raid-facing-scale, 1));
+  transition:
+    left var(--duck-raid-transition-ms) linear,
+    top var(--duck-raid-transition-ms) linear,
+    transform 0.12s ease,
+    filter 0.15s ease;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto;
+  filter: drop-shadow(0 6px 12px rgba(26, 46, 94, 0.36));
+}
+
+.duck-raid__actor:hover {
+  transform: translate(-50%, -50%) scaleX(var(--duck-raid-facing-scale, 1)) scale(1.06);
+}
+
+.duck-raid__img {
+  display: block;
+  width: 128px;
+  height: auto;
+  image-rendering: auto;
+}
+
+.duck-raid__card {
+  position: fixed;
+  transform: translate(-50%, -50%) translate(48px, -16px) rotate(-12deg);
+  transition:
+    left var(--duck-raid-transition-ms) linear,
+    top var(--duck-raid-transition-ms) linear,
+    transform 0.18s ease;
+  z-index: 79;
+  width: 112px;
+  min-height: 70px;
+  border-radius: 0.62rem;
+  border: 1px solid rgba(39, 65, 102, 0.35);
+  background: linear-gradient(165deg, rgba(255, 255, 255, 0.95), rgba(236, 244, 255, 0.96));
+  box-shadow:
+    0 8px 16px rgba(35, 52, 104, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  padding: 0.4rem 0.48rem;
+  pointer-events: none;
+}
+
+.duck-raid__card-name {
+  margin: 0;
+  color: #1f3558;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.duck-raid__card-meta {
+  margin: 0.25rem 0 0;
+  color: #46638f;
+  font-size: 0.57rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+
+.card-book-slot {
+  border-radius: 0.72rem;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.card-book-slot--targeted {
+  box-shadow: 0 0 0 2px rgba(246, 192, 90, 0.82), 0 10px 20px rgba(35, 52, 104, 0.18);
+  transform: translateY(-1px);
+}
+
+.card-book-slot--snatched {
+  box-shadow: 0 0 0 2px rgba(239, 103, 84, 0.92), 0 12px 24px rgba(136, 42, 23, 0.22);
 }
 
 .legendary-sparkle {
