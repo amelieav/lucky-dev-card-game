@@ -21,11 +21,11 @@
             class="form-input mt-2"
             type="text"
             autocomplete="off"
-            maxlength="16"
+            maxlength="10"
             placeholder="Agent_007"
             @input="onNameInput"
           />
-          <p class="mt-2 text-xs text-muted">3-16 chars · letters, numbers, underscore only.</p>
+          <p class="mt-2 text-xs text-muted">3-10 chars · letters, numbers, underscore only.</p>
           <p v-if="validationMessage" class="mt-2 text-sm text-red-700">{{ validationMessage }}</p>
         </div>
 
@@ -42,14 +42,13 @@
     <article class="card p-5">
       <h2 class="text-lg font-semibold">Rules</h2>
       <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-muted">
-        <li>3-16 characters.</li>
+        <li>3-10 characters.</li>
         <li>Only letters, numbers, and underscore.</li>
         <li>No profanity.</li>
         <li>No references to religion.</li>
         <li>No references to countries.</li>
         <li>No derogatory language.</li>
       </ul>
-      <p class="mt-3 text-sm text-muted">These rules keep names simple, neutral, and respectful.</p>
     </article>
   </section>
 </template>

@@ -1,8 +1,9 @@
 import leoProfanity from 'leo-profanity'
 
 export const DISPLAY_NAME_MIN_LENGTH = 3
-export const DISPLAY_NAME_MAX_LENGTH = 16
+export const DISPLAY_NAME_MAX_LENGTH = 10
 export const DISPLAY_NAME_PATTERN = /^[A-Za-z0-9_]+$/
+export const DISPLAY_NAME_RULES_MESSAGE = 'This name does not adhere with our rules.'
 const EXTRA_BLOCKED_FRAGMENTS = [
   'kkk',
   'kukluxklan',
@@ -53,7 +54,7 @@ export function validateDisplayName(inputValue) {
     return {
       ok: false,
       code: 'length',
-      message: `Display name must be ${DISPLAY_NAME_MIN_LENGTH}-${DISPLAY_NAME_MAX_LENGTH} characters.`,
+      message: DISPLAY_NAME_RULES_MESSAGE,
     }
   }
 
@@ -61,7 +62,7 @@ export function validateDisplayName(inputValue) {
     return {
       ok: false,
       code: 'charset',
-      message: 'Display name can only use letters, numbers, and underscores.',
+      message: DISPLAY_NAME_RULES_MESSAGE,
     }
   }
 
@@ -70,7 +71,7 @@ export function validateDisplayName(inputValue) {
     return {
       ok: false,
       code: 'empty',
-      message: 'Display name is invalid.',
+      message: DISPLAY_NAME_RULES_MESSAGE,
     }
   }
 
@@ -78,7 +79,7 @@ export function validateDisplayName(inputValue) {
     return {
       ok: false,
       code: 'profanity',
-      message: 'Display name contains blocked language.',
+      message: DISPLAY_NAME_RULES_MESSAGE,
     }
   }
 
@@ -86,7 +87,7 @@ export function validateDisplayName(inputValue) {
     return {
       ok: false,
       code: 'profanity',
-      message: 'Display name contains blocked language.',
+      message: DISPLAY_NAME_RULES_MESSAGE,
     }
   }
 

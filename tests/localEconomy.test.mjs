@@ -273,38 +273,43 @@ test('nickname updates are validated and persisted', () => {
 test('nickname validation blocks profanity and invalid characters', () => {
   const account = user('pack-nickname-validation')
   bootstrapLocalPlayer(account, { nowMs: 0 })
+  const invalidNameMessage = /does not adhere with our rules/i
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'ab' }, { nowMs: 1_000 })
-  }, /3-16 characters/)
+  }, invalidNameMessage)
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'bad name' }, { nowMs: 1_000 })
-  }, /letters, numbers, and underscores/)
+  }, invalidNameMessage)
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'Agent_12345' }, { nowMs: 1_000 })
+  }, invalidNameMessage)
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'f_u_c_k' }, { nowMs: 1_000 })
-  }, /blocked language/)
+  }, invalidNameMessage)
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'k_k_k' }, { nowMs: 1_000 })
-  }, /blocked language/)
+  }, invalidNameMessage)
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'f_r_a_n_c_e' }, { nowMs: 1_000 })
-  }, /blocked language/)
+  }, invalidNameMessage)
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'muslim_dev' }, { nowMs: 1_000 })
-  }, /blocked language/)
+  }, invalidNameMessage)
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'palestine_1' }, { nowMs: 1_000 })
-  }, /blocked language/)
+  }, invalidNameMessage)
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'immigrant99' }, { nowMs: 1_000 })
-  }, /blocked language/)
+  }, invalidNameMessage)
 })
 
 test('rebirth requires full current collection', () => {

@@ -520,18 +520,19 @@ declare
   name_value text := btrim(coalesce(p_display_name, ''));
   normalized text;
   blocked text;
+  rules_message text := 'This name does not adhere with our rules.';
 begin
-  if char_length(name_value) < 3 or char_length(name_value) > 16 then
-    raise exception 'Display name must be 3-16 characters.';
+  if char_length(name_value) < 3 or char_length(name_value) > 10 then
+    raise exception '%', rules_message;
   end if;
 
   if name_value !~ '^[A-Za-z0-9_]+$' then
-    raise exception 'Display name can only use letters, numbers, and underscores.';
+    raise exception '%', rules_message;
   end if;
 
   normalized := public.normalize_display_name_for_check(name_value);
   if normalized = '' then
-    raise exception 'Display name is invalid.';
+    raise exception '%', rules_message;
   end if;
 
   select word
@@ -541,7 +542,7 @@ begin
   limit 1;
 
   if blocked is not null then
-    raise exception 'Display name contains blocked language.';
+    raise exception '%', rules_message;
   end if;
 
   return name_value;

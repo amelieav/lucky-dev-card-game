@@ -770,11 +770,15 @@ const canOpenManual = computed(() => {
 onMounted(async () => {
   viewActive = true
   await store.dispatch('auth/initAuth')
+  if (!viewActive) return
   if (!store.state.game.snapshot) {
     await store.dispatch('game/bootstrapPlayer')
+    if (!viewActive) return
   }
   await store.dispatch('leaderboard/fetch', { force: true, limit: 100 })
+  if (!viewActive) return
   await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
+  if (!viewActive) return
 
   displayedRecentDraws.value = [...(store.state.game.recentDraws || [])]
   lastMouseActivityMs.value = Date.now()
@@ -821,10 +825,12 @@ onUnmounted(() => {
   unbindActivityListeners()
   if (autoRollTimer) {
     window.clearTimeout(autoRollTimer)
+    autoRollTimer = null
   }
 
   if (syncTimer) {
     window.clearInterval(syncTimer)
+    syncTimer = null
   }
 
   if (legendarySparkleTimer) {
@@ -928,17 +934,21 @@ async function runAutoRollTick() {
 }
 
 async function runAutoRollCycle() {
+  if (!viewActive) return
   if (!canRunAutoRoll.value) return
 
   const waitMs = Math.max(0, Number(autoLoopDelayMs.value || 0))
   if (waitMs > 0) {
     await sleep(waitMs)
+    if (!viewActive) return
     if (!canRunAutoRoll.value) return
   }
 
+  if (!viewActive) return
   const previousDraw = store.state.game.openResult
   manualRevealDraw.value = null
   await store.dispatch('game/openPack', { source: 'auto' })
+  if (!viewActive) return
 
   const draw = store.state.game.openResult
   const hasFreshDraw = !store.state.game.error && draw && draw !== previousDraw
