@@ -1,5 +1,7 @@
-import { fetchLeaderboard } from '../../services/gameApi'
+import { fetchLeaderboard, fetchSeasonHistory as apiFetchSeasonHistory } from '../../services/gameApi'
+import { getLocalSeasonHistory } from '../../lib/localEconomy.mjs'
 import { TERMS_BY_KEY } from '../../data/terms'
+import { getEffectiveTierForLayer, normalizeLayer } from '../../lib/packLogic.mjs'
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
@@ -40,10 +42,18 @@ function compareBestCard(a, b) {
   return 0
 }
 
+function latestSeasonHistoryRank(snapshot) {
+  const rows = Array.isArray(snapshot?.season_history) ? snapshot.season_history : []
+  if (!rows.length) return null
+  return Math.max(1, Number(rows[0]?.rank || 1))
+}
+
 function buildLocalBestCardRow(snapshot) {
   const stateRow = snapshot?.state
   const profile = snapshot?.profile
   const terms = Array.isArray(snapshot?.terms) ? snapshot.terms : []
+  const season = snapshot?.season || null
+  const activeLayer = normalizeLayer(stateRow?.active_layer || 1)
 
   if (!stateRow) {
     return null
@@ -56,7 +66,7 @@ function buildLocalBestCardRow(snapshot) {
       return {
         term_key: term.key,
         term_name: term.name,
-        tier: Number(term.tier || 0),
+        tier: getEffectiveTierForLayer(Number(term.tier || 1), activeLayer),
         rarity: normalizeRarity(term.rarity),
         mutation: normalizeMutation(termRow.best_mutation),
         copies: Math.max(0, Number(termRow.copies || 0)),
@@ -101,6 +111,10 @@ function buildLocalBestCardRow(snapshot) {
     best_term_mutation: best?.mutation || 'none',
     best_term_copies: Number(best?.copies || 0),
     viewer_player_number: 1,
+    viewer_previous_rank: latestSeasonHistoryRank(snapshot),
+    season_id: season?.id || null,
+    season_starts_at: season?.starts_at || null,
+    season_ends_at: season?.ends_at || null,
     is_you: true,
   }
 }
@@ -123,7 +137,28 @@ function normalizeRows(rows) {
     best_term_mutation: normalizeMutation(row?.best_term_mutation),
     best_term_copies: Math.max(0, Number(row?.best_term_copies || 0)),
     viewer_player_number: row?.viewer_player_number == null ? null : Math.max(1, Number(row.viewer_player_number)),
+    viewer_previous_rank: row?.viewer_previous_rank == null ? null : Math.max(1, Number(row.viewer_previous_rank)),
+    season_id: row?.season_id || null,
+    season_starts_at: row?.season_starts_at || null,
+    season_ends_at: row?.season_ends_at || null,
     is_you: Boolean(row?.is_you),
+  }))
+}
+
+function normalizeSeasonHistoryRows(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => ({
+    season_id: row?.season_id || null,
+    starts_at: row?.starts_at || null,
+    ends_at: row?.ends_at || null,
+    rank: Math.max(1, Number(row?.rank || 1)),
+    total_players: Math.max(1, Number(row?.total_players || 1)),
+    score: Number(row?.score || 0),
+    best_term_key: row?.best_term_key || null,
+    best_term_name: row?.best_term_name || null,
+    best_term_tier: Math.max(0, Number(row?.best_term_tier || 0)),
+    best_term_rarity: normalizeRarity(row?.best_term_rarity),
+    best_term_mutation: normalizeMutation(row?.best_term_mutation),
+    best_term_copies: Math.max(0, Number(row?.best_term_copies || 0)),
   }))
 }
 
@@ -131,25 +166,53 @@ export default {
   namespaced: true,
   state: () => ({
     rows: [],
+    seasonHistory: [],
+    seasonInfo: null,
+    viewerPreviousRank: null,
     loading: false,
+    historyLoading: false,
     error: null,
+    historyError: null,
     lastFetchedAt: 0,
   }),
   mutations: {
     setRows(state, rows) {
       state.rows = Array.isArray(rows) ? rows : []
       state.lastFetchedAt = Date.now()
+      const seasonFromRow = state.rows.find((row) => row?.season_id)
+      state.seasonInfo = seasonFromRow
+        ? {
+            id: seasonFromRow.season_id,
+            startsAt: seasonFromRow.season_starts_at,
+            endsAt: seasonFromRow.season_ends_at,
+          }
+        : null
+      state.viewerPreviousRank = seasonFromRow?.viewer_previous_rank || null
+    },
+    setSeasonHistory(state, rows) {
+      state.seasonHistory = Array.isArray(rows) ? rows : []
     },
     setLoading(state, value) {
       state.loading = value
     },
+    setHistoryLoading(state, value) {
+      state.historyLoading = value
+    },
     setError(state, message) {
       state.error = message || null
     },
+    setHistoryError(state, message) {
+      state.historyError = message || null
+    },
     clear(state) {
       state.rows = []
+      state.seasonHistory = []
+      state.seasonInfo = null
+      state.viewerPreviousRank = null
       state.loading = false
+      state.historyLoading = false
       state.error = null
+      state.historyError = null
       state.lastFetchedAt = 0
     },
   },
@@ -179,6 +242,27 @@ export default {
         commit('setError', error.message || 'Unable to load leaderboard.')
       } finally {
         commit('setLoading', false)
+      }
+    },
+
+    async fetchSeasonHistory({ commit, rootState }, { limit = 200 } = {}) {
+      commit('setHistoryLoading', true)
+      commit('setHistoryError', null)
+
+      try {
+        let rows
+        if (LOCAL_ECONOMY_ENABLED) {
+          const user = rootState.auth.user
+          rows = user?.id ? getLocalSeasonHistory(user, { limit }) : []
+        } else {
+          rows = await apiFetchSeasonHistory(limit)
+        }
+
+        commit('setSeasonHistory', normalizeSeasonHistoryRows(rows))
+      } catch (error) {
+        commit('setHistoryError', error.message || 'Unable to load season history.')
+      } finally {
+        commit('setHistoryLoading', false)
       }
     },
   },

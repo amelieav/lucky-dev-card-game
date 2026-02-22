@@ -14,6 +14,7 @@
       <nav v-if="isAuthed" class="flex items-center gap-4 text-sm">
         <router-link class="nav-link" to="/game">Game</router-link>
         <router-link class="nav-link" to="/leaderboard">Leaderboard</router-link>
+        <router-link class="nav-link" to="/lifetime">Lifetime Collection</router-link>
         <router-link class="nav-link" to="/profile">Profile</router-link>
       </nav>
 

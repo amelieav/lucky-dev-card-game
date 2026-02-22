@@ -4,6 +4,7 @@ import SignIn from '../views/SignIn.vue'
 import AuthCallback from '../views/AuthCallback.vue'
 import Game from '../views/Game.vue'
 import Leaderboard from '../views/Leaderboard.vue'
+import LifetimeCollection from '../views/LifetimeCollection.vue'
 import Profile from '../views/Profile.vue'
 import NotFound from '../views/NotFound.vue'
 import { hasAuthParamsInUrl } from '../lib/auth'
@@ -38,6 +39,12 @@ const routes = [
     path: '/leaderboard',
     name: 'Leaderboard',
     component: Leaderboard,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/lifetime',
+    name: 'LifetimeCollection',
+    component: LifetimeCollection,
     meta: { requiresAuth: true },
   },
   {

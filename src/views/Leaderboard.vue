@@ -11,6 +11,21 @@
       </div>
     </div>
 
+    <div class="mb-4 grid gap-3 sm:grid-cols-3">
+      <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm">
+        <p class="text-xs text-muted">Current Season</p>
+        <p class="font-semibold">{{ seasonLabel }}</p>
+      </article>
+      <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm">
+        <p class="text-xs text-muted">Season Window</p>
+        <p class="font-semibold">{{ seasonWindowLabel }}</p>
+      </article>
+      <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm">
+        <p class="text-xs text-muted">Previous Season Rank</p>
+        <p class="font-semibold">{{ previousRankLabel }}</p>
+      </article>
+    </div>
+
     <p v-if="error" class="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>
 
     <div class="overflow-x-auto">
@@ -61,6 +76,43 @@
       Highest card stolen by the duck:
       <span class="font-semibold text-main">{{ duckHighestCardLabel }}</span>
     </p>
+
+    <section class="mt-6 rounded-xl border border-soft bg-panel-soft p-4">
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-base font-semibold">Season History</h2>
+        <p class="text-xs text-muted">All completed seasons</p>
+      </div>
+
+      <p v-if="historyError" class="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ historyError }}</p>
+      <p v-if="historyLoading" class="text-sm text-muted">Loading season history...</p>
+      <p v-else-if="seasonHistory.length === 0" class="text-sm text-muted">No completed seasons yet.</p>
+      <div v-else class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="text-left text-muted">
+              <th class="px-2 py-2">Season</th>
+              <th class="px-2 py-2">Rank</th>
+              <th class="px-2 py-2">Best Card</th>
+              <th class="px-2 py-2">Coins</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in seasonHistory" :key="`season-history-${row.season_id}`" class="border-t border-soft">
+              <td class="px-2 py-2">{{ row.season_id }}</td>
+              <td class="px-2 py-2">{{ row.rank }}/{{ row.total_players }}</td>
+              <td class="px-2 py-2">
+                <span v-if="row.best_term_key">
+                  {{ row.best_term_name || row.best_term_key }}
+                  · T{{ row.best_term_tier }} · {{ row.best_term_rarity }} · {{ mutationLabel(row.best_term_mutation) }}
+                </span>
+                <span v-else class="text-muted">No cards</span>
+              </td>
+              <td class="px-2 py-2">{{ formatNumber(row.score) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
   </section>
 </template>
 
@@ -77,6 +129,11 @@ let refreshTimer = null
 const rows = computed(() => store.state.leaderboard.rows)
 const loading = computed(() => store.state.leaderboard.loading)
 const error = computed(() => store.state.leaderboard.error)
+const historyLoading = computed(() => store.state.leaderboard.historyLoading)
+const historyError = computed(() => store.state.leaderboard.historyError)
+const seasonHistory = computed(() => store.state.leaderboard.seasonHistory || [])
+const seasonInfo = computed(() => store.state.leaderboard.seasonInfo || null)
+const viewerPreviousRank = computed(() => store.state.leaderboard.viewerPreviousRank || null)
 const duckHighestStolen = computed(() => store.state.game.duckTheftStats?.highest || null)
 const duckHighestCardLabel = computed(() => {
   if (!duckHighestStolen.value) return 'None yet'
@@ -85,6 +142,17 @@ const duckHighestCardLabel = computed(() => {
   const rarity = String(entry.rarity || 'common').toLowerCase()
   const effect = mutationLabel(entry.mutation)
   return `${entry.name} · T${tier || '?'} · ${rarity} · ${effect}`
+})
+const seasonLabel = computed(() => seasonInfo.value?.id || 'Unknown')
+const seasonWindowLabel = computed(() => {
+  const startsAt = seasonInfo.value?.startsAt
+  const endsAt = seasonInfo.value?.endsAt
+  if (!startsAt || !endsAt) return 'Unknown'
+  return `${formatShortDate(startsAt)} - ${formatShortDate(endsAt)}`
+})
+const previousRankLabel = computed(() => {
+  if (!viewerPreviousRank.value) return 'Unranked'
+  return toOrdinal(viewerPreviousRank.value)
 })
 const viewerPlayerNumber = computed(() => {
   const rowWithViewerMeta = rows.value.find((row) => row?.viewer_player_number != null)
@@ -103,6 +171,7 @@ const totalPlayers = computed(() => {
 onMounted(async () => {
   await store.dispatch('game/hydrateDuckTheftStats')
   await refreshLeaderboard(true)
+  await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
   startAutoRefresh()
 })
 
@@ -138,6 +207,16 @@ function formatNumber(value) {
   return Number(value || 0).toLocaleString()
 }
 
+function formatShortDate(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unknown'
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
 function cardIcon(row) {
   return TERMS_BY_KEY[row?.best_term_key]?.icon || 'help-circle'
 }
@@ -151,5 +230,16 @@ function mutationLabel(mutation) {
   if (key === 'holo' || key === 'prismatic' || key === 'glitched') return 'HOLO'
   if (key === 'foil') return 'FOIL'
   return 'None'
+}
+
+function toOrdinal(value) {
+  const n = Math.max(0, Number(value || 0))
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`
+  const mod10 = n % 10
+  if (mod10 === 1) return `${n}st`
+  if (mod10 === 2) return `${n}nd`
+  if (mod10 === 3) return `${n}rd`
+  return `${n}th`
 }
 </script>

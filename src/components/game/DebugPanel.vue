@@ -25,6 +25,11 @@
         <button class="btn-secondary" type="button" :disabled="loading" @click="emitApply({ type: 'set_coins', amount: setCoinsAmount })">Set Coins</button>
       </div>
 
+      <div class="grid gap-2 sm:grid-cols-2">
+        <input v-model.number="fullSetCoinsAmount" class="form-input" type="number" min="0" placeholder="Full set coin amount" />
+        <button class="btn-secondary" type="button" :disabled="loading" @click="emitApply({ type: 'grant_full_set', coins: fullSetCoinsAmount })">Full Set + Coins</button>
+      </div>
+
       <div class="grid gap-2 sm:grid-cols-3">
         <input v-model.number="setValueLevel" class="form-input" type="number" min="0" placeholder="Value level" />
         <input v-model.number="setMutationLevel" class="form-input" type="number" min="0" placeholder="Mutation level" />
@@ -90,6 +95,7 @@ const emit = defineEmits(['toggle', 'apply'])
 
 const addCoinsAmount = ref(1000)
 const setCoinsAmount = ref(0)
+const fullSetCoinsAmount = ref(200000)
 const setValueLevel = ref(0)
 const setMutationLevel = ref(0)
 const setTierBoostLevel = ref(0)

@@ -119,6 +119,12 @@ body {
   font-size: 0.85rem;
 }
 
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: saturate(0.7);
+}
+
 .form-input,
 .form-select {
   width: 100%;

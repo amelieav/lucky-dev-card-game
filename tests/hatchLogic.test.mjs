@@ -9,6 +9,7 @@ import {
   getEffectiveTierWeights,
   getHighestUnlockedTier,
   getMutationWeights,
+  getNextValueOddsChangeLevel,
   getProgressToNextTier,
   getRarityWeightsForTier,
   getUpgradeCost,
@@ -46,7 +47,7 @@ test('effective tier weights sum to 100 and shift with tier boost', () => {
   assert.ok(late[6] > mid[6])
 })
 
-test('base tier profile applies extra T1->T6 shift at level 14+', () => {
+test('base tier profile equalizes to even tier odds at max boost', () => {
   const lvl13 = getBaseTierWeightsForBoostLevel(13)
   const lvl20 = getBaseTierWeightsForBoostLevel(20)
 
@@ -54,6 +55,13 @@ test('base tier profile applies extra T1->T6 shift at level 14+', () => {
   assertApproxHundred(sum(Object.values(lvl20)))
   assert.ok(lvl20[1] < lvl13[1])
   assert.ok(lvl20[6] > lvl13[6])
+  const equalTarget = 100 / 6
+  for (const tier of [1, 2, 3, 4, 5, 6]) {
+    assert.ok(
+      Math.abs(Number(lvl20[tier]) - equalTarget) < 0.0005,
+      `Expected Tier ${tier} near ${equalTarget}, got ${lvl20[tier]}`,
+    )
+  }
 })
 
 test('rarity weights stay normalized and common floor holds', () => {
@@ -89,6 +97,8 @@ test('mutation weights stay normalized and improve with mutation level', () => {
   assertApproxHundred(sum(Object.values(upgraded)))
   assert.ok(upgraded.holo > base.holo)
   assert.ok(upgraded.foil > base.foil)
+  assert.ok(Math.abs(upgraded.foil - 10) < 0.0005, `Expected foil cap at 10%, got ${upgraded.foil}`)
+  assert.ok(Math.abs(upgraded.holo - 2) < 0.0005, `Expected holo cap at 2%, got ${upgraded.holo}`)
 })
 
 test('reward formula combines rarity and card tier value', () => {
@@ -130,6 +140,39 @@ test('upgrade cost curve increases and preview reports current/next effect', () 
   const preview = getUpgradePreview(state, 'value_upgrade')
   assert.ok(preview.current.includes('C'))
   assert.ok(preview.next.includes('C'))
+})
+
+test('value upgrade becomes maxed when rarity odds are fully saturated', () => {
+  const state = {
+    coins: 1_000_000,
+    auto_unlocked: true,
+    auto_speed_level: 0,
+    tier_boost_level: 0,
+    mutation_level: 0,
+    value_level: 24,
+    packs_opened: 0,
+  }
+
+  assert.equal(getNextValueOddsChangeLevel(state.value_level), null)
+  assert.equal(getUpgradeCost(state, 'value_upgrade'), null)
+
+  const preview = getUpgradePreview(state, 'value_upgrade')
+  assert.equal(preview.next, null)
+})
+
+test('tier and value upgrades are maxed at configured cap levels', () => {
+  const state = {
+    coins: 1_000_000,
+    auto_unlocked: true,
+    auto_speed_level: 0,
+    tier_boost_level: 20,
+    mutation_level: 0,
+    value_level: 25,
+    packs_opened: 0,
+  }
+
+  assert.equal(getUpgradeCost(state, 'tier_boost'), null)
+  assert.equal(getUpgradeCost(state, 'value_upgrade'), null)
 })
 
 test('auto speed reduces wait time to a 0.5s floor', () => {

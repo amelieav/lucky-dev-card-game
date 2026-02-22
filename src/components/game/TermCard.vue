@@ -4,6 +4,8 @@
     :class="[
       `term-card--tier-${safeTier}`,
       `term-card--mutation-${safeMutation}`,
+      `term-card--size-${safeSize}`,
+      { 'term-card--stolen': stolen },
       { 'term-card--unknown': unknown },
     ]"
     :style="cardCssVars"
@@ -23,12 +25,12 @@
 
     <div class="term-card__section term-card__rarity">
       <span class="term-card__rarity-pill" :class="`term-card__rarity-pill--${safeRarity}`">
-        {{ unknown ? '?' : safeRarity }}
+        {{ stolen ? 'stolen' : unknown ? '?' : safeRarity }}
       </span>
     </div>
 
     <div class="term-card__section term-card__coins">
-      <span class="term-card__coins-value">{{ unknown ? '--' : `+${formattedCoins}` }}</span>
+      <span class="term-card__coins-value">{{ stolen || unknown ? '--' : `+${formattedCoins}` }}</span>
       <span class="term-card__coins-label">coins</span>
     </div>
   </article>
@@ -45,7 +47,9 @@ const props = defineProps({
   mutation: { type: String, default: 'none' },
   icon: { type: String, default: 'help-circle' },
   coins: { type: Number, default: 0 },
+  stolen: { type: Boolean, default: false },
   unknown: { type: Boolean, default: false },
+  size: { type: String, default: 'medium' },
 })
 
 const safeTier = computed(() => {
@@ -64,6 +68,12 @@ const safeRarity = computed(() => {
   const key = String(props.rarity || '').trim().toLowerCase()
   if (key === 'legendary' || key === 'rare') return key
   return 'common'
+})
+
+const safeSize = computed(() => {
+  const key = String(props.size || '').trim().toLowerCase()
+  if (key === 'opening' || key === 'medium' || key === 'mini') return key
+  return 'medium'
 })
 
 const tierColor = computed(() => {
@@ -127,11 +137,13 @@ const cardCssVars = computed(() => {
 })
 
 const iconName = computed(() => {
+  if (props.stolen) return 'alert-triangle'
   if (props.unknown) return 'help-circle'
   return String(props.icon || 'help-circle')
 })
 
 const displayName = computed(() => {
+  if (props.stolen) return 'Stolen! 🦆'
   if (props.unknown) return 'Unknown Card'
   return String(props.name || 'Unknown Card')
 })
@@ -149,6 +161,20 @@ const formattedCoins = computed(() => {
   --term-card-holo-a-rgb: 176, 228, 255;
   --term-card-holo-b-rgb: 230, 188, 255;
   --term-card-holo-c-rgb: 200, 255, 238;
+  --term-card-grid-rows: 0.7fr 1.6fr 1.32fr 0.78fr 0.85fr;
+  --term-card-section-pad-y: 0.2rem;
+  --term-card-section-pad-x: 0.45rem;
+  --term-card-section-offset-y: -1px;
+  --term-card-mutation-size: clamp(0.86rem, 1.3vw, 1.02rem);
+  --term-card-icon-size: 2rem;
+  --term-card-name-size: clamp(0.96rem, 1.38vw, 1.14rem);
+  --term-card-name-line: 1.05;
+  --term-card-rarity-size: 0.58rem;
+  --term-card-rarity-pad-y: 0.14rem;
+  --term-card-rarity-pad-x: 0.42rem;
+  --term-card-coins-value-size: 0.82rem;
+  --term-card-coins-label-size: 0.53rem;
+  --term-card-mutation-stroke: 0.86px;
   position: relative;
   overflow: hidden;
   width: 100%;
@@ -158,7 +184,45 @@ const formattedCoins = computed(() => {
   background: linear-gradient(165deg, var(--term-card-base), rgba(255, 255, 255, 0.9) 140%);
   box-shadow: 0 8px 18px rgba(20, 30, 55, 0.16);
   display: grid;
-  grid-template-rows: 0.64fr 1.46fr 1.46fr 1.72fr 0.72fr 0.5fr 0.5fr;
+  grid-template-rows: var(--term-card-grid-rows);
+}
+
+.term-card--size-opening {
+  --term-card-grid-rows: 0.72fr 1.7fr 1.45fr 0.8fr 0.9fr;
+  --term-card-section-pad-y: 0.22rem;
+  --term-card-section-pad-x: 0.52rem;
+  --term-card-section-offset-y: -2px;
+  --term-card-mutation-size: clamp(1.02rem, 2.2vw, 1.3rem);
+  --term-card-icon-size: 2.35rem;
+  --term-card-name-size: clamp(1.18rem, 2.7vw, 1.56rem);
+  --term-card-name-line: 1.02;
+  --term-card-rarity-size: 0.66rem;
+  --term-card-rarity-pad-y: 0.18rem;
+  --term-card-rarity-pad-x: 0.52rem;
+  --term-card-coins-value-size: 0.95rem;
+  --term-card-coins-label-size: 0.62rem;
+  --term-card-mutation-stroke: 1px;
+}
+
+.term-card--size-medium {
+  --term-card-grid-rows: 0.7fr 1.6fr 1.32fr 0.78fr 0.85fr;
+}
+
+.term-card--size-mini {
+  --term-card-grid-rows: 0.62fr 1.38fr 1.26fr 0.68fr 0.74fr;
+  --term-card-section-pad-y: 0.14rem;
+  --term-card-section-pad-x: 0.32rem;
+  --term-card-section-offset-y: 0;
+  --term-card-mutation-size: clamp(0.48rem, 0.9vw, 0.58rem);
+  --term-card-icon-size: 1.04rem;
+  --term-card-name-size: clamp(0.76rem, 0.96vw, 0.9rem);
+  --term-card-name-line: 1.08;
+  --term-card-rarity-size: 0.46rem;
+  --term-card-rarity-pad-y: 0.11rem;
+  --term-card-rarity-pad-x: 0.34rem;
+  --term-card-coins-value-size: 0.72rem;
+  --term-card-coins-label-size: 0.44rem;
+  --term-card-mutation-stroke: 0.55px;
 }
 
 .term-card::before {
@@ -272,19 +336,21 @@ const formattedCoins = computed(() => {
   position: relative;
   z-index: 1;
   margin: 0;
-  padding: 0.22rem 0.52rem;
+  padding: var(--term-card-section-pad-y) var(--term-card-section-pad-x);
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  transform: translateY(-2px);
+  transform: translateY(var(--term-card-section-offset-y));
 }
 
 .term-card__mutation {
-  font-size: clamp(1.08rem, 2.4vw, 1.38rem);
+  grid-row: 1;
+  font-size: var(--term-card-mutation-size);
   letter-spacing: 0.12em;
   font-weight: 900;
   opacity: 1;
+  line-height: 1;
 }
 
 .term-card__mutation-label--foil {
@@ -293,7 +359,7 @@ const formattedCoins = computed(() => {
   background: linear-gradient(120deg, #8d5423 0%, #f5d58b 44%, #a7612f 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: 1px rgba(0, 0, 0, 0.72);
+  -webkit-text-stroke: var(--term-card-mutation-stroke) rgba(0, 0, 0, 0.72);
 }
 
 .term-card__mutation-label--holo {
@@ -301,40 +367,45 @@ const formattedCoins = computed(() => {
   text-shadow: 0 0 12px rgba(228, 247, 255, 1), 0 0 24px rgba(204, 170, 255, 0.84);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  -webkit-text-stroke: 1px rgba(0, 0, 0, 0.72);
+  -webkit-text-stroke: var(--term-card-mutation-stroke) rgba(0, 0, 0, 0.72);
 }
 
 .term-card__icon {
-  grid-row: 2 / span 2;
+  grid-row: 2;
 }
 
 .term-card__icon-feather {
-  width: 2.35rem;
-  height: 2.35rem;
+  width: var(--term-card-icon-size);
+  height: var(--term-card-icon-size);
   color: rgba(22, 34, 63, 0.88);
   filter: drop-shadow(0 2px 1px rgba(255, 255, 255, 0.35));
 }
 
 .term-card__name {
-  grid-row: 4;
-  font-size: clamp(1.28rem, 3vw, 1.72rem);
+  grid-row: 3;
+  font-size: var(--term-card-name-size);
   font-weight: 900;
-  line-height: 1;
+  line-height: var(--term-card-name-line);
   color: #19233d;
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
   letter-spacing: 0.01em;
   word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-wrap: balance;
 }
 
 .term-card__rarity {
-  grid-row: 5;
+  grid-row: 4;
   opacity: 0.88;
 }
 
 .term-card__rarity-pill {
   border-radius: 9999px;
-  padding: 0.18rem 0.52rem;
-  font-size: 0.66rem;
+  padding: var(--term-card-rarity-pad-y) var(--term-card-rarity-pad-x);
+  font-size: var(--term-card-rarity-size);
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -355,22 +426,22 @@ const formattedCoins = computed(() => {
 }
 
 .term-card__coins {
-  grid-row: 6 / span 2;
+  grid-row: 5;
   flex-direction: column;
-  gap: 0.03rem;
+  gap: 0.04rem;
   opacity: 0.82;
-  align-self: start;
-  padding-top: 0.18rem;
+  align-self: center;
+  padding-top: 0;
 }
 
 .term-card__coins-value {
-  font-size: 0.95rem;
+  font-size: var(--term-card-coins-value-size);
   font-weight: 700;
   color: #18223b;
 }
 
 .term-card__coins-label {
-  font-size: 0.62rem;
+  font-size: var(--term-card-coins-label-size);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #32466f;
@@ -382,6 +453,28 @@ const formattedCoins = computed(() => {
 
 .term-card--unknown .term-card__section {
   background: rgba(255, 255, 255, 0.32);
+}
+
+.term-card--stolen {
+  border-color: rgba(210, 85, 82, 0.5);
+  box-shadow: 0 8px 18px rgba(146, 46, 40, 0.2);
+}
+
+.term-card--stolen .term-card__section {
+  background: rgba(255, 242, 241, 0.64);
+}
+
+.term-card--stolen .term-card__name {
+  color: #8a2525;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.42);
+}
+
+.term-card--stolen .term-card__icon-feather {
+  color: #8a2525;
+}
+
+.term-card--stolen .term-card__rarity-pill {
+  background: #cf4d4d;
 }
 
 @keyframes foil-spectrum {

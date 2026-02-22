@@ -36,16 +36,16 @@
           <p class="text-xl font-semibold">{{ leaderboardPositionLabel }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
-          <p class="text-xs text-muted">Tier Coverage</p>
-          <p class="text-xl font-semibold">{{ tierCoverageLabel }}</p>
-        </article>
-        <article class="rounded-xl border border-soft bg-panel-soft p-3">
-          <p class="text-xs text-muted">Auto Rate</p>
-          <p class="text-xl font-semibold">{{ autoRateLabel }}</p>
-        </article>
-        <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Passive Income</p>
           <p class="text-xl font-semibold" :title="passiveIncomeTooltip">+{{ passiveIncomeSummary.totalRate }}/sec</p>
+        </article>
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs text-muted">Rebirths</p>
+          <p class="text-xl font-semibold">{{ rebirthCount }}</p>
+        </article>
+        <article class="rounded-xl border border-soft bg-panel-soft p-3">
+          <p class="text-xs text-muted">Season Ends</p>
+          <p class="text-sm font-semibold">{{ seasonCountdownLabel }}</p>
         </article>
       </div>
     </div>
@@ -108,6 +108,7 @@
           <term-card
             v-else-if="manualRevealCard"
             class="manual-pack__preview-card"
+            size="opening"
             :name="manualRevealCard.name"
             :tier="manualRevealCard.tier"
             :rarity="manualRevealCard.rarity"
@@ -147,6 +148,7 @@
           <term-card
             v-else-if="manualRevealCard"
             class="manual-pack__preview-card"
+            size="opening"
             :name="manualRevealCard.name"
             :tier="manualRevealCard.tier"
             :rarity="manualRevealCard.rarity"
@@ -165,7 +167,7 @@
               class="recent-mini-card"
               :class="`recent-mini-card--${normalizeMutation(draw.mutation)}`"
             >
-              <vue-feather :type="termIcon(draw.term_key)" class="recent-mini-card__icon" stroke-width="2.4" aria-hidden="true"></vue-feather>
+              <vue-feather :type="termIcon(draw.term_key, draw.layer)" class="recent-mini-card__icon" stroke-width="2.4" aria-hidden="true"></vue-feather>
               <p class="recent-mini-card__rarity" :class="`recent-mini-card__rarity--${normalizeRarity(draw.rarity)}`">
                 {{ normalizeRarity(draw.rarity) }}
               </p>
@@ -206,11 +208,6 @@
           </div>
         </div>
 
-        <details class="mt-3 rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
-          <summary class="cursor-pointer font-semibold">Why these odds?</summary>
-          <p class="mt-2">Value Lv {{ playerState?.value_level || 0 }} shifts rarity. Mutation Lv {{ playerState?.mutation_level || 0 }} shifts mutation quality.</p>
-          <p class="mt-1">Tier odds come directly from Tier Boost Lv {{ playerState?.tier_boost_level || 0 }}.</p>
-        </details>
       </aside>
     </div>
 
@@ -220,26 +217,43 @@
           <h2 class="text-lg font-semibold">Shop</h2>
           <p class="text-xs text-muted">Spend coins to improve auto opening, odds, and value.</p>
         </div>
+        <div class="text-right">
+          <p class="text-xs text-muted">Rebirth unlock</p>
+          <p class="text-sm font-semibold">{{ currentCollectionCount }}/{{ TERMS.length }} cards</p>
+          <button
+            class="btn-secondary mt-2"
+            type="button"
+            :disabled="!rebirthReady || actionLoading"
+            @click="rebirthPlayer"
+          >
+            Rebirth
+          </button>
+          <p class="mt-1 text-[11px] text-muted">
+            {{ rebirthReady ? 'Ready: full collection complete.' : rebirthLockLabel }}
+          </p>
+        </div>
       </div>
 
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <article v-for="upgrade in shopRows" :key="upgrade.key" class="rounded-xl border border-soft bg-panel-soft p-4">
-          <p class="text-xs text-muted">{{ upgrade.label }}</p>
-          <p class="mt-1 text-xs text-muted">{{ upgrade.description }}</p>
+        <article v-for="upgrade in shopRows" :key="upgrade.key" class="rounded-xl border border-soft bg-panel-soft p-4 shop-upgrade-card">
+          <div class="shop-upgrade-card__body">
+            <p class="text-xs text-muted">{{ upgrade.label }}</p>
+            <p class="mt-1 text-xs text-muted">{{ upgrade.description }}</p>
 
-          <p class="mt-2 text-sm"><span class="font-semibold">Current:</span> {{ upgrade.currentEffect }}</p>
-          <p class="text-sm text-muted"><span class="font-semibold text-main">Next:</span> {{ upgrade.nextEffect || 'Maxed' }}</p>
-          <div v-if="upgrade.key === 'tier_boost'" class="mt-2 rounded-lg border border-soft bg-white/70 p-2 text-xs text-muted">
-            <p><span class="font-semibold text-main">Effective now:</span> {{ upgrade.tierOddsNow }}</p>
-            <p v-if="upgrade.tierOddsAfterBuy"><span class="font-semibold text-main">After buy:</span> {{ upgrade.tierOddsAfterBuy }}</p>
-            <p v-if="upgrade.tierOddsUnchangedNextLevel">
-              No immediate odds change at next level.
-              <span v-if="upgrade.nextTierOddsChangeLevel">Next odds shift at Tier Boost Lv {{ upgrade.nextTierOddsChangeLevel }}.</span>
-            </p>
-            <p class="mt-1">This directly updates the Pack Odds tier panel.</p>
+            <p class="mt-2 text-sm"><span class="font-semibold">Current:</span> {{ upgrade.currentEffect }}</p>
+            <p class="text-sm text-muted"><span class="font-semibold text-main">Next:</span> {{ upgrade.nextEffect || 'Maxed' }}</p>
+            <div v-if="upgrade.key === 'tier_boost'" class="mt-2 rounded-lg border border-soft bg-white/70 p-2 text-xs text-muted shop-upgrade-card__tier-note">
+              <p><span class="font-semibold text-main">Effective now:</span> {{ upgrade.tierOddsNow }}</p>
+              <p v-if="upgrade.tierOddsAfterBuy"><span class="font-semibold text-main">After buy:</span> {{ upgrade.tierOddsAfterBuy }}</p>
+              <p v-if="upgrade.tierOddsUnchangedNextLevel">
+                No immediate odds change at next level.
+                <span v-if="upgrade.nextTierOddsChangeLevel">Next odds shift at Tier Boost Lv {{ upgrade.nextTierOddsChangeLevel }}.</span>
+              </p>
+              <p class="mt-1">This directly updates the Pack Odds tier panel.</p>
+            </div>
           </div>
 
-          <div class="mt-3 flex items-center justify-between">
+          <div class="flex items-center justify-between shop-upgrade-card__actions">
             <p class="text-sm font-semibold">{{ upgrade.cost == null ? 'MAX' : `${formatNumber(upgrade.cost)} coins` }}</p>
             <button class="btn-primary" type="button" :disabled="!upgrade.canBuy || actionLoading" @click="buyUpgrade(upgrade.key)">
               {{ upgrade.cost == null ? 'Maxed' : 'Buy' }}
@@ -251,7 +265,7 @@
 
     <section class="card p-5">
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="text-lg font-semibold">Card Book</h2>
+        <h2 class="text-lg font-semibold">Card Book · {{ activePackLabel }}</h2>
         <p class="text-xs text-muted">{{ totalCollectedCards }}/{{ TERMS.length }} discovered</p>
       </div>
 
@@ -266,7 +280,7 @@
             <p class="text-xs text-muted">{{ tierRow.collected }}/{{ tierRow.items.length }} found</p>
           </div>
 
-          <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
             <div
               v-for="item in tierRow.items"
               :key="item.termKey"
@@ -278,17 +292,33 @@
               }"
             >
               <term-card
+                size="medium"
                 :name="item.name"
                 :tier="item.tier"
                 :rarity="item.rarity"
                 :mutation="item.bestMutation"
                 :icon="item.icon"
                 :coins="item.value"
-                :unknown="!item.owned"
+                :stolen="item.stolen"
+                :unknown="!item.owned && !item.stolen"
               />
-              <div class="rounded-md border border-soft bg-white/70 px-2 py-1 text-[11px] text-muted">
-                <p>Slot {{ item.slot }} · Copies {{ item.copies }}</p>
-                <p>Best Mutation: {{ mutationLabel(item.bestMutation) }}</p>
+              <div class="card-book-meta">
+                <div class="card-book-meta__top">
+                  <p class="card-book-metric">
+                    <span class="card-book-metric__label">Slot</span>
+                    <span class="card-book-metric__value">{{ item.slot }}</span>
+                  </p>
+                  <p class="card-book-metric">
+                    <span class="card-book-metric__label">Copies</span>
+                    <span class="card-book-metric__value">{{ item.copies }}</span>
+                  </p>
+                </div>
+                <div class="card-book-meta__bottom">
+                  <p class="card-book-metric card-book-metric--best">
+                    <span class="card-book-metric__label">Best</span>
+                    <span class="card-book-metric__value">{{ mutationLabel(item.bestMutation) }}</span>
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -296,44 +326,44 @@
       </div>
     </section>
 
-    <debug-panel
-      v-if="debugEnabled"
-      :open="debugPanelOpen"
-      :loading="actionLoading"
-      :debug-allowed="debugAllowed"
-      :term-options="termOptions"
-      :last-error="debugLastError"
-      :last-result="debugLastResult"
-      @toggle="toggleDebugPanel"
-      @apply="applyDebugAction"
-    />
   </section>
 </template>
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
-import DebugPanel from '../components/game/DebugPanel.vue'
 import TermCard from '../components/game/TermCard.vue'
+import { getTermPresentation } from '../data/boosterTerms.mjs'
 import { TERMS, TERMS_BY_KEY } from '../data/terms'
 import { BALANCE_CONFIG } from '../lib/balanceConfig.mjs'
 import {
   SHOP_UPGRADES,
   getAutoOpenIntervalMs,
+  getBaseTierFromEffectiveTier,
   canBuyUpgrade,
   computeCardReward,
   getEffectiveTierWeights,
+  getEffectiveTierForLayer,
   getMutationWeights,
   getNextTierOddsChangeLevel,
   getPassiveIncomeSummaryFromTerms,
   getRarityWeightsForTier,
   getUpgradeCost,
   getUpgradePreview,
+  normalizeLayer,
 } from '../lib/packLogic.mjs'
 
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 const MUTATION_ORDER = ['none', 'foil', 'holo']
 const TIER_COLOR_MAP = BALANCE_CONFIG.tierColors || {}
+const BASE_TIER_LABELS = {
+  1: 'Common',
+  2: 'Uncommon',
+  3: 'Rare',
+  4: 'Epic',
+  5: 'Legendary',
+  6: 'Mythic',
+}
 
 const store = useStore()
 const manualPackPhase = ref('ready')
@@ -347,12 +377,12 @@ const AUTO_OPENING_MS = 420
 const LEGENDARY_SPARKLE_MS = 3000
 const LEADERBOARD_REFRESH_MS = 15000
 const LIVE_METRICS_TICK_MS = 500
-const CHICK_MID_TIER_INACTIVITY_MIN_MS = 120_000
-const CHICK_MID_TIER_INACTIVITY_MAX_MS = 360_000
-const CHICK_HIGH_TIER_INACTIVITY_MIN_MS = 10_000
-const CHICK_HIGH_TIER_INACTIVITY_MAX_MS = 80_000
+const CHICK_MID_TIER_INACTIVITY_MIN_MS = 180_000
+const CHICK_MID_TIER_INACTIVITY_MAX_MS = 480_000
+const CHICK_HIGH_TIER_INACTIVITY_MIN_MS = 30_000
+const CHICK_HIGH_TIER_INACTIVITY_MAX_MS = 150_000
 const CHICK_MONITOR_MS = 1000
-const CHICK_COOLDOWN_MS = 8000
+const CHICK_COOLDOWN_MS = 20_000
 const DUCK_ASSET_BASE = `${import.meta.env.BASE_URL}ducks`
 const DUCK_RAID_FRAMES = {
   walk: [duckAsset('walk1.png'), duckAsset('walk2.png'), duckAsset('walk3.png'), duckAsset('walk4.png')],
@@ -403,20 +433,22 @@ const chickRaid = ref({
 const snapshot = computed(() => store.state.game.snapshot)
 const playerState = computed(() => snapshot.value?.state || null)
 const playerTerms = computed(() => snapshot.value?.terms || [])
+const seasonInfo = computed(() => snapshot.value?.season || null)
+const stolenTermKeys = computed(() => {
+  return new Set(Array.isArray(snapshot.value?.stolen_terms) ? snapshot.value.stolen_terms : [])
+})
 const gameError = computed(() => store.state.game.error)
 const actionLoading = computed(() => store.state.game.actionLoading)
 const recentDraws = computed(() => displayedRecentDraws.value)
 const legendarySparkleActive = ref(false)
 const liveNowMs = ref(Date.now())
 
-const debugEnabled = computed(() => store.state.debug.enabled)
-const debugPanelOpen = computed(() => store.state.debug.panelOpen)
-const debugLastError = computed(() => store.state.debug.lastError)
-const debugLastResult = computed(() => store.state.debug.lastResult)
-const debugAllowed = computed(() => store.state.game.debugAllowed)
 const leaderboardRows = computed(() => store.state.leaderboard.rows || [])
 const leaderboardLoading = computed(() => Boolean(store.state.leaderboard.loading))
 const currentUserId = computed(() => store.state.auth.user?.id || null)
+const rebirthCount = computed(() => Number(playerState.value?.rebirth_count || 0))
+const activeLayer = computed(() => normalizeLayer(playerState.value?.active_layer || 1))
+const activePackLabel = computed(() => (activeLayer.value > 1 ? 'Booster Pack' : 'Base Pack'))
 
 const playerCoins = computed(() => Number(playerState.value?.coins || 0))
 const playerManualOpens = computed(() => Number(playerState.value?.manual_opens || 0))
@@ -493,7 +525,7 @@ const duckRaidCardTitle = computed(() => {
   return duckRaidTargetCard.value?.name || chickRaid.value.targetName || 'Unknown Card'
 })
 const duckRaidCardMeta = computed(() => {
-  const tier = Number(duckRaidTargetCard.value?.tier || 0)
+  const tier = Number(duckRaidTargetCard.value?.displayTier || duckRaidTargetCard.value?.tier || 0)
   const rarity = normalizeRarity(duckRaidTargetCard.value?.rarity || 'common')
   return `T${tier || '?'} · ${rarity}`
 })
@@ -502,11 +534,6 @@ const autoLoopDelayMs = computed(() => {
   return autoUnlocked.value
     ? Number(getAutoOpenIntervalMs(playerState.value || {}) || 2500)
     : BALANCE_CONFIG.manualOpenCooldownMs
-})
-const autoRateLabel = computed(() => {
-  if (!autoUnlocked.value) return 'Locked'
-  if (!autoRollEnabled.value) return `Paused (${(autoLoopDelayMs.value / 1000).toFixed(1)}s wait)`
-  return `1 pack / ${(autoLoopDelayMs.value / 1000).toFixed(1)}s`
 })
 const loopCadenceLabel = computed(() => {
   if (!autoUnlocked.value) return `1 click / ${(BALANCE_CONFIG.manualOpenCooldownMs / 1000).toFixed(1)}s`
@@ -533,20 +560,32 @@ const tierWeightByTier = computed(() => {
   }, {})
 })
 const duckStealMaxTierCoverage = computed(() => {
+  const baseLayerWeights = getEffectiveTierWeights({
+    ...(playerState.value || {}),
+    active_layer: 1,
+  })
+
   const available = tierRows.value
+    .map((row) => ({
+      tier: Number(row.tier || 0),
+      weight: Number(baseLayerWeights[row.tier] || row.weight || 0),
+    }))
     .filter((row) => Number(row.weight || 0) > 0)
     .map((row) => Number(row.tier || 0))
   if (!available.length) return 1
   return Math.max(...available)
 })
-const tierCoverageLabel = computed(() => {
-  const available = tierRows.value
-    .filter((row) => Number(row.weight || 0) > 0)
-    .map((row) => row.tier)
-
-  if (available.length === 0) return 'T1'
-  if (available.length === 1) return `T${available[0]}`
-  return `T${available[0]}-T${available[available.length - 1]}`
+const seasonCountdownLabel = computed(() => {
+  const endMs = Date.parse(seasonInfo.value?.ends_at || '')
+  if (!Number.isFinite(endMs)) return 'Unknown'
+  const remainingMs = Math.max(0, endMs - liveNowMs.value)
+  const totalSeconds = Math.floor(remainingMs / 1000)
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  if (days > 0) return `${days}d ${hours}h`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${Math.max(0, totalSeconds)}s`
 })
 
 const rarityRows = computed(() => {
@@ -563,13 +602,21 @@ const rarityRows = computed(() => {
 const manualRevealCard = computed(() => {
   if (!manualRevealDraw.value) return null
   const term = TERMS_BY_KEY[manualRevealDraw.value.term_key]
+  const baseTier = Number(term?.tier || 1)
+  const drawLayer = normalizeLayer(manualRevealDraw.value.layer || activeLayer.value || 1)
+  const presentation = getTermPresentation(manualRevealDraw.value.term_key, drawLayer)
+  const drawTier = Number(manualRevealDraw.value.tier || 0)
+  const displayTier = drawTier > 6
+    ? drawTier
+    : getEffectiveTierForLayer(drawTier || baseTier, drawLayer)
 
   return {
-    name: term?.name || manualRevealDraw.value.term_name || manualRevealDraw.value.term_key || 'Unknown Card',
-    tier: Number(manualRevealDraw.value.tier || term?.tier || 1),
+    name: presentation.name || term?.name || manualRevealDraw.value.term_name || manualRevealDraw.value.term_key || 'Unknown Card',
+    tier: baseTier,
+    displayTier,
     rarity: manualRevealDraw.value.rarity || term?.rarity || 'common',
     mutation: normalizeMutation(manualRevealDraw.value.mutation || 'none'),
-    icon: term?.icon || 'help-circle',
+    icon: presentation.icon || term?.icon || 'help-circle',
     coins: Number(manualRevealDraw.value.reward || 0),
   }
 })
@@ -586,13 +633,16 @@ const cardBookRows = computed(() => {
     const owned = ownedTermsByKey.value[term.key]
     const copies = Math.max(0, Number(owned?.copies || 0))
     const bestMutation = normalizeMutation(owned?.best_mutation || 'none')
+    const isStolen = copies <= 0 && stolenTermKeys.value.has(term.key)
+    const presentation = getTermPresentation(term.key, activeLayer.value)
 
     return {
       termKey: term.key,
       slot: index + 1,
-      icon: term.icon || 'help-circle',
-      name: term.name,
+      icon: presentation.icon || term.icon || 'help-circle',
+      name: presentation.name || term.name,
       tier: Number(term.tier || 1),
+      displayTier: getEffectiveTierForLayer(Number(term.tier || 1), activeLayer.value),
       rarity: term.rarity,
       value: computeCardReward({
         baseBp: term.baseBp,
@@ -602,13 +652,21 @@ const cardBookRows = computed(() => {
       }),
       copies,
       owned: copies > 0,
+      stolen: isStolen,
       bestMutation,
     }
   })
 })
 
-const totalCollectedCards = computed(() => {
+const currentCollectionCount = computed(() => {
   return cardBookRows.value.filter((row) => row.owned).length
+})
+const totalCollectedCards = currentCollectionCount
+const rebirthReady = computed(() => currentCollectionCount.value >= TERMS.length)
+const rebirthLockLabel = computed(() => {
+  const remaining = Math.max(0, TERMS.length - currentCollectionCount.value)
+  if (remaining <= 0) return 'Ready: full collection complete.'
+  return `Collect ${currentCollectionCount.value}/${TERMS.length} to rebirth (${remaining} remaining).`
 })
 
 const cardBookByTier = computed(() => {
@@ -677,8 +735,6 @@ const canOpenManual = computed(() => {
     && manualPackPhase.value === 'ready'
 })
 
-const termOptions = TERMS.map((term) => ({ key: term.key, name: term.name }))
-
 onMounted(async () => {
   viewActive = true
   await store.dispatch('auth/initAuth')
@@ -686,6 +742,7 @@ onMounted(async () => {
     await store.dispatch('game/bootstrapPlayer')
   }
   await store.dispatch('leaderboard/fetch', { force: true, limit: 100 })
+  await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
 
   displayedRecentDraws.value = [...(store.state.game.recentDraws || [])]
   lastMouseActivityMs.value = Date.now()
@@ -913,6 +970,13 @@ async function openManualPack() {
 
 async function buyUpgrade(upgradeKey) {
   await store.dispatch('game/buyUpgrade', { upgradeKey })
+}
+
+async function rebirthPlayer() {
+  if (!rebirthReady.value || actionLoading.value) return
+  await store.dispatch('game/rebirth')
+  await store.dispatch('leaderboard/fetch', { force: true, limit: 100 })
+  await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
 }
 
 function toggleAutoRoll() {
@@ -1233,29 +1297,30 @@ function triggerLegendarySparkle(draw) {
   }, LEGENDARY_SPARKLE_MS)
 }
 
-async function toggleDebugPanel() {
-  await store.dispatch('debug/togglePanel')
-}
-
-async function applyDebugAction(action) {
-  await store.dispatch('game/debugApply', action)
-}
-
 function packName(tier) {
-  const normalized = Number(tier || 1)
-  return BALANCE_CONFIG.packTierNames?.[normalized] || `Tier ${normalized}`
+  const normalized = Math.max(1, Number(tier || 1))
+  const effectiveTier = normalized > 6
+    ? normalized
+    : getEffectiveTierForLayer(normalized, activeLayer.value)
+  const baseTier = normalized > 6 ? getBaseTierFromEffectiveTier(normalized) : normalized
+  const tierLabel = BASE_TIER_LABELS[baseTier] || 'Common'
+  return `Tier ${effectiveTier} ${tierLabel}`
 }
 
 function tierColor(tier) {
-  return TIER_COLOR_MAP[Number(tier || 1)] || 'var(--text-main)'
+  const normalized = Math.max(1, Number(tier || 1))
+  const baseTier = normalized > 6 ? getBaseTierFromEffectiveTier(normalized) : normalized
+  return TIER_COLOR_MAP[baseTier] || 'var(--text-main)'
 }
 
-function termName(termKey) {
-  return TERMS_BY_KEY[termKey]?.name || termKey
+function termName(termKey, layer = activeLayer.value) {
+  const presentation = getTermPresentation(termKey, layer)
+  return presentation.name || TERMS_BY_KEY[termKey]?.name || termKey
 }
 
-function termIcon(termKey) {
-  return TERMS_BY_KEY[termKey]?.icon || 'help-circle'
+function termIcon(termKey, layer = activeLayer.value) {
+  const presentation = getTermPresentation(termKey, layer)
+  return presentation.icon || TERMS_BY_KEY[termKey]?.icon || 'help-circle'
 }
 
 function percent(value) {
@@ -1486,9 +1551,97 @@ function duckAsset(fileName) {
   font-weight: 700;
 }
 
+.shop-upgrade-card {
+  --shop-upgrade-card-height: 20.8rem;
+  height: var(--shop-upgrade-card-height);
+  display: flex;
+  flex-direction: column;
+}
+
+.shop-upgrade-card__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 0.1rem;
+  scrollbar-width: thin;
+}
+
+.shop-upgrade-card__actions {
+  margin-top: auto;
+  padding-top: 0.55rem;
+}
+
+@media (min-width: 640px) {
+  .shop-upgrade-card {
+    --shop-upgrade-card-height: 19.6rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  .shop-upgrade-card {
+    --shop-upgrade-card-height: 18.6rem;
+  }
+}
+
 .card-book-slot {
   border-radius: 0.72rem;
   transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.card-book-slot :deep(.term-card) {
+  max-width: clamp(128px, 12vw, 168px);
+  margin-inline: auto;
+}
+
+.card-book-meta {
+  display: grid;
+  gap: 0.24rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(120, 143, 194, 0.3);
+  background: rgba(255, 255, 255, 0.76);
+  padding: 0.28rem 0.3rem;
+  min-height: 2.2rem;
+}
+
+.card-book-meta__top {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.24rem;
+}
+
+.card-book-meta__bottom {
+  display: flex;
+  justify-content: center;
+}
+
+.card-book-metric {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.28rem;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 143, 194, 0.35);
+  background: rgba(233, 242, 255, 0.95);
+  padding: 0.08rem 0.34rem;
+  font-size: 0.6rem;
+  line-height: 1.1;
+  min-width: 0;
+}
+
+.card-book-metric--best {
+  min-width: 5.8rem;
+}
+
+.card-book-metric__label {
+  color: #60759d;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.card-book-metric__value {
+  color: #203d68;
+  font-weight: 700;
 }
 
 .card-book-slot--targeted {
@@ -1647,7 +1800,7 @@ function duckAsset(fileName) {
 }
 
 .manual-pack__preview-card {
-  width: min(228px, 96%);
+  width: min(212px, 94%);
   position: relative;
   z-index: 3;
 }

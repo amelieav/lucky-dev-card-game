@@ -7,11 +7,14 @@ import {
   bestMutation,
   canBuyUpgrade,
   computeCardReward,
+  getBaseTierFromEffectiveTier,
   getAutoOpensPerSecond,
   getEffectiveTierWeights,
+  getEffectiveTierForLayer,
   getHighestUnlockedTier,
-  getPassiveIncomeSummaryFromTerms,
+  normalizeLayer,
   getMutationWeights,
+  getPassiveIncomeSummaryFromTerms,
   getRarityWeightsForTier,
   normalizeMutation,
   pickFromWeightedMap,
@@ -20,7 +23,22 @@ import {
 const STORAGE_PREFIX = 'lucky_agent_local_pack_economy_v1'
 const LEGACY_STORAGE_PREFIX = 'lucky_agent_local_economy_v1'
 const ACTIVE_WINDOW_SECONDS = 15
+const DEFAULT_SEASON_DURATION_MS = 7 * 24 * 60 * 60 * 1000
+const MAX_REBIRTHS = 1
+const MAX_ACTIVE_LAYER = MAX_REBIRTHS + 1
 const memoryStorage = new Map()
+
+const TERMS_TOTAL = TERMS.length
+const RARITY_RANK = {
+  common: 1,
+  rare: 2,
+  legendary: 3,
+}
+const MUTATION_RANK = {
+  none: 1,
+  foil: 2,
+  holo: 3,
+}
 
 const TERMS_BY_TIER = TERMS.reduce((acc, term) => {
   if (!acc[term.tier]) acc[term.tier] = []
@@ -37,6 +55,10 @@ const TERMS_BY_TIER_AND_RARITY = TERMS.reduce((acc, term) => {
 
 function nowIso(nowMs = Date.now()) {
   return new Date(nowMs).toISOString()
+}
+
+function normalizeActiveLayer(value) {
+  return Math.max(1, Math.min(MAX_ACTIVE_LAYER, normalizeLayer(value)))
 }
 
 function chooseRandom(values, rng = Math.random) {
@@ -72,6 +94,213 @@ function writeRawValue(key, value) {
   memoryStorage.set(key, value)
 }
 
+function toInt(value, fallback = 0) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return fallback
+  return Math.floor(n)
+}
+
+function seasonDurationMs() {
+  const envValue = typeof import.meta !== 'undefined' && import.meta?.env
+    ? import.meta.env.VITE_SEASON_DURATION_MS
+    : null
+  const parsed = Number(envValue)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_SEASON_DURATION_MS
+  }
+  return Math.max(1_000, Math.floor(parsed))
+}
+
+function toIsoDateUTC(timestampMs) {
+  return new Date(timestampMs).toISOString().slice(0, 10)
+}
+
+function mondaySeasonWindow(nowMs = Date.now()) {
+  const now = new Date(nowMs)
+  const midnightUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  const day = now.getUTCDay()
+  const offsetDays = (day + 6) % 7
+  const startsAtMs = midnightUtcMs - (offsetDays * 24 * 60 * 60 * 1000)
+  const endsAtMs = startsAtMs + DEFAULT_SEASON_DURATION_MS
+  return {
+    id: `week-${toIsoDateUTC(startsAtMs)}`,
+    starts_at: nowIso(startsAtMs),
+    ends_at: nowIso(endsAtMs),
+  }
+}
+
+function intervalSeasonWindow(nowMs = Date.now(), durationMs) {
+  const safeDuration = Math.max(1_000, Math.floor(Number(durationMs || DEFAULT_SEASON_DURATION_MS)))
+  const startsAtMs = Math.floor(nowMs / safeDuration) * safeDuration
+  const endsAtMs = startsAtMs + safeDuration
+  return {
+    id: `interval-${safeDuration}-${startsAtMs}`,
+    starts_at: nowIso(startsAtMs),
+    ends_at: nowIso(endsAtMs),
+  }
+}
+
+function getCurrentSeasonWindow(nowMs = Date.now()) {
+  const durationMs = seasonDurationMs()
+  if (durationMs === DEFAULT_SEASON_DURATION_MS) {
+    return mondaySeasonWindow(nowMs)
+  }
+  return intervalSeasonWindow(nowMs, durationMs)
+}
+
+function normalizeRarity(rarity) {
+  const key = String(rarity || '').trim().toLowerCase()
+  return RARITY_RANK[key] ? key : 'common'
+}
+
+function normalizeLifetimeEntry(entry, nowMs = Date.now()) {
+  if (!entry || typeof entry !== 'object') return null
+  const termKey = String(entry.term_key || '').trim()
+  if (!TERMS_BY_KEY[termKey]) return null
+  const layer = normalizeActiveLayer(toInt(entry.layer, 1))
+  const firstCollectedAtMs = Date.parse(entry.first_collected_at || '')
+  const lastCollectedAtMs = Date.parse(entry.last_collected_at || '')
+  return {
+    layer,
+    term_key: termKey,
+    copies: Math.max(1, toInt(entry.copies, 1)),
+    best_mutation: normalizeMutation(entry.best_mutation || 'none'),
+    first_collected_at: Number.isFinite(firstCollectedAtMs) ? nowIso(firstCollectedAtMs) : nowIso(nowMs),
+    last_collected_at: Number.isFinite(lastCollectedAtMs) ? nowIso(lastCollectedAtMs) : nowIso(nowMs),
+  }
+}
+
+function normalizeStolenEntry(entry, nowMs = Date.now()) {
+  if (!entry || typeof entry !== 'object') return null
+  const termKey = String(entry.term_key || '').trim()
+  if (!TERMS_BY_KEY[termKey]) return null
+  const layer = normalizeActiveLayer(toInt(entry.layer, 1))
+  const stolenAtMs = Date.parse(entry.stolen_at || '')
+  return {
+    layer,
+    term_key: termKey,
+    stolen_at: Number.isFinite(stolenAtMs) ? nowIso(stolenAtMs) : nowIso(nowMs),
+  }
+}
+
+function uniqueLifetimeEntries(entries, nowMs = Date.now()) {
+  const byKey = new Map()
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const normalized = normalizeLifetimeEntry(entry, nowMs)
+    if (!normalized) continue
+    const key = `${normalized.layer}:${normalized.term_key}`
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, normalized)
+      continue
+    }
+
+    const firstMs = Math.min(
+      Date.parse(existing.first_collected_at || '') || Date.now(),
+      Date.parse(normalized.first_collected_at || '') || Date.now(),
+    )
+    const lastMs = Math.max(
+      Date.parse(existing.last_collected_at || '') || 0,
+      Date.parse(normalized.last_collected_at || '') || 0,
+    )
+
+    byKey.set(key, {
+      ...existing,
+      copies: Math.max(1, Number(existing.copies || 1)) + Math.max(1, Number(normalized.copies || 1)),
+      best_mutation: bestMutation(existing.best_mutation, normalized.best_mutation),
+      first_collected_at: nowIso(firstMs),
+      last_collected_at: nowIso(lastMs || Date.now()),
+    })
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => {
+    if (a.layer !== b.layer) return a.layer - b.layer
+    return a.term_key.localeCompare(b.term_key)
+  })
+}
+
+function uniqueStolenEntries(entries, nowMs = Date.now()) {
+  const seen = new Set()
+  const result = []
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const normalized = normalizeStolenEntry(entry, nowMs)
+    if (!normalized) continue
+    const key = `${normalized.layer}:${normalized.term_key}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(normalized)
+  }
+
+  return result.sort((a, b) => {
+    if (a.layer !== b.layer) return a.layer - b.layer
+    return a.term_key.localeCompare(b.term_key)
+  })
+}
+
+function normalizeSeason(raw, nowMs = Date.now()) {
+  const fallback = getCurrentSeasonWindow(nowMs)
+  if (!raw || typeof raw !== 'object') {
+    return fallback
+  }
+
+  const startsAtMs = Date.parse(raw.starts_at || '')
+  const endsAtMs = Date.parse(raw.ends_at || '')
+  return {
+    id: String(raw.id || fallback.id),
+    starts_at: Number.isFinite(startsAtMs) ? nowIso(startsAtMs) : fallback.starts_at,
+    ends_at: Number.isFinite(endsAtMs) ? nowIso(endsAtMs) : fallback.ends_at,
+  }
+}
+
+function normalizeSeasonHistoryEntry(entry, nowMs = Date.now()) {
+  if (!entry || typeof entry !== 'object') return null
+
+  const seasonId = String(entry.season_id || '').trim()
+  if (!seasonId) return null
+
+  const startsAtMs = Date.parse(entry.starts_at || '')
+  const endsAtMs = Date.parse(entry.ends_at || '')
+  const recordedAtMs = Date.parse(entry.recorded_at || '')
+
+  return {
+    season_id: seasonId,
+    starts_at: Number.isFinite(startsAtMs) ? nowIso(startsAtMs) : nowIso(nowMs),
+    ends_at: Number.isFinite(endsAtMs) ? nowIso(endsAtMs) : nowIso(nowMs),
+    rank: Math.max(1, toInt(entry.rank, 1)),
+    total_players: Math.max(1, toInt(entry.total_players, 1)),
+    score: Math.max(0, Number(entry.score || 0)),
+    best_term_key: entry.best_term_key || null,
+    best_term_name: entry.best_term_name || null,
+    best_term_tier: Math.max(0, toInt(entry.best_term_tier, 0)),
+    best_term_rarity: normalizeRarity(entry.best_term_rarity),
+    best_term_mutation: normalizeMutation(entry.best_term_mutation || 'none'),
+    best_term_copies: Math.max(0, toInt(entry.best_term_copies, 0)),
+    viewer_previous_rank: entry.viewer_previous_rank == null ? null : Math.max(1, toInt(entry.viewer_previous_rank, 1)),
+    recorded_at: Number.isFinite(recordedAtMs) ? nowIso(recordedAtMs) : nowIso(nowMs),
+  }
+}
+
+function normalizeSeasonHistory(entries, nowMs = Date.now()) {
+  const seen = new Set()
+  const result = []
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const normalized = normalizeSeasonHistoryEntry(entry, nowMs)
+    if (!normalized) continue
+    if (seen.has(normalized.season_id)) continue
+    seen.add(normalized.season_id)
+    result.push(normalized)
+  }
+
+  return result.sort((a, b) => {
+    const aEnd = Date.parse(a.ends_at || '')
+    const bEnd = Date.parse(b.ends_at || '')
+    if (Number.isFinite(aEnd) && Number.isFinite(bEnd) && bEnd !== aEnd) {
+      return bEnd - aEnd
+    }
+    return b.season_id.localeCompare(a.season_id)
+  })
+}
+
 function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
   const partA = chooseRandom(NICK_PARTS_A, rng)
   const partB = chooseRandom(NICK_PARTS_B, rng)
@@ -92,11 +321,17 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
     auto_opens: 0,
     auto_open_progress: 0,
     passive_rate_cps: 0,
+    rebirth_count: 0,
+    active_layer: 1,
     active_until_at: timestamp,
     last_tick_at: timestamp,
     created_at: timestamp,
     updated_at: timestamp,
+    season: getCurrentSeasonWindow(nowMs),
+    season_history: [],
     terms: [],
+    lifetime_terms: [],
+    stolen_terms: [],
     profile: {
       nick_part_a: partA,
       nick_part_b: partB,
@@ -106,6 +341,242 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
     },
     next_reward: null,
   }
+}
+
+function sanitizeTermRow(row) {
+  return {
+    ...row,
+    term_key: String(row?.term_key || ''),
+    copies: Math.max(0, Number(row?.copies || 0)),
+    level: Math.max(1, Number(row?.level || 1)),
+    best_mutation: normalizeMutation(row?.best_mutation || row?.bestMutation || 'none'),
+  }
+}
+
+function sortTerms(terms) {
+  return terms.map((row) => sanitizeTermRow(row)).sort((a, b) => {
+    if (b.level !== a.level) return b.level - a.level
+    if (b.copies !== a.copies) return b.copies - a.copies
+    return a.term_key.localeCompare(b.term_key)
+  })
+}
+
+function buildLifetimeSummary(record) {
+  const lifetime = uniqueLifetimeEntries(record.lifetime_terms || [])
+  const byLayer = new Map()
+  const cards = []
+  const highestByLayer = new Map()
+
+  for (const entry of lifetime) {
+    if (Number(entry.layer || 1) > MAX_ACTIVE_LAYER) continue
+
+    const set = byLayer.get(entry.layer) || new Set()
+    set.add(entry.term_key)
+    byLayer.set(entry.layer, set)
+
+    const term = TERMS_BY_KEY[entry.term_key]
+    if (!term) continue
+
+    const card = {
+      layer: entry.layer,
+      term_key: entry.term_key,
+      term_name: term.name,
+      tier: getEffectiveTierForLayer(Number(term.tier || 1), entry.layer),
+      rarity: normalizeRarity(term.rarity),
+      best_mutation: normalizeMutation(entry.best_mutation),
+      copies: Math.max(1, Number(entry.copies || 1)),
+      first_collected_at: entry.first_collected_at,
+      last_collected_at: entry.last_collected_at || entry.first_collected_at,
+    }
+    cards.push(card)
+
+    const currentHighest = highestByLayer.get(entry.layer)
+    if (!currentHighest || compareBestCard(currentHighest, {
+      term_key: card.term_key,
+      tier: card.tier,
+      rarity: card.rarity,
+      mutation: card.best_mutation,
+      copies: card.copies,
+    }) > 0) {
+      highestByLayer.set(entry.layer, {
+        term_key: card.term_key,
+        term_name: card.term_name,
+        tier: card.tier,
+        rarity: card.rarity,
+        best_mutation: card.best_mutation,
+        copies: card.copies,
+      })
+    }
+  }
+
+  const knownLayers = Array.from(byLayer.keys())
+  knownLayers.push(normalizeActiveLayer(record.active_layer))
+  const maxLayer = Math.min(MAX_ACTIVE_LAYER, Math.max(...knownLayers))
+  const perLayer = []
+  for (let layer = 1; layer <= maxLayer; layer += 1) {
+    const collected = byLayer.get(layer)?.size || 0
+    perLayer.push({
+      layer,
+      collected,
+      total: TERMS_TOTAL,
+    })
+  }
+
+  cards.sort((a, b) => {
+    if (a.layer !== b.layer) return a.layer - b.layer
+    if (a.tier !== b.tier) return a.tier - b.tier
+    return a.term_key.localeCompare(b.term_key)
+  })
+
+  const highest_per_layer = Array.from(highestByLayer.entries())
+    .map(([layer, row]) => ({
+      layer,
+      ...row,
+    }))
+    .sort((a, b) => a.layer - b.layer)
+
+  return {
+    total_unique: lifetime.length,
+    per_layer: perLayer,
+    cards,
+    highest_per_layer,
+  }
+}
+
+function currentLayerStolenTermKeys(record) {
+  const activeLayer = normalizeActiveLayer(record.active_layer)
+  return uniqueStolenEntries(record.stolen_terms || [])
+    .filter((entry) => entry.layer === activeLayer)
+    .map((entry) => entry.term_key)
+}
+
+function compareBestCard(a, b) {
+  if (!b) return -1
+  if (!a) return 1
+
+  if (a.tier !== b.tier) return b.tier - a.tier
+
+  const aRarityRank = RARITY_RANK[a.rarity] || 1
+  const bRarityRank = RARITY_RANK[b.rarity] || 1
+  if (aRarityRank !== bRarityRank) return bRarityRank - aRarityRank
+
+  const aMutationRank = MUTATION_RANK[a.mutation] || 1
+  const bMutationRank = MUTATION_RANK[b.mutation] || 1
+  if (aMutationRank !== bMutationRank) return bMutationRank - aMutationRank
+
+  if (a.copies !== b.copies) return b.copies - a.copies
+  return a.term_key.localeCompare(b.term_key)
+}
+
+function buildBestCardFromTerms(terms = [], activeLayer = 1) {
+  const candidates = (terms || []).map((row) => {
+    const term = TERMS_BY_KEY[row.term_key]
+    if (!term) return null
+    return {
+      term_key: term.key,
+      term_name: term.name,
+      tier: getEffectiveTierForLayer(Number(term.tier || 1), activeLayer),
+      rarity: normalizeRarity(term.rarity),
+      mutation: normalizeMutation(row.best_mutation),
+      copies: Math.max(0, Number(row.copies || 0)),
+    }
+  }).filter(Boolean)
+
+  if (!candidates.length) return null
+  candidates.sort(compareBestCard)
+  return candidates[0]
+}
+
+function latestSeasonHistoryRow(record) {
+  const rows = normalizeSeasonHistory(record.season_history || [])
+  return rows[0] || null
+}
+
+function buildSeasonArchiveRow(record, nowMs = Date.now()) {
+  const best = buildBestCardFromTerms(record.terms, normalizeActiveLayer(record.active_layer))
+  return {
+    season_id: record.season?.id || `legacy-${nowMs}`,
+    starts_at: record.season?.starts_at || nowIso(nowMs),
+    ends_at: record.season?.ends_at || nowIso(nowMs),
+    rank: 1,
+    total_players: 1,
+    score: Math.max(0, Number(record.coins || 0)),
+    best_term_key: best?.term_key || null,
+    best_term_name: best?.term_name || null,
+    best_term_tier: Number(best?.tier || 0),
+    best_term_rarity: best?.rarity || 'common',
+    best_term_mutation: best?.mutation || 'none',
+    best_term_copies: Number(best?.copies || 0),
+    viewer_previous_rank: 1,
+    recorded_at: nowIso(nowMs),
+  }
+}
+
+function archiveCurrentSeason(record, nowMs = Date.now()) {
+  if (!record?.season?.id) return
+
+  const row = buildSeasonArchiveRow(record, nowMs)
+  const existing = normalizeSeasonHistory(record.season_history || [])
+  const deduped = existing.filter((entry) => entry.season_id !== row.season_id)
+  record.season_history = normalizeSeasonHistory([row, ...deduped], nowMs)
+}
+
+function resetProgress(record, {
+  nowMs = Date.now(),
+  clearCurrentTerms = true,
+  resetRebirth = false,
+} = {}) {
+  record.coins = BALANCE_CONFIG.initialCoins
+  record.mutation_level = 0
+  record.value_level = 0
+  record.luck_level = 0
+  record.tier_boost_level = 0
+  record.auto_unlocked = false
+  record.auto_speed_level = 0
+  record.packs_opened = 0
+  record.eggs_opened = 0
+  record.manual_opens = 0
+  record.auto_opens = 0
+  record.auto_open_progress = 0
+  record.passive_rate_cps = 0
+  record.active_until_at = nowIso(nowMs)
+  record.last_tick_at = nowIso(nowMs)
+  record.updated_at = nowIso(nowMs)
+  record.next_reward = null
+
+  if (clearCurrentTerms) {
+    record.terms = []
+  }
+
+  if (resetRebirth) {
+    record.rebirth_count = 0
+    record.active_layer = 1
+  }
+
+  const activeLayer = normalizeActiveLayer(record.active_layer)
+  record.stolen_terms = uniqueStolenEntries(record.stolen_terms || [], nowMs)
+    .filter((entry) => entry.layer !== activeLayer)
+
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+}
+
+function ensureSeasonState(record, nowMs = Date.now()) {
+  const current = getCurrentSeasonWindow(nowMs)
+  record.season = normalizeSeason(record.season, nowMs)
+
+  if (record.season.id === current.id) {
+    return false
+  }
+
+  archiveCurrentSeason(record, nowMs)
+  resetProgress(record, {
+    nowMs,
+    clearCurrentTerms: true,
+    resetRebirth: true,
+  })
+  record.season = current
+  record.updated_at = nowIso(nowMs)
+  return true
 }
 
 function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
@@ -120,6 +591,9 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
       ...(record.profile || {}),
     },
     terms: Array.isArray(record.terms) ? record.terms : [],
+    lifetime_terms: Array.isArray(record.lifetime_terms) ? record.lifetime_terms : [],
+    stolen_terms: Array.isArray(record.stolen_terms) ? record.stolen_terms : [],
+    season_history: Array.isArray(record.season_history) ? record.season_history : [],
   }
 
   if (merged.packs_opened == null && merged.eggs_opened != null) {
@@ -137,10 +611,31 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
   merged.value_level = Math.max(0, Number((merged.value_level ?? merged.luck_level) || 0))
   merged.luck_level = merged.value_level
   merged.coins = Math.max(0, Number(merged.coins || 0))
+  merged.rebirth_count = Math.max(0, Math.min(MAX_REBIRTHS, Number(merged.rebirth_count || 0)))
+  merged.active_layer = normalizeActiveLayer(merged.active_layer)
   merged.auto_unlocked = Boolean(merged.auto_unlocked)
+
   const activeUntilMs = Date.parse(merged.active_until_at || '')
   merged.active_until_at = Number.isFinite(activeUntilMs) ? nowIso(activeUntilMs) : nowIso(nowMs)
+
   merged.terms = merged.terms.map((row) => sanitizeTermRow(row))
+  merged.lifetime_terms = uniqueLifetimeEntries(merged.lifetime_terms, nowMs)
+  merged.stolen_terms = uniqueStolenEntries(merged.stolen_terms, nowMs)
+  merged.season = normalizeSeason(merged.season, nowMs)
+  merged.season_history = normalizeSeasonHistory(merged.season_history, nowMs)
+
+  if (merged.lifetime_terms.length === 0 && merged.terms.length > 0) {
+    const migratedLifetime = merged.terms.map((row) => ({
+      layer: 1,
+      term_key: row.term_key,
+      copies: Math.max(1, Number(row.copies || 1)),
+      best_mutation: normalizeMutation(row.best_mutation || 'none'),
+      first_collected_at: nowIso(nowMs),
+      last_collected_at: nowIso(nowMs),
+    }))
+    merged.lifetime_terms = uniqueLifetimeEntries(migratedLifetime, nowMs)
+  }
+
   merged.highest_tier_unlocked = getHighestUnlockedTier(merged)
   merged.passive_rate_cps = Math.max(0, Number(merged.passive_rate_cps || 0))
 
@@ -180,24 +675,6 @@ function writeRecord(user, record) {
   writeRawValue(storageKey(user.id), JSON.stringify(record))
 }
 
-function sanitizeTermRow(row) {
-  return {
-    ...row,
-    term_key: String(row?.term_key || ''),
-    copies: Math.max(0, Number(row?.copies || 0)),
-    level: Math.max(1, Number(row?.level || 1)),
-    best_mutation: normalizeMutation(row?.best_mutation || row?.bestMutation || 'none'),
-  }
-}
-
-function sortTerms(terms) {
-  return terms.map((row) => sanitizeTermRow(row)).sort((a, b) => {
-    if (b.level !== a.level) return b.level - a.level
-    if (b.copies !== a.copies) return b.copies - a.copies
-    return a.term_key.localeCompare(b.term_key)
-  })
-}
-
 function toSnapshot(record, debugAllowed, nowMs = Date.now()) {
   const passiveSummary = getPassiveIncomeSummaryFromTerms(record.terms)
   record.passive_rate_cps = passiveSummary.totalRate
@@ -223,13 +700,20 @@ function toSnapshot(record, debugAllowed, nowMs = Date.now()) {
       active_until_at: record.active_until_at,
       last_tick_at: record.last_tick_at,
       updated_at: record.updated_at,
+      rebirth_count: record.rebirth_count,
+      active_layer: record.active_layer,
     },
     profile: { ...record.profile },
     terms: sortTerms(record.terms),
+    season: { ...record.season },
+    stolen_terms: currentLayerStolenTermKeys(record),
+    lifetime: buildLifetimeSummary(record),
+    season_history: normalizeSeasonHistory(record.season_history || []),
     meta: {
       server_now: nowIso(nowMs),
       debug_allowed: Boolean(debugAllowed),
       local_mode: true,
+      season_duration_ms: seasonDurationMs(),
     },
   }
 }
@@ -256,6 +740,56 @@ function randomTermByPool(drawTier, rarity, rng = Math.random) {
   return null
 }
 
+function addLifetimeCollect(record, termKey, { copiesToAdd = 1, mutation = 'none' } = {}, nowMs = Date.now()) {
+  const activeLayer = normalizeActiveLayer(record.active_layer)
+  const key = `${activeLayer}:${termKey}`
+  const entries = uniqueLifetimeEntries(record.lifetime_terms || [], nowMs)
+  const idx = entries.findIndex((entry) => `${entry.layer}:${entry.term_key}` === key)
+
+  if (idx === -1) {
+    entries.push({
+      layer: activeLayer,
+      term_key: termKey,
+      copies: Math.max(1, Number(copiesToAdd || 1)),
+      best_mutation: normalizeMutation(mutation),
+      first_collected_at: nowIso(nowMs),
+      last_collected_at: nowIso(nowMs),
+    })
+  } else {
+    entries[idx] = {
+      ...entries[idx],
+      copies: Math.max(1, Number(entries[idx].copies || 1)) + Math.max(1, Number(copiesToAdd || 1)),
+      best_mutation: bestMutation(entries[idx].best_mutation, normalizeMutation(mutation)),
+      last_collected_at: nowIso(nowMs),
+    }
+  }
+
+  record.lifetime_terms = uniqueLifetimeEntries(entries, nowMs)
+}
+
+function clearStolenMarker(record, termKey, nowMs = Date.now()) {
+  const activeLayer = normalizeActiveLayer(record.active_layer)
+  record.stolen_terms = uniqueStolenEntries(record.stolen_terms || [], nowMs)
+    .filter((entry) => !(entry.layer === activeLayer && entry.term_key === termKey))
+}
+
+function markStolenMarker(record, termKey, nowMs = Date.now()) {
+  const activeLayer = normalizeActiveLayer(record.active_layer)
+  const existing = uniqueStolenEntries(record.stolen_terms || [], nowMs)
+  const key = `${activeLayer}:${termKey}`
+  if (existing.some((entry) => `${entry.layer}:${entry.term_key}` === key)) {
+    record.stolen_terms = existing
+    return
+  }
+
+  existing.push({
+    layer: activeLayer,
+    term_key: termKey,
+    stolen_at: nowIso(nowMs),
+  })
+  record.stolen_terms = uniqueStolenEntries(existing, nowMs)
+}
+
 function upsertTerm(record, termKey, { copiesToAdd = 1, mutation = 'none' } = {}, nowMs = Date.now()) {
   const idx = record.terms.findIndex((term) => term.term_key === termKey)
   const timestamp = nowIso(nowMs)
@@ -270,6 +804,11 @@ function upsertTerm(record, termKey, { copiesToAdd = 1, mutation = 'none' } = {}
       best_mutation: normalizedMutation,
       updated_at: timestamp,
     })
+    addLifetimeCollect(record, termKey, {
+      copiesToAdd: copies,
+      mutation: normalizedMutation,
+    }, nowMs)
+    clearStolenMarker(record, termKey, nowMs)
     return
   }
 
@@ -282,6 +821,11 @@ function upsertTerm(record, termKey, { copiesToAdd = 1, mutation = 'none' } = {}
     best_mutation: bestMutation(previousBestMutation, normalizedMutation),
     updated_at: timestamp,
   }
+  addLifetimeCollect(record, termKey, {
+    copiesToAdd: Math.max(1, Number(copiesToAdd || 1)),
+    mutation: normalizedMutation,
+  }, nowMs)
+  clearStolenMarker(record, termKey, nowMs)
 }
 
 function getTermRow(record, termKey) {
@@ -306,14 +850,14 @@ function validateDebugOverride(override) {
   }
 
   if (override.mutation) {
-    const normalizedMutation = normalizeMutation(override.mutation)
+    const normalized = normalizeMutation(override.mutation)
     const rawMutation = String(override.mutation || '').trim().toLowerCase()
-    if (normalizedMutation === 'none' && rawMutation !== 'none') {
+    if (normalized === 'none' && rawMutation !== 'none') {
       throw new Error(`Unknown mutation: ${override.mutation}`)
     }
   }
 
-  if (override.tier && (Number(override.tier) < 1 || Number(override.tier) > 6)) {
+  if (override.tier && Number(override.tier) < 1) {
     throw new Error('Invalid pack tier')
   }
 }
@@ -362,6 +906,7 @@ function applySinglePackOpen(
     debugApplied = true
   }
 
+  const activeLayer = normalizeActiveLayer(record.active_layer)
   const explicitTier = Number(forced?.tier || 0) || null
   const explicitTerm = forced?.term_key || null
 
@@ -372,6 +917,13 @@ function applySinglePackOpen(
 
   if (chosenTerm && !TERMS_BY_KEY[chosenTerm]) {
     throw new Error(`Unknown term key: ${chosenTerm}`)
+  }
+
+  if (drawTier) {
+    const normalizedTier = Math.max(1, Number(drawTier))
+    drawTier = normalizedTier > 6
+      ? getBaseTierFromEffectiveTier(normalizedTier)
+      : normalizedTier
   }
 
   if (!drawTier) {
@@ -428,19 +980,21 @@ function applySinglePackOpen(
   record.updated_at = nowIso(nowMs)
 
   const termRow = getTermRow(record, chosenTerm)
+  const effectiveTier = getEffectiveTierForLayer(drawTier, activeLayer)
 
   return {
     term_key: chosenTerm,
     term_name: term.name,
     rarity: chosenRarity,
     mutation: chosenMutation,
-    tier: drawTier,
+    tier: effectiveTier,
     reward,
     copies: termRow?.copies || 1,
     level: termRow?.level || 1,
     best_mutation: normalizeMutation(termRow?.best_mutation || chosenMutation),
     source,
     debug_applied: Boolean(debugApplied || forced),
+    layer: activeLayer,
   }
 }
 
@@ -493,32 +1047,31 @@ function applyAutoProgress(record, {
   }
 }
 
-function resetProgress(record, nowMs = Date.now()) {
-  record.coins = BALANCE_CONFIG.initialCoins
-  record.mutation_level = 0
-  record.value_level = 0
-  record.luck_level = 0
-  record.tier_boost_level = 0
-  record.auto_unlocked = false
-  record.auto_speed_level = 0
-  record.highest_tier_unlocked = getHighestUnlockedTier(record)
-  record.packs_opened = 0
-  record.eggs_opened = 0
-  record.manual_opens = 0
-  record.auto_opens = 0
-  record.auto_open_progress = 0
-  record.passive_rate_cps = 0
-  record.active_until_at = nowIso(nowMs)
-  record.last_tick_at = nowIso(nowMs)
-  record.updated_at = nowIso(nowMs)
-  record.terms = []
-  record.next_reward = null
+function prepareRecord(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+  const record = readRecord(user, rng, nowMs)
+  const changed = ensureSeasonState(record, nowMs)
+  if (changed) {
+    record.updated_at = nowIso(nowMs)
+  }
+  applyAutoProgress(record, {
+    debugAllowed,
+    rng,
+    nowMs,
+    allowAutoDraws: false,
+  })
+  return record
+}
+
+function currentCollectionComplete(record) {
+  const collected = new Set(record.terms.map((row) => row.term_key))
+  return collected.size >= TERMS_TOTAL
 }
 
 export function bootstrapLocalPlayer(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
   assertAuthenticatedUser(user)
 
   const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
   applyAutoProgress(record, { debugAllowed, rng, nowMs })
   touchRecordActivity(record, { nowMs })
   record.highest_tier_unlocked = getHighestUnlockedTier(record)
@@ -531,6 +1084,7 @@ export function syncLocalPlayer(user, { debugAllowed = false, rng = Math.random,
   assertAuthenticatedUser(user)
 
   const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
   const { drawsApplied, lastDraw, maxTierDrawn } = applyAutoProgress(record, { debugAllowed, rng, nowMs })
   touchRecordActivity(record, { nowMs })
   record.highest_tier_unlocked = getHighestUnlockedTier(record)
@@ -558,6 +1112,7 @@ export function openLocalPack(
   assertAuthenticatedUser(user)
 
   const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
   if (source !== 'auto' && allowAutoProgress) {
     applyAutoProgress(record, { debugAllowed, rng, nowMs })
   } else {
@@ -594,6 +1149,7 @@ export function buyLocalUpgrade(
   assertAuthenticatedUser(user)
 
   const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
   applyAutoProgress(record, { debugAllowed, rng, nowMs })
   touchRecordActivity(record, { nowMs })
 
@@ -610,6 +1166,61 @@ export function buyLocalUpgrade(
     snapshot: toSnapshot(record, debugAllowed, nowMs),
     purchase,
   }
+}
+
+export function rebirthLocalPlayer(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
+  assertAuthenticatedUser(user)
+
+  const record = prepareRecord(user, { debugAllowed, rng, nowMs })
+
+  if (!currentCollectionComplete(record)) {
+    throw new Error(`Rebirth requires full collection (${TERMS_TOTAL}/${TERMS_TOTAL}) in current layer`)
+  }
+
+  if (Number(record.rebirth_count || 0) >= MAX_REBIRTHS) {
+    throw new Error('Rebirth already used for this season')
+  }
+
+  const fromLayer = normalizeActiveLayer(record.active_layer)
+  record.rebirth_count = Math.min(MAX_REBIRTHS, Math.max(0, Number(record.rebirth_count || 0)) + 1)
+  record.active_layer = MAX_ACTIVE_LAYER
+
+  resetProgress(record, {
+    nowMs,
+    clearCurrentTerms: true,
+    resetRebirth: false,
+  })
+
+  touchRecordActivity(record, { nowMs })
+  record.updated_at = nowIso(nowMs)
+  writeRecord(user, record)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    rebirth: {
+      rebirth_count: record.rebirth_count,
+      from_layer: fromLayer,
+      to_layer: record.active_layer,
+    },
+  }
+}
+
+export function getLocalLifetimeCollection(user, { rng = Math.random, nowMs = Date.now() } = {}) {
+  assertAuthenticatedUser(user)
+  const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
+  writeRecord(user, record)
+  return buildLifetimeSummary(record)
+}
+
+export function getLocalSeasonHistory(user, { limit = 200, rng = Math.random, nowMs = Date.now() } = {}) {
+  assertAuthenticatedUser(user)
+  const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
+  writeRecord(user, record)
+
+  const rows = normalizeSeasonHistory(record.season_history || [])
+  return rows.slice(0, Math.max(1, Math.min(500, Number(limit || 200))))
 }
 
 // Backward-compatible aliases.
@@ -645,6 +1256,7 @@ export function updateLocalNickname(user, parts, { debugAllowed = false, rng = M
   validateNicknameParts(parts)
 
   const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
   touchRecordActivity(record, { nowMs })
   const timestamp = nowIso(nowMs)
 
@@ -673,7 +1285,15 @@ export function resetLocalAccount(user, { debugAllowed = false, rng = Math.rando
   const partB = chooseRandom(NICK_PARTS_B, rng)
   const partC = chooseRandom(NICK_PARTS_C, rng)
 
-  resetProgress(record, nowMs)
+  resetProgress(record, {
+    nowMs,
+    clearCurrentTerms: true,
+    resetRebirth: true,
+  })
+  record.lifetime_terms = []
+  record.stolen_terms = []
+  record.season_history = []
+  record.season = getCurrentSeasonWindow(nowMs)
   record.profile = {
     nick_part_a: partA,
     nick_part_b: partB,
@@ -703,6 +1323,7 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
   }
 
   const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
   applyAutoProgress(record, { debugAllowed, rng, nowMs })
   touchRecordActivity(record, { nowMs })
 
@@ -724,6 +1345,16 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
     record.luck_level = record.value_level
   } else if (actionType === 'set_auto_unlocked') {
     record.auto_unlocked = Boolean(action.enabled)
+  } else if (actionType === 'grant_full_set') {
+    record.coins = Math.max(0, Number(action.amount ?? action.coins ?? 200_000))
+    for (const term of TERMS) {
+      const existing = record.terms.find((row) => row.term_key === term.key)
+      if (!existing) {
+        upsertTerm(record, term.key, { copiesToAdd: 1, mutation: 'none' }, nowMs)
+      } else {
+        clearStolenMarker(record, term.key, nowMs)
+      }
+    }
   } else if (actionType === 'grant_term') {
     if (!TERMS_BY_KEY[action.term_key]) {
       throw new Error(`Unknown term key: ${action.term_key || ''}`)
@@ -745,8 +1376,29 @@ export function debugApplyLocal(user, action, { debugAllowed = false, rng = Math
       throw new Error('Upgrade unavailable or not enough coins')
     }
     applyUpgrade(record, key)
+  } else if (actionType === 'rebirth') {
+    if (!currentCollectionComplete(record)) {
+      throw new Error(`Rebirth requires full collection (${TERMS_TOTAL}/${TERMS_TOTAL}) in current layer`)
+    }
+    if (Number(record.rebirth_count || 0) >= MAX_REBIRTHS) {
+      throw new Error('Rebirth already used for this season')
+    }
+    record.rebirth_count = Math.min(MAX_REBIRTHS, Math.max(0, Number(record.rebirth_count || 0)) + 1)
+    record.active_layer = MAX_ACTIVE_LAYER
+    resetProgress(record, {
+      nowMs,
+      clearCurrentTerms: true,
+      resetRebirth: false,
+    })
   } else if (actionType === 'reset_account') {
-    resetProgress(record, nowMs)
+    resetProgress(record, {
+      nowMs,
+      clearCurrentTerms: true,
+      resetRebirth: true,
+    })
+    record.lifetime_terms = []
+    record.stolen_terms = []
+    record.season_history = []
   } else {
     throw new Error(`Unsupported debug action type: ${actionType}`)
   }
@@ -771,6 +1423,7 @@ export function loseLocalCard(user, { termKey, debugAllowed = false, rng = Math.
   }
 
   const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
   applyAutoProgress(record, {
     debugAllowed,
     rng,
@@ -791,6 +1444,7 @@ export function loseLocalCard(user, { termKey, debugAllowed = false, rng = Math.
   }
 
   record.terms.splice(idx, 1)
+  markStolenMarker(record, targetKey, nowMs)
   record.highest_tier_unlocked = getHighestUnlockedTier(record)
   record.updated_at = nowIso(nowMs)
   writeRecord(user, record)
@@ -811,6 +1465,7 @@ export function keepAliveLocalPlayer(
   assertAuthenticatedUser(user)
 
   const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
   applyAutoProgress(record, {
     debugAllowed,
     rng,

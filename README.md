@@ -11,7 +11,10 @@ Lucky Agent is a Vue 3 + Supabase card opening game with progression, collection
 - 6 tiers of cards, with rarity and mutation affecting value.
 - Foil/Holo mutations grant permanent passive coins per second.
 - Card Book view with discovered slots, copies, and best mutation.
+- Rebirth loop after a full collection, with extra card layers and higher upgrade costs.
+- Lifetime Collection tab to compare current layer progress against all-time layered collection.
 - Leaderboard ranking by highest card quality and copies of that card.
+- Weekly leaderboard seasons (global Monday UTC reset) with season history.
 - Leaderboard auto-refreshes every 15 seconds with on-page countdown.
 - Top status metrics (including coins and leaderboard position) update live while you play.
 - Legendary full-page purple sparkle celebration effect.
@@ -36,6 +39,7 @@ cp .env.example .env
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 - Optional: `VITE_LOCAL_ECONOMY=1` for local-only economy simulation
+- Optional: `VITE_SEASON_DURATION_MS=604800000` (7 days, default)
 
 4. Apply DB schema
 - Open Supabase SQL Editor
@@ -89,6 +93,7 @@ In this mode:
 - Economy runs from browser local storage per signed-in user
 - Leaderboard is local-only
 - You can quickly tune balance files without server RPC round-trips
+- Season timer can be shortened with `VITE_SEASON_DURATION_MS=60000` for minute-level reset testing
 
 Key files:
 - `src/lib/balanceConfig.mjs`

@@ -3,12 +3,33 @@ import { BALANCE_CONFIG } from './balanceConfig.mjs'
 export const TIERS = [1, 2, 3, 4, 5, 6]
 export const RARITIES = ['common', 'rare', 'legendary']
 export const MUTATIONS = ['none', 'foil', 'holo']
+export const TIERS_PER_LAYER = TIERS.length
+export const MAX_LAYERS = 2
 export const MUTATION_RANK = {
   none: 0,
   foil: 1,
   holo: 2,
 }
 export const PACK_NAMES_BY_TIER = BALANCE_CONFIG.packTierNames
+
+export function normalizeLayer(layer = 1) {
+  return Math.max(1, Math.min(MAX_LAYERS, Number(layer || 1)))
+}
+
+export function getTierOffsetForLayer(layer = 1) {
+  const normalizedLayer = normalizeLayer(layer)
+  return (normalizedLayer - 1) * TIERS_PER_LAYER
+}
+
+export function getEffectiveTierForLayer(baseTier, layer = 1) {
+  const normalizedBaseTier = Math.max(1, Math.min(TIERS_PER_LAYER, Number(baseTier || 1)))
+  return normalizedBaseTier + getTierOffsetForLayer(layer)
+}
+
+export function getBaseTierFromEffectiveTier(effectiveTier) {
+  const normalized = Math.max(1, Number(effectiveTier || 1))
+  return ((normalized - 1) % TIERS_PER_LAYER) + 1
+}
 
 export const SHOP_UPGRADES = [
   {
@@ -29,7 +50,7 @@ export const SHOP_UPGRADES = [
   {
     key: 'mutation_upgrade',
     label: 'Mutation Upgrade',
-    description: 'Increase foil/holo chance. Foil adds +1 cps, Holo adds +3 cps.',
+    description: 'Increase foil/holo chance (caps at Foil 10%, Holo 2%). Foil adds +1 cps, Holo adds +3 cps.',
   },
   {
     key: 'value_upgrade',
@@ -85,12 +106,18 @@ export function getBaseTierWeightsForBoostLevel(tierBoostLevel) {
   const key = profileKeyForBoostLevel(clamped)
   const base = { ...BALANCE_CONFIG.tierWeightProfiles[key] }
 
-  if (clamped >= BALANCE_CONFIG.tier6ExtraShift.startLevel) {
-    const capped = Math.min(clamped, BALANCE_CONFIG.tier6ExtraShift.endLevel)
-    const shiftedLevels = Math.max(0, capped - (BALANCE_CONFIG.tier6ExtraShift.startLevel - 1))
-    const shift = shiftedLevels * BALANCE_CONFIG.tier6ExtraShift.shiftPerLevel
-    base[1] = Math.max(0, Number(base[1] || 0) - shift)
-    base[6] = Number(base[6] || 0) + shift
+  const equalizationStart = Number(BALANCE_CONFIG.tierEqualization?.startLevel || 13)
+  const equalizationEnd = Number(BALANCE_CONFIG.tierEqualization?.endLevel || BALANCE_CONFIG.upgradeCaps.tier_boost)
+  if (clamped > equalizationStart && equalizationEnd > equalizationStart) {
+    const progress = Math.max(
+      0,
+      Math.min(1, (clamped - equalizationStart) / (equalizationEnd - equalizationStart)),
+    )
+    const equalTarget = 100 / TIERS.length
+    for (const tier of TIERS) {
+      const current = Number(base[tier] || 0)
+      base[tier] = current + ((equalTarget - current) * progress)
+    }
   }
 
   return normalizeWeightMap(base)
@@ -105,10 +132,20 @@ function tierWeightsEqual(a, b) {
   return true
 }
 
+function rarityWeightsEqual(a, b) {
+  for (const rarity of RARITIES) {
+    if (Math.abs(Number(a?.[rarity] || 0) - Number(b?.[rarity] || 0)) > 0.0001) {
+      return false
+    }
+  }
+  return true
+}
+
 export function getHighestUnlockedTier(stateLike) {
   const weights = getEffectiveTierWeights(stateLike)
   const available = TIERS.filter((tier) => Number(weights?.[tier] || 0) > 0)
-  return available.length ? available[available.length - 1] : 1
+  const highestBaseTier = available.length ? available[available.length - 1] : 1
+  return getEffectiveTierForLayer(highestBaseTier, normalizeLayer(stateLike?.active_layer || 1))
 }
 
 export function getEffectiveTierWeights(stateLike) {
@@ -143,6 +180,24 @@ export function getProgressToNextTier(stateLike) {
     remainingTierBoost: 0,
     requirement: null,
   }
+}
+
+export function getNextValueOddsChangeLevel(currentValueLevel) {
+  const currentLevel = Math.max(0, Number(currentValueLevel || 0))
+  const cap = BALANCE_CONFIG.upgradeCaps.value_upgrade
+  const currentByTier = TIERS.map((tier) => getRarityWeightsForTier(tier, currentLevel))
+
+  for (let level = currentLevel + 1; level <= cap; level += 1) {
+    const hasChange = TIERS.some((tier, idx) => {
+      const nextWeights = getRarityWeightsForTier(tier, level)
+      return !rarityWeightsEqual(currentByTier[idx], nextWeights)
+    })
+    if (hasChange) {
+      return level
+    }
+  }
+
+  return null
 }
 
 export function getRarityWeightsForTier(drawTier, valueLevel = 0) {
@@ -295,18 +350,27 @@ export function getUpgradeCap(upgradeKey) {
 
 export function getUpgradeCost(stateLike, upgradeKey) {
   const normalizedKey = normalizeUpgradeKey(upgradeKey)
+  const rebirthCount = Math.max(0, Number(stateLike?.rebirth_count || 0))
+  const rebirthMultiplier = Math.pow(
+    Number(BALANCE_CONFIG.rebirthCostMultiplierPerRebirth || 1),
+    rebirthCount,
+  )
+
   if (normalizedKey === 'auto_unlock') {
-    return stateLike?.auto_unlocked ? null : BALANCE_CONFIG.autoOpen.unlockCost
+    if (stateLike?.auto_unlocked) return null
+    return Math.floor(Number(BALANCE_CONFIG.autoOpen.unlockCost || 0) * rebirthMultiplier)
   }
 
   const cap = getUpgradeCap(normalizedKey)
   const level = getUpgradeLevel(stateLike, normalizedKey)
   if (level >= cap) return null
+  if (normalizedKey === 'tier_boost' && getNextTierOddsChangeLevel(level) == null) return null
+  if (normalizedKey === 'value_upgrade' && getNextValueOddsChangeLevel(level) == null) return null
 
   const curve = BALANCE_CONFIG.upgradeCostCurves[normalizedKey]
   if (!curve) return null
 
-  return Math.floor(curve.base * Math.pow(curve.growth, level))
+  return Math.floor(curve.base * Math.pow(curve.growth, level) * rebirthMultiplier)
 }
 
 export function canBuyUpgrade(stateLike, upgradeKey) {
@@ -401,10 +465,11 @@ export function getUpgradePreview(stateLike, upgradeKey) {
   const normalizedKey = normalizeUpgradeKey(upgradeKey)
   const currentLevel = getUpgradeLevel(stateLike, normalizedKey)
   const cap = getUpgradeCap(normalizedKey)
+  const cost = getUpgradeCost(stateLike, normalizedKey)
   const nextLevel = Math.min(cap, currentLevel + 1)
 
   return {
     current: getUpgradeEffectLabel(normalizedKey, currentLevel),
-    next: currentLevel >= cap ? null : getUpgradeEffectLabel(normalizedKey, nextLevel),
+    next: cost == null ? null : getUpgradeEffectLabel(normalizedKey, nextLevel),
   }
 }

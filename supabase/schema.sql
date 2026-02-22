@@ -468,7 +468,7 @@ as $$
   select case lower(coalesce($1, 'common'))
     when 'common' then 1.0
     when 'rare' then 1.8
-    when 'legendary' then 3.2
+    when 'legendary' then 4.5
     else 1.0
   end;
 $$;
@@ -592,8 +592,8 @@ immutable
 as $$
 declare
   lvl int;
-  shifted_levels int;
-  shift numeric;
+  progress numeric;
+  equal_target numeric := (100.0 / 6.0);
 begin
   lvl := greatest(0, least(20, coalesce(p_tier_boost_level, 0)));
 
@@ -611,11 +611,16 @@ begin
     t1 := 100; t2 := 0; t3 := 0; t4 := 0; t5 := 0; t6 := 0;
   end if;
 
-  if lvl >= 14 then
-    shifted_levels := lvl - 13;
-    shift := shifted_levels * 0.6;
-    t1 := greatest(0, t1 - shift);
-    t6 := t6 + shift;
+  if lvl > 13 then
+    progress := ((lvl - 13)::numeric / 7.0);
+    progress := greatest(0, least(1, progress));
+
+    t1 := t1 + ((equal_target - t1) * progress);
+    t2 := t2 + ((equal_target - t2) * progress);
+    t3 := t3 + ((equal_target - t3) * progress);
+    t4 := t4 + ((equal_target - t4) * progress);
+    t5 := t5 + ((equal_target - t5) * progress);
+    t6 := t6 + ((equal_target - t6) * progress);
   end if;
 
   return next;
@@ -814,9 +819,10 @@ declare
 begin
   m := least(25, greatest(0, coalesce(p_mutation_level, 0)));
 
-  none_w := greatest(0, 90 - (1.4 * m));
-  foil_w := greatest(0, 8 + (0.9 * m));
-  holo_w := greatest(0, 2 + (0.5 * m));
+  -- Base odds are lower and scale to a max of Foil 10% / Holo 2% at cap level.
+  none_w := greatest(0, 95.4 - (0.296 * m));
+  foil_w := greatest(0, 4 + (0.24 * m));
+  holo_w := greatest(0, 0.6 + (0.056 * m));
 
   sum_total := none_w + foil_w + holo_w;
   if sum_total <= 0 then
@@ -961,6 +967,12 @@ begin
 
   update public.player_state
   set highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level)
+  where user_id = p_user_id;
+
+  update public.player_state
+  set rebirth_count = least(1, greatest(0, coalesce(rebirth_count, 0))),
+      active_layer = least(2, greatest(1, coalesce(active_layer, 1))),
+      updated_at = now()
   where user_id = p_user_id;
 
   if not exists (select 1 from public.player_profile where user_id = p_user_id) then
@@ -1836,6 +1848,7 @@ declare
   action_type text;
   amount bigint;
   target_level int;
+  active_layer_value int;
   term_key text;
   copies_to_add int;
   mutation_value text;
@@ -1913,6 +1926,49 @@ begin
     set auto_unlocked = coalesce((p_action ->> 'enabled')::boolean, false),
         updated_at = now()
     where user_id = uid;
+
+  elsif action_type = 'grant_full_set' then
+    amount := greatest(0, coalesce((p_action ->> 'amount')::bigint, (p_action ->> 'coins')::bigint, 200000));
+
+    update public.player_state
+    set coins = amount,
+        updated_at = now()
+    where user_id = uid;
+
+    select least(2, greatest(1, coalesce(active_layer, 1)))
+    into active_layer_value
+    from public.player_state
+    where user_id = uid;
+
+    insert into public.player_terms (user_id, term_key, copies, level, best_mutation)
+    select uid, tc.term_key, 1, public.calc_level(1), 'none'
+    from public.term_catalog tc
+    on conflict (user_id, term_key)
+    do update
+      set copies = greatest(public.player_terms.copies, excluded.copies),
+          level = public.calc_level(greatest(public.player_terms.copies, excluded.copies)),
+          updated_at = now();
+
+    insert into public.player_lifetime_terms (
+      user_id,
+      layer,
+      term_key,
+      copies,
+      best_mutation,
+      first_collected_at,
+      last_collected_at
+    )
+    select uid, active_layer_value, tc.term_key, 1, 'none', now(), now()
+    from public.term_catalog tc
+    on conflict (user_id, layer, term_key)
+    do update
+      set copies = greatest(public.player_lifetime_terms.copies, excluded.copies),
+          last_collected_at = greatest(public.player_lifetime_terms.last_collected_at, excluded.last_collected_at),
+          updated_at = now();
+
+    delete from public.player_stolen_terms
+    where user_id = uid
+      and layer = active_layer_value;
 
   elsif action_type = 'grant_term' then
     term_key := coalesce(p_action ->> 'term_key', '');
@@ -2110,3 +2166,1475 @@ grant execute on function public.update_nickname(text, text, text) to authentica
 grant execute on function public.reset_account() to authenticated;
 grant execute on function public.get_leaderboard(int) to authenticated;
 grant execute on function public.debug_apply_action(jsonb) to authenticated;
+
+-- v2: rebirth, lifetime collection, stolen markers, and seasonal leaderboard support.
+alter table public.player_state add column if not exists rebirth_count int not null default 0;
+alter table public.player_state add column if not exists active_layer int not null default 1;
+
+create table if not exists public.player_lifetime_terms (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  layer int not null check (layer >= 1),
+  term_key text not null references public.term_catalog(term_key) on delete cascade,
+  copies int not null default 1,
+  best_mutation text not null default 'none',
+  first_collected_at timestamptz not null default now(),
+  last_collected_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, layer, term_key)
+);
+
+alter table public.player_lifetime_terms add column if not exists copies int not null default 1;
+alter table public.player_lifetime_terms add column if not exists best_mutation text not null default 'none';
+alter table public.player_lifetime_terms add column if not exists last_collected_at timestamptz not null default now();
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'player_lifetime_terms_best_mutation_check'
+  ) then
+    alter table public.player_lifetime_terms
+      add constraint player_lifetime_terms_best_mutation_check
+      check (best_mutation in ('none', 'foil', 'holo'));
+  end if;
+end;
+$$;
+
+create table if not exists public.player_stolen_terms (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  layer int not null check (layer >= 1),
+  term_key text not null references public.term_catalog(term_key) on delete cascade,
+  stolen_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, layer, term_key)
+);
+
+create table if not exists public.player_season_history (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  season_id text not null,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  rank int not null,
+  total_players int not null,
+  score bigint not null,
+  best_term_key text,
+  best_term_name text,
+  best_term_tier int not null default 0,
+  best_term_rarity text not null default 'common',
+  best_term_mutation text not null default 'none',
+  best_term_copies int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, season_id)
+);
+
+create table if not exists public.season_runtime (
+  singleton boolean primary key default true check (singleton),
+  season_id text not null,
+  starts_at timestamptz not null,
+  ends_at timestamptz not null,
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists player_lifetime_terms_updated_at on public.player_lifetime_terms;
+create trigger player_lifetime_terms_updated_at
+before update on public.player_lifetime_terms
+for each row execute function public.set_updated_at();
+
+drop trigger if exists player_stolen_terms_updated_at on public.player_stolen_terms;
+create trigger player_stolen_terms_updated_at
+before update on public.player_stolen_terms
+for each row execute function public.set_updated_at();
+
+drop trigger if exists player_season_history_updated_at on public.player_season_history;
+create trigger player_season_history_updated_at
+before update on public.player_season_history
+for each row execute function public.set_updated_at();
+
+drop trigger if exists season_runtime_updated_at on public.season_runtime;
+create trigger season_runtime_updated_at
+before update on public.season_runtime
+for each row execute function public.set_updated_at();
+
+alter table public.player_lifetime_terms enable row level security;
+alter table public.player_stolen_terms enable row level security;
+alter table public.player_season_history enable row level security;
+
+drop policy if exists player_lifetime_terms_self_all on public.player_lifetime_terms;
+create policy player_lifetime_terms_self_all on public.player_lifetime_terms
+for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists player_stolen_terms_self_all on public.player_stolen_terms;
+create policy player_stolen_terms_self_all on public.player_stolen_terms
+for all
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+drop policy if exists player_season_history_self_select on public.player_season_history;
+create policy player_season_history_self_select on public.player_season_history
+for select
+using (auth.uid() = user_id);
+
+create or replace function public.current_season_window()
+returns table (season_id text, starts_at timestamptz, ends_at timestamptz)
+language sql
+stable
+as $$
+  with base as (
+    select
+      (
+        date_trunc('day', now() at time zone 'utc')
+        - (((extract(dow from now() at time zone 'utc')::int + 6) % 7) * interval '1 day')
+      ) as starts_utc
+  )
+  select
+    concat('week-', to_char(starts_utc, 'YYYY-MM-DD')) as season_id,
+    starts_utc at time zone 'utc' as starts_at,
+    (starts_utc + interval '7 days') at time zone 'utc' as ends_at
+  from base;
+$$;
+
+insert into public.season_runtime (singleton, season_id, starts_at, ends_at)
+select true, s.season_id, s.starts_at, s.ends_at
+from public.current_season_window() s
+on conflict (singleton) do nothing;
+
+-- Seed historical users with lifetime layer-1 ownership.
+insert into public.player_lifetime_terms (
+  user_id,
+  layer,
+  term_key,
+  copies,
+  best_mutation,
+  first_collected_at,
+  last_collected_at
+)
+select
+  pt.user_id,
+  1,
+  pt.term_key,
+  greatest(1, coalesce(pt.copies, 1)),
+  coalesce(pt.best_mutation, 'none'),
+  coalesce(pt.created_at, pt.updated_at, now()),
+  coalesce(pt.updated_at, now())
+from public.player_terms pt
+on conflict (user_id, layer, term_key)
+do update set
+  copies = greatest(public.player_lifetime_terms.copies, excluded.copies),
+  best_mutation = case
+    when public.mutation_rank(excluded.best_mutation) > public.mutation_rank(public.player_lifetime_terms.best_mutation)
+      then excluded.best_mutation
+    else public.player_lifetime_terms.best_mutation
+  end,
+  last_collected_at = greatest(public.player_lifetime_terms.last_collected_at, excluded.last_collected_at),
+  updated_at = now();
+
+create or replace function public.record_lifetime_collect(
+  p_user_id uuid,
+  p_layer int,
+  p_term_key text,
+  p_mutation text default 'none',
+  p_copies_to_add int default 1
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_user_id is null then
+    return;
+  end if;
+
+  insert into public.player_lifetime_terms (
+    user_id,
+    layer,
+    term_key,
+    copies,
+    best_mutation,
+    first_collected_at,
+    last_collected_at
+  )
+  values (
+    p_user_id,
+    least(2, greatest(1, coalesce(p_layer, 1))),
+    p_term_key,
+    greatest(1, coalesce(p_copies_to_add, 1)),
+    public.normalize_mutation(p_mutation),
+    now(),
+    now()
+  )
+  on conflict (user_id, layer, term_key)
+  do update set
+    copies = public.player_lifetime_terms.copies + greatest(1, coalesce(p_copies_to_add, 1)),
+    best_mutation = case
+      when public.mutation_rank(public.normalize_mutation(p_mutation)) > public.mutation_rank(public.player_lifetime_terms.best_mutation)
+        then public.normalize_mutation(p_mutation)
+      else public.player_lifetime_terms.best_mutation
+    end,
+    last_collected_at = now(),
+    updated_at = now();
+end;
+$$;
+
+create or replace function public.reset_seasonal_progress_for_all_players()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.player_terms;
+  delete from public.player_stolen_terms;
+
+  update public.player_state
+  set coins = 100,
+      luck_level = 0,
+      passive_rate_bp = 0,
+      highest_tier_unlocked = 1,
+      eggs_opened = 0,
+      packs_opened = 0,
+      manual_opens = 0,
+      auto_opens = 0,
+      tier_boost_level = 0,
+      mutation_level = 0,
+      value_level = 0,
+      auto_unlocked = false,
+      auto_speed_level = 0,
+      auto_open_progress = 0,
+      rebirth_count = 0,
+      active_layer = 1,
+      active_until_at = now(),
+      last_tick_at = now(),
+      updated_at = now();
+
+  update public.player_debug_state
+  set next_reward = null,
+      updated_at = now();
+end;
+$$;
+
+create or replace function public.ensure_season_rollover()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_row record;
+  runtime_row public.season_runtime;
+begin
+  perform pg_advisory_xact_lock(hashtext('lucky_agent_season_rollover_v1'));
+
+  select * into current_row
+  from public.current_season_window();
+
+  select * into runtime_row
+  from public.season_runtime
+  where singleton = true
+  for update;
+
+  if not found then
+    insert into public.season_runtime(singleton, season_id, starts_at, ends_at)
+    values (true, current_row.season_id, current_row.starts_at, current_row.ends_at)
+    on conflict (singleton)
+    do update set
+      season_id = excluded.season_id,
+      starts_at = excluded.starts_at,
+      ends_at = excluded.ends_at,
+      updated_at = now();
+    return;
+  end if;
+
+  if runtime_row.season_id = current_row.season_id then
+    return;
+  end if;
+
+  insert into public.player_season_history (
+    user_id,
+    season_id,
+    starts_at,
+    ends_at,
+    rank,
+    total_players,
+    score,
+    best_term_key,
+    best_term_name,
+    best_term_tier,
+    best_term_rarity,
+    best_term_mutation,
+    best_term_copies
+  )
+  select
+    l.user_id,
+    runtime_row.season_id,
+    runtime_row.starts_at,
+    runtime_row.ends_at,
+    l.rank,
+    l.total_players,
+    l.score,
+    l.best_term_key,
+    l.best_term_name,
+    l.best_term_tier,
+    l.best_term_rarity,
+    l.best_term_mutation,
+    l.best_term_copies
+  from public.leaderboard_v1 l
+  on conflict (user_id, season_id)
+  do update set
+    rank = excluded.rank,
+    total_players = excluded.total_players,
+    score = excluded.score,
+    best_term_key = excluded.best_term_key,
+    best_term_name = excluded.best_term_name,
+    best_term_tier = excluded.best_term_tier,
+    best_term_rarity = excluded.best_term_rarity,
+    best_term_mutation = excluded.best_term_mutation,
+    best_term_copies = excluded.best_term_copies,
+    starts_at = excluded.starts_at,
+    ends_at = excluded.ends_at,
+    updated_at = now();
+
+  perform public.reset_seasonal_progress_for_all_players();
+
+  update public.season_runtime
+  set season_id = current_row.season_id,
+      starts_at = current_row.starts_at,
+      ends_at = current_row.ends_at,
+      updated_at = now()
+  where singleton = true;
+end;
+$$;
+
+create or replace function public.upgrade_cost(
+  p_upgrade_key text,
+  p_level int,
+  p_auto_unlocked boolean,
+  p_rebirth_count int
+)
+returns bigint
+language sql
+immutable
+as $$
+  select floor(
+    coalesce(public.upgrade_cost(p_upgrade_key, p_level, p_auto_unlocked), 0)
+    * power(1.5, greatest(0, coalesce(p_rebirth_count, 0)))
+  )::bigint;
+$$;
+
+create or replace function public.player_snapshot(p_user_id uuid)
+returns jsonb
+language sql
+security definer
+set search_path = public
+as $$
+  with state_row as (
+    select
+      coins,
+      passive_rate_bp,
+      highest_tier_unlocked,
+      eggs_opened,
+      packs_opened,
+      manual_opens,
+      auto_opens,
+      tier_boost_level,
+      mutation_level,
+      value_level,
+      value_level as luck_level,
+      auto_unlocked,
+      auto_speed_level,
+      auto_open_progress,
+      active_until_at,
+      last_tick_at,
+      updated_at,
+      least(1, greatest(0, coalesce(rebirth_count, 0)))::int as rebirth_count,
+      least(2, greatest(1, coalesce(active_layer, 1)))::int as active_layer
+    from public.player_state
+    where user_id = p_user_id
+  ), profile_row as (
+    select
+      display_name,
+      nick_part_a,
+      nick_part_b,
+      nick_part_c,
+      updated_at
+    from public.player_profile
+    where user_id = p_user_id
+  ), terms_row as (
+    select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'term_key', term_key,
+          'copies', copies,
+          'level', level,
+          'best_mutation', best_mutation,
+          'updated_at', updated_at
+        )
+        order by level desc, copies desc, term_key asc
+      ),
+      '[]'::jsonb
+    ) as terms
+    from public.player_terms
+    where user_id = p_user_id
+  ), season_row as (
+    select season_id, starts_at, ends_at
+    from public.season_runtime
+    where singleton = true
+  ), stolen_row as (
+    select coalesce(
+      jsonb_agg(pst.term_key order by pst.term_key asc),
+      '[]'::jsonb
+    ) as stolen_terms
+    from public.player_stolen_terms pst
+    cross join state_row sr
+    where pst.user_id = p_user_id
+      and pst.layer = sr.active_layer
+  ), lifetime_total as (
+    select count(*)::int as total_unique
+    from public.player_lifetime_terms plt
+    where plt.user_id = p_user_id
+      and plt.layer between 1 and 2
+  ), lifetime_by_layer as (
+    select plt.layer, count(*)::int as collected
+    from public.player_lifetime_terms plt
+    where plt.user_id = p_user_id
+      and plt.layer between 1 and 2
+    group by plt.layer
+  ), lifetime_cards as (
+    select
+      plt.layer,
+      plt.term_key,
+      tc.display_name as term_name,
+      tc.tier,
+      tc.rarity,
+      plt.best_mutation,
+      plt.copies,
+      plt.first_collected_at,
+      plt.last_collected_at
+    from public.player_lifetime_terms plt
+    join public.term_catalog tc on tc.term_key = plt.term_key
+    where plt.user_id = p_user_id
+      and plt.layer between 1 and 2
+  ), lifetime_highest_raw as (
+    select
+      lc.layer,
+      lc.term_key,
+      lc.term_name,
+      lc.tier,
+      lc.rarity,
+      lc.best_mutation,
+      lc.copies,
+      row_number() over (
+        partition by lc.layer
+        order by
+          lc.tier desc,
+          case lc.rarity
+            when 'legendary' then 3
+            when 'rare' then 2
+            else 1
+          end desc,
+          public.mutation_rank(lc.best_mutation) desc,
+          lc.copies desc,
+          lc.term_key asc
+      ) as row_num
+    from lifetime_cards lc
+  ), lifetime_highest_per_layer as (
+    select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'layer', lhr.layer,
+          'term_key', lhr.term_key,
+          'term_name', lhr.term_name,
+          'tier', lhr.tier,
+          'rarity', lhr.rarity,
+          'best_mutation', lhr.best_mutation,
+          'copies', lhr.copies
+        )
+        order by lhr.layer asc
+      ),
+      '[]'::jsonb
+    ) as rows
+    from lifetime_highest_raw lhr
+    where lhr.row_num = 1
+  ), lifetime_cards_json as (
+    select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'layer', lc.layer,
+          'term_key', lc.term_key,
+          'term_name', lc.term_name,
+          'tier', lc.tier,
+          'rarity', lc.rarity,
+          'best_mutation', lc.best_mutation,
+          'copies', lc.copies,
+          'first_collected_at', lc.first_collected_at,
+          'last_collected_at', lc.last_collected_at
+        )
+        order by lc.layer asc, lc.tier asc, lc.term_key asc
+      ),
+      '[]'::jsonb
+    ) as rows
+    from lifetime_cards lc
+  ), max_layer as (
+    select least(2, greatest(
+      coalesce((select max(layer) from lifetime_by_layer), 1),
+      coalesce((select active_layer from state_row), 1)
+    ))::int as value
+  ), lifetime_per_layer as (
+    select coalesce(
+      jsonb_agg(
+        jsonb_build_object(
+          'layer', data.layer,
+          'collected', data.collected,
+          'total', (select count(*)::int from public.term_catalog)
+        )
+        order by data.layer asc
+      ),
+      '[]'::jsonb
+    ) as rows
+    from (
+      select
+        gs.layer,
+        coalesce(lbl.collected, 0)::int as collected
+      from generate_series(1, (select value from max_layer)) as gs(layer)
+      left join lifetime_by_layer lbl on lbl.layer = gs.layer
+    ) data
+  )
+  select jsonb_build_object(
+    'state', (select row_to_json(state_row) from state_row),
+    'profile', (select row_to_json(profile_row) from profile_row),
+    'terms', (select terms from terms_row),
+    'season', jsonb_build_object(
+      'id', (select season_id from season_row),
+      'starts_at', (select starts_at from season_row),
+      'ends_at', (select ends_at from season_row)
+    ),
+    'stolen_terms', (select stolen_terms from stolen_row),
+    'lifetime', jsonb_build_object(
+      'total_unique', (select total_unique from lifetime_total),
+      'per_layer', (select rows from lifetime_per_layer),
+      'cards', (select rows from lifetime_cards_json),
+      'highest_per_layer', (select rows from lifetime_highest_per_layer)
+    ),
+    'meta', jsonb_build_object(
+      'server_now', now(),
+      'debug_allowed', public.is_debug_allowed()
+    )
+  );
+$$;
+
+create or replace function public.bootstrap_player()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_auto_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  return public.player_snapshot(uid);
+end;
+$$;
+
+create or replace function public.keep_alive()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_passive_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  return public.player_snapshot(uid);
+end;
+$$;
+
+create or replace function public.apply_auto_progress(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  state_row public.player_state;
+  term_row public.player_terms;
+  effective_now timestamptz;
+  elapsed_seconds int;
+  capped_seconds int;
+  passive_rate_cps int := 0;
+  openings numeric;
+  whole_opens int;
+  remainder numeric;
+  draw_tier int;
+  draw_rarity text;
+  draw_mutation text;
+  draw_term_key text;
+  draw_reward bigint;
+  max_tier int := 0;
+  last_draw jsonb := null;
+  i int;
+begin
+  select * into state_row
+  from public.player_state
+  where user_id = p_user_id
+  for update;
+
+  if not found then
+    return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
+  end if;
+
+  effective_now := least(now(), coalesce(state_row.active_until_at, now()));
+  elapsed_seconds := greatest(0, extract(epoch from effective_now - state_row.last_tick_at)::int);
+  capped_seconds := least(43200, elapsed_seconds);
+  passive_rate_cps := public.recompute_passive_rate_bp(p_user_id);
+
+  if capped_seconds > 0 and passive_rate_cps > 0 then
+    update public.player_state
+    set coins = coins + (passive_rate_cps * capped_seconds),
+        updated_at = now()
+    where user_id = p_user_id
+    returning * into state_row;
+  end if;
+
+  if not state_row.auto_unlocked or capped_seconds <= 0 then
+    update public.player_state
+    set last_tick_at = now(),
+        updated_at = now()
+    where user_id = p_user_id;
+
+    return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
+  end if;
+
+  openings := coalesce(state_row.auto_open_progress, 0)
+    + (
+      capped_seconds
+      * (1.0 / greatest(0.5, 2.5 - (0.5 * greatest(0, state_row.auto_speed_level))))
+    );
+  whole_opens := floor(openings)::int;
+  remainder := openings - whole_opens;
+
+  for i in 1..whole_opens loop
+    draw_tier := public.pick_effective_tier(state_row.packs_opened, state_row.tier_boost_level);
+    draw_rarity := public.roll_rarity(draw_tier, state_row.value_level);
+    draw_mutation := public.roll_mutation(state_row.mutation_level);
+    draw_term_key := public.random_term_by_pool(draw_tier, draw_rarity);
+
+    if draw_term_key is null then
+      raise exception 'Unable to resolve draw term';
+    end if;
+
+    draw_reward := public.card_reward(draw_term_key, draw_rarity, draw_mutation, state_row.value_level);
+
+    update public.player_state
+    set coins = coins + draw_reward,
+        packs_opened = packs_opened + 1,
+        eggs_opened = eggs_opened + 1,
+        auto_opens = auto_opens + 1,
+        highest_tier_unlocked = greatest(highest_tier_unlocked, public.max_unlocked_tier(packs_opened + 1, tier_boost_level)),
+        updated_at = now()
+    where user_id = p_user_id
+    returning * into state_row;
+
+    insert into public.player_terms (user_id, term_key, copies, level, best_mutation)
+    values (p_user_id, draw_term_key, 1, 1, public.normalize_mutation(draw_mutation))
+    on conflict (user_id, term_key)
+    do update
+      set copies = public.player_terms.copies + 1,
+          level = public.calc_level(public.player_terms.copies + 1),
+          best_mutation = case
+            when public.mutation_rank(excluded.best_mutation) > public.mutation_rank(public.player_terms.best_mutation)
+              then excluded.best_mutation
+            else public.player_terms.best_mutation
+          end,
+          updated_at = now();
+
+    perform public.record_lifetime_collect(
+      p_user_id,
+      state_row.active_layer,
+      draw_term_key,
+      draw_mutation,
+      1
+    );
+
+    delete from public.player_stolen_terms
+    where user_id = p_user_id
+      and layer = state_row.active_layer
+      and term_key = draw_term_key;
+
+    select * into term_row
+    from public.player_terms
+    where user_id = p_user_id and term_key = draw_term_key;
+
+    max_tier := greatest(max_tier, draw_tier);
+    last_draw := jsonb_build_object(
+      'term_key', draw_term_key,
+      'term_name', public.term_display_name(draw_term_key),
+      'rarity', draw_rarity,
+      'mutation', draw_mutation,
+      'tier', draw_tier,
+      'reward', draw_reward,
+      'copies', term_row.copies,
+      'level', term_row.level,
+      'best_mutation', term_row.best_mutation,
+      'source', 'auto',
+      'debug_applied', false,
+      'layer', state_row.active_layer
+    );
+  end loop;
+
+  update public.player_state
+  set auto_open_progress = remainder,
+      last_tick_at = now(),
+      updated_at = now()
+  where user_id = p_user_id;
+
+  return jsonb_build_object(
+    'draws_applied', whole_opens,
+    'draw', last_draw,
+    'draw_max_tier', max_tier
+  );
+end;
+$$;
+
+create or replace function public.open_pack(p_source text default 'manual', p_debug_override jsonb default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  state_row public.player_state;
+  term_row public.player_terms;
+  draw_tier int;
+  draw_rarity text;
+  draw_mutation text;
+  chosen_term text;
+  draw_reward bigint;
+  debug_override_allowed boolean;
+  debug_applied boolean := false;
+  debug_next_reward jsonb;
+  source_kind text;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  source_kind := lower(coalesce(p_source, 'manual'));
+  if source_kind not in ('manual', 'auto') then
+    raise exception 'Invalid source: %', source_kind;
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  if source_kind = 'auto' then
+    perform public.apply_passive_progress(uid);
+  else
+    perform public.apply_auto_progress(uid);
+  end if;
+  perform public.touch_player_activity(uid, 15);
+
+  select * into state_row
+  from public.player_state
+  where user_id = uid
+  for update;
+
+  debug_override_allowed := public.is_debug_allowed();
+
+  if p_debug_override is not null then
+    if not debug_override_allowed then
+      raise exception 'Debug override not allowed for this account';
+    end if;
+
+    chosen_term := nullif(trim(coalesce(p_debug_override ->> 'term_key', '')), '');
+    draw_rarity := nullif(trim(lower(coalesce(p_debug_override ->> 'rarity', ''))), '');
+    draw_mutation := nullif(trim(lower(coalesce(p_debug_override ->> 'mutation', ''))), '');
+    draw_tier := nullif((p_debug_override ->> 'tier'), '')::int;
+    debug_applied := true;
+  else
+    select pds.next_reward into debug_next_reward
+    from public.player_debug_state pds
+    where user_id = uid
+    for update;
+
+    if debug_next_reward is not null and debug_override_allowed then
+      chosen_term := nullif(trim(coalesce(debug_next_reward ->> 'term_key', '')), '');
+      draw_rarity := nullif(trim(lower(coalesce(debug_next_reward ->> 'rarity', ''))), '');
+      draw_mutation := nullif(trim(lower(coalesce(debug_next_reward ->> 'mutation', ''))), '');
+      draw_tier := nullif((debug_next_reward ->> 'tier'), '')::int;
+      update public.player_debug_state set next_reward = null where user_id = uid;
+      debug_applied := true;
+    end if;
+  end if;
+
+  if draw_tier is not null and (draw_tier < 1 or draw_tier > 6) then
+    raise exception 'Invalid draw tier';
+  end if;
+
+  if chosen_term is not null and not (chosen_term = any(public.allowed_term_keys())) then
+    raise exception 'Unknown term key: %', chosen_term;
+  end if;
+
+  if chosen_term is not null and draw_tier is null then
+    select tc.tier into draw_tier
+    from public.term_catalog tc
+    where tc.term_key = chosen_term;
+  end if;
+
+  draw_tier := coalesce(draw_tier, public.pick_effective_tier(state_row.packs_opened, state_row.tier_boost_level));
+
+  if draw_rarity is null then
+    if chosen_term is not null then
+      draw_rarity := public.term_rarity(chosen_term);
+    else
+      draw_rarity := public.roll_rarity(draw_tier, state_row.value_level);
+    end if;
+  end if;
+
+  if draw_rarity not in ('common', 'rare', 'legendary') then
+    raise exception 'Invalid rarity: %', draw_rarity;
+  end if;
+
+  draw_mutation := coalesce(draw_mutation, public.roll_mutation(state_row.mutation_level));
+  draw_mutation := public.normalize_mutation(draw_mutation);
+
+  if chosen_term is null then
+    chosen_term := public.random_term_by_pool(draw_tier, draw_rarity);
+  end if;
+
+  if chosen_term is null then
+    raise exception 'Unable to resolve draw term';
+  end if;
+
+  draw_reward := public.card_reward(chosen_term, draw_rarity, draw_mutation, state_row.value_level);
+
+  update public.player_state
+  set coins = coins + draw_reward,
+      packs_opened = packs_opened + 1,
+      eggs_opened = eggs_opened + 1,
+      manual_opens = manual_opens + case when source_kind = 'manual' then 1 else 0 end,
+      auto_opens = auto_opens + case when source_kind = 'auto' then 1 else 0 end,
+      highest_tier_unlocked = greatest(highest_tier_unlocked, public.max_unlocked_tier(packs_opened + 1, tier_boost_level)),
+      updated_at = now()
+  where user_id = uid
+  returning * into state_row;
+
+  insert into public.player_terms (user_id, term_key, copies, level, best_mutation)
+  values (uid, chosen_term, 1, 1, draw_mutation)
+  on conflict (user_id, term_key)
+  do update
+    set copies = public.player_terms.copies + 1,
+        level = public.calc_level(public.player_terms.copies + 1),
+        best_mutation = case
+          when public.mutation_rank(excluded.best_mutation) > public.mutation_rank(public.player_terms.best_mutation)
+            then excluded.best_mutation
+          else public.player_terms.best_mutation
+        end,
+        updated_at = now();
+
+  perform public.record_lifetime_collect(
+    uid,
+    state_row.active_layer,
+    chosen_term,
+    draw_mutation,
+    1
+  );
+
+  delete from public.player_stolen_terms
+  where user_id = uid
+    and layer = state_row.active_layer
+    and term_key = chosen_term;
+
+  select * into term_row
+  from public.player_terms
+  where user_id = uid and term_key = chosen_term;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'draw', jsonb_build_object(
+      'term_key', chosen_term,
+      'term_name', public.term_display_name(chosen_term),
+      'rarity', draw_rarity,
+      'mutation', draw_mutation,
+      'tier', draw_tier,
+      'reward', draw_reward,
+      'copies', term_row.copies,
+      'level', term_row.level,
+      'best_mutation', term_row.best_mutation,
+      'source', source_kind,
+      'debug_applied', debug_applied,
+      'layer', state_row.active_layer
+    )
+  );
+end;
+$$;
+
+create or replace function public.lose_card(p_term_key text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  normalized_term text;
+  removed_count int := 0;
+  active_layer_value int := 1;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  normalized_term := nullif(trim(coalesce(p_term_key, '')), '');
+  if normalized_term is null then
+    raise exception 'Missing term key';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_passive_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  select least(2, greatest(1, coalesce(active_layer, 1))) into active_layer_value
+  from public.player_state
+  where user_id = uid;
+
+  delete from public.player_terms
+  where user_id = uid
+    and term_key = normalized_term;
+
+  get diagnostics removed_count = row_count;
+
+  if removed_count > 0 then
+    insert into public.player_stolen_terms (user_id, layer, term_key, stolen_at)
+    values (uid, least(2, greatest(1, coalesce(active_layer_value, 1))), normalized_term, now())
+    on conflict (user_id, layer, term_key)
+    do update set
+      stolen_at = excluded.stolen_at,
+      updated_at = now();
+  end if;
+
+  perform public.recompute_passive_rate_bp(uid);
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'loss', jsonb_build_object(
+      'term_key', normalized_term,
+      'removed', removed_count > 0
+    )
+  );
+end;
+$$;
+
+create or replace function public.buy_upgrade(p_upgrade_key text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  state_row public.player_state;
+  key_name text;
+  cap int;
+  cost bigint;
+  current_level int;
+  next_level int;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  key_name := lower(coalesce(p_upgrade_key, ''));
+  if key_name = '' then
+    raise exception 'Missing upgrade key';
+  end if;
+
+  if key_name in ('luck_engine', 'value_engine') then
+    key_name := 'value_upgrade';
+  elsif key_name = 'mutation_lab' then
+    key_name := 'mutation_upgrade';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_auto_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  select * into state_row
+  from public.player_state
+  where user_id = uid
+  for update;
+
+  cap := public.upgrade_cap(key_name);
+  if cap <= 0 then
+    raise exception 'Unsupported upgrade key: %', key_name;
+  end if;
+
+  if key_name = 'auto_unlock' then
+    if state_row.auto_unlocked then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, 0, state_row.auto_unlocked, state_row.rebirth_count);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        auto_unlocked = true,
+        highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level),
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := 1;
+
+  elsif key_name = 'auto_speed' then
+    if not state_row.auto_unlocked then
+      raise exception 'Unlock auto opener first';
+    end if;
+
+    current_level := greatest(0, coalesce(state_row.auto_speed_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked, state_row.rebirth_count);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        auto_speed_level = auto_speed_level + 1,
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  elsif key_name = 'tier_boost' then
+    current_level := greatest(0, coalesce(state_row.tier_boost_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked, state_row.rebirth_count);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        tier_boost_level = tier_boost_level + 1,
+        highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level + 1),
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  elsif key_name = 'mutation_upgrade' then
+    current_level := greatest(0, coalesce(state_row.mutation_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked, state_row.rebirth_count);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        mutation_level = mutation_level + 1,
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  elsif key_name = 'value_upgrade' then
+    current_level := greatest(0, coalesce(state_row.value_level, 0));
+    if current_level >= cap then
+      raise exception 'Upgrade is already maxed';
+    end if;
+
+    cost := public.upgrade_cost(key_name, current_level, state_row.auto_unlocked, state_row.rebirth_count);
+    if state_row.coins < cost then
+      raise exception 'Not enough coins';
+    end if;
+
+    update public.player_state
+    set coins = coins - cost,
+        value_level = value_level + 1,
+        updated_at = now()
+    where user_id = uid;
+
+    next_level := current_level + 1;
+
+  else
+    raise exception 'Unsupported upgrade key: %', key_name;
+  end if;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'purchase', jsonb_build_object(
+      'upgrade_key', key_name,
+      'spent', cost,
+      'level', next_level
+    )
+  );
+end;
+$$;
+
+create or replace function public.rebirth_player()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  state_row public.player_state;
+  total_terms int := 0;
+  owned_terms int := 0;
+  next_rebirth int := 1;
+  from_layer int;
+  to_layer int := 2;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_auto_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  select * into state_row
+  from public.player_state
+  where user_id = uid
+  for update;
+
+  select count(*)::int into total_terms from public.term_catalog;
+  select count(*)::int into owned_terms from public.player_terms where user_id = uid;
+
+  if owned_terms < total_terms then
+    raise exception 'Rebirth requires full collection (%/%).', total_terms, total_terms;
+  end if;
+
+  if least(1, greatest(0, coalesce(state_row.rebirth_count, 0))) >= 1 then
+    raise exception 'Rebirth already used for this season';
+  end if;
+
+  from_layer := least(2, greatest(1, coalesce(state_row.active_layer, 1)));
+
+  delete from public.player_terms where user_id = uid;
+  delete from public.player_stolen_terms where user_id = uid;
+
+  update public.player_state
+  set coins = 100,
+      luck_level = 0,
+      passive_rate_bp = 0,
+      highest_tier_unlocked = 1,
+      eggs_opened = 0,
+      packs_opened = 0,
+      manual_opens = 0,
+      auto_opens = 0,
+      tier_boost_level = 0,
+      mutation_level = 0,
+      value_level = 0,
+      auto_unlocked = false,
+      auto_speed_level = 0,
+      auto_open_progress = 0,
+      rebirth_count = next_rebirth,
+      active_layer = to_layer,
+      active_until_at = now(),
+      last_tick_at = now(),
+      updated_at = now()
+  where user_id = uid;
+
+  update public.player_debug_state
+  set next_reward = null,
+      updated_at = now()
+  where user_id = uid;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'rebirth', jsonb_build_object(
+      'rebirth_count', next_rebirth,
+      'from_layer', from_layer,
+      'to_layer', to_layer
+    )
+  );
+end;
+$$;
+
+create or replace function public.reset_account()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  part_a text;
+  part_b text;
+  part_c text;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+
+  delete from public.player_terms where user_id = uid;
+  delete from public.player_lifetime_terms where user_id = uid;
+  delete from public.player_stolen_terms where user_id = uid;
+  delete from public.player_season_history where user_id = uid;
+
+  update public.player_state
+  set coins = 100,
+      luck_level = 0,
+      passive_rate_bp = 0,
+      highest_tier_unlocked = 1,
+      eggs_opened = 0,
+      packs_opened = 0,
+      manual_opens = 0,
+      auto_opens = 0,
+      tier_boost_level = 0,
+      mutation_level = 0,
+      value_level = 0,
+      auto_unlocked = false,
+      auto_speed_level = 0,
+      auto_open_progress = 0,
+      rebirth_count = 0,
+      active_layer = 1,
+      active_until_at = now(),
+      last_tick_at = now(),
+      updated_at = now()
+  where user_id = uid;
+
+  update public.player_debug_state
+  set next_reward = null,
+      updated_at = now()
+  where user_id = uid;
+
+  part_a := public.random_array_item(public.allowed_nick_part_a());
+  part_b := public.random_array_item(public.allowed_nick_part_b());
+  part_c := public.random_array_item(public.allowed_nick_part_c());
+
+  update public.player_profile
+  set nick_part_a = part_a,
+      nick_part_b = part_b,
+      nick_part_c = part_c,
+      display_name = concat(part_a, ' ', part_b, ' ', part_c),
+      updated_at = now()
+  where user_id = uid;
+
+  update public.player_state
+  set highest_tier_unlocked = public.max_unlocked_tier(packs_opened, tier_boost_level),
+      eggs_opened = packs_opened
+  where user_id = uid;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'debug_action', 'reset_account'
+  );
+end;
+$$;
+
+create or replace function public.get_lifetime_collection()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+
+  return coalesce(public.player_snapshot(uid) -> 'lifetime', jsonb_build_object(
+    'total_unique', 0,
+    'per_layer', '[]'::jsonb
+  ));
+end;
+$$;
+
+create or replace function public.get_season_history(p_limit int default 200)
+returns table (
+  season_id text,
+  starts_at timestamptz,
+  ends_at timestamptz,
+  rank int,
+  total_players int,
+  score bigint,
+  best_term_key text,
+  best_term_name text,
+  best_term_tier int,
+  best_term_rarity text,
+  best_term_mutation text,
+  best_term_copies int
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+
+  return query
+  select
+    h.season_id,
+    h.starts_at,
+    h.ends_at,
+    h.rank,
+    h.total_players,
+    h.score,
+    h.best_term_key,
+    h.best_term_name,
+    h.best_term_tier,
+    h.best_term_rarity,
+    h.best_term_mutation,
+    h.best_term_copies
+  from public.player_season_history h
+  where h.user_id = uid
+  order by h.ends_at desc
+  limit greatest(1, least(coalesce(p_limit, 200), 500));
+end;
+$$;
+
+drop function if exists public.get_leaderboard(int);
+
+create or replace function public.get_leaderboard(p_limit int default 50)
+returns table (
+  rank int,
+  total_players int,
+  user_id uuid,
+  display_name text,
+  score bigint,
+  value_level int,
+  highest_tier_unlocked int,
+  updated_at timestamptz,
+  player_number int,
+  best_term_key text,
+  best_term_name text,
+  best_term_tier int,
+  best_term_rarity text,
+  best_term_mutation text,
+  best_term_copies int,
+  viewer_player_number int,
+  viewer_previous_rank int,
+  season_id text,
+  season_starts_at timestamptz,
+  season_ends_at timestamptz,
+  is_you boolean
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform public.ensure_season_rollover();
+
+  return query
+  with viewer_meta as (
+    select
+      so.player_number as viewer_player_number
+    from (
+      select
+        pp.user_id,
+        row_number() over (
+          order by pp.created_at asc, pp.user_id asc
+        )::int as player_number
+      from public.player_profile pp
+    ) so
+    where so.user_id = auth.uid()
+  ), viewer_previous as (
+    select h.rank as viewer_previous_rank
+    from public.player_season_history h
+    where h.user_id = auth.uid()
+    order by h.ends_at desc
+    limit 1
+  ), season_row as (
+    select sr.season_id, sr.starts_at, sr.ends_at
+    from public.season_runtime sr
+    where sr.singleton = true
+  )
+  select
+    l.rank,
+    l.total_players,
+    l.user_id,
+    l.display_name,
+    l.score,
+    l.value_level,
+    l.highest_tier_unlocked,
+    l.updated_at,
+    l.player_number,
+    l.best_term_key,
+    l.best_term_name,
+    l.best_term_tier,
+    l.best_term_rarity,
+    l.best_term_mutation,
+    l.best_term_copies,
+    (select vm.viewer_player_number from viewer_meta vm),
+    (select vp.viewer_previous_rank from viewer_previous vp),
+    (select sr.season_id from season_row sr),
+    (select sr.starts_at from season_row sr),
+    (select sr.ends_at from season_row sr),
+    (l.user_id = auth.uid()) as is_you
+  from public.leaderboard_v1 l
+  order by l.rank asc
+  limit greatest(1, least(coalesce(p_limit, 50), 100));
+end;
+$$;
+
+grant execute on function public.rebirth_player() to authenticated;
+grant execute on function public.get_lifetime_collection() to authenticated;
+grant execute on function public.get_season_history(int) to authenticated;
+grant execute on function public.get_leaderboard(int) to authenticated;

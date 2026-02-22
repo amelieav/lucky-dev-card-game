@@ -145,6 +145,20 @@ export async function fetchLeaderboard(limit = 50) {
   }))
 }
 
+export async function rebirthPlayer() {
+  return unwrap(await supabase.rpc('rebirth_player'))
+}
+
+export async function fetchLifetimeCollection() {
+  return unwrap(await supabase.rpc('get_lifetime_collection'))
+}
+
+export async function fetchSeasonHistory(limit = 200) {
+  return unwrap(await supabase.rpc('get_season_history', {
+    p_limit: limit,
+  }))
+}
+
 export async function debugApply(action) {
   return unwrap(await supabase.rpc('debug_apply_action', {
     p_action: action,

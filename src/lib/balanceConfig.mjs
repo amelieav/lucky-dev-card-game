@@ -32,10 +32,9 @@ export const BALANCE_CONFIG = {
     10: { 1: 53, 2: 18, 3: 14, 4: 10, 5: 5, 6: 0 },
     13: { 1: 41, 2: 17, 3: 16, 4: 13, 5: 8, 6: 5 },
   },
-  tier6ExtraShift: {
-    startLevel: 14,
+  tierEqualization: {
+    startLevel: 13,
     endLevel: 20,
-    shiftPerLevel: 0.6,
   },
 
   rarityWeightsByTier: {
@@ -55,15 +54,15 @@ export const BALANCE_CONFIG = {
   },
 
   mutationWeights: {
-    none: 90,
-    foil: 8,
-    holo: 2,
+    none: 95.4,
+    foil: 4,
+    holo: 0.6,
   },
   mutationShift: {
     cap: 25,
-    none: -1.4,
-    foil: 0.9,
-    holo: 0.5,
+    none: -0.296,
+    foil: 0.24,
+    holo: 0.056,
   },
   mutationPassiveIncomePerSecond: {
     foil: 1,
@@ -73,7 +72,7 @@ export const BALANCE_CONFIG = {
   rarityRewardMultipliers: {
     common: 1,
     rare: 1.8,
-    legendary: 3.2,
+    legendary: 4.5,
   },
   mutationRewardMultipliers: {
     none: 1,
@@ -82,6 +81,7 @@ export const BALANCE_CONFIG = {
   },
   cardBaseValueFactor: 0.06,
   valueMultiplierPerLevel: 0,
+  rebirthCostMultiplierPerRebirth: 1.5,
 
   autoOpen: {
     unlockCost: 225,

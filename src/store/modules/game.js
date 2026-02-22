@@ -2,6 +2,8 @@ import {
   bootstrapPlayer as apiBootstrapPlayer,
   buyUpgrade as apiBuyUpgrade,
   debugApply as apiDebugApply,
+  fetchLifetimeCollection as apiFetchLifetimeCollection,
+  rebirthPlayer as apiRebirthPlayer,
   keepAlive as apiKeepAlive,
   loseCard as apiLoseCard,
   openPack as apiOpenPack,
@@ -12,7 +14,9 @@ import {
   bootstrapLocalPlayer,
   buyLocalUpgrade,
   debugApplyLocal,
+  getLocalLifetimeCollection,
   keepAliveLocalPlayer,
+  rebirthLocalPlayer,
   loseLocalCard,
   openLocalPack,
   resetLocalAccount,
@@ -112,16 +116,22 @@ function normalizeDuckTheftStats(stats) {
   return safe
 }
 
-function duckTheftStorageKey(userId) {
-  return `${DUCK_THEFT_STORAGE_PREFIX}:${userId}`
+function normalizeSeasonId(seasonId) {
+  const normalized = String(seasonId || '').trim()
+  if (!normalized) return 'legacy'
+  return normalized
 }
 
-function readDuckTheftStats(userId) {
+function duckTheftStorageKey(userId, seasonId) {
+  return `${DUCK_THEFT_STORAGE_PREFIX}:${userId}:${normalizeSeasonId(seasonId)}`
+}
+
+function readDuckTheftStats(userId, seasonId) {
   if (!userId) return defaultDuckTheftStats()
 
   try {
     if (typeof window === 'undefined' || !window.localStorage) return defaultDuckTheftStats()
-    const raw = window.localStorage.getItem(duckTheftStorageKey(userId))
+    const raw = window.localStorage.getItem(duckTheftStorageKey(userId, seasonId))
     if (!raw) return defaultDuckTheftStats()
     return normalizeDuckTheftStats(JSON.parse(raw))
   } catch (_) {
@@ -129,12 +139,12 @@ function readDuckTheftStats(userId) {
   }
 }
 
-function writeDuckTheftStats(userId, stats) {
+function writeDuckTheftStats(userId, seasonId, stats) {
   if (!userId) return
 
   try {
     if (typeof window === 'undefined' || !window.localStorage) return
-    window.localStorage.setItem(duckTheftStorageKey(userId), JSON.stringify(normalizeDuckTheftStats(stats)))
+    window.localStorage.setItem(duckTheftStorageKey(userId, seasonId), JSON.stringify(normalizeDuckTheftStats(stats)))
   } catch (_) {
     // Persistence errors should not break gameplay.
   }
@@ -163,6 +173,22 @@ export default {
     },
     terms(state) {
       return state.snapshot?.terms || []
+    },
+    season(state) {
+      return state.snapshot?.season || null
+    },
+    lifetime(state) {
+      return state.snapshot?.lifetime || {
+        total_unique: 0,
+        per_layer: [],
+      }
+    },
+    stolenTerms(state) {
+      return Array.isArray(state.snapshot?.stolen_terms) ? state.snapshot.stolen_terms : []
+    },
+    rebirthReady(state) {
+      const terms = Array.isArray(state.snapshot?.terms) ? state.snapshot.terms : []
+      return terms.length >= 60
     },
     duckTheftStats(state) {
       return normalizeDuckTheftStats(state.duckTheftStats)
@@ -233,14 +259,16 @@ export default {
     },
   },
   actions: {
-    hydrateDuckTheftStats({ commit, rootState }) {
+    hydrateDuckTheftStats({ commit, rootState, state }) {
       const userId = rootState.auth.user?.id
-      commit('setDuckTheftStats', readDuckTheftStats(userId))
+      const seasonId = state.snapshot?.season?.id
+      commit('setDuckTheftStats', readDuckTheftStats(userId, seasonId))
     },
 
     recordDuckTheft({ commit, rootState, state }, payload) {
       commit('recordDuckTheft', payload)
-      writeDuckTheftStats(rootState.auth.user?.id, state.duckTheftStats)
+      const seasonId = state.snapshot?.season?.id
+      writeDuckTheftStats(rootState.auth.user?.id, seasonId, state.duckTheftStats)
     },
 
     async bootstrapPlayer({ commit, rootState }) {
@@ -254,7 +282,7 @@ export default {
           : await apiBootstrapPlayer()
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
-        commit('setDuckTheftStats', readDuckTheftStats(user?.id))
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
         commit('setError', error.message || 'Unable to load player state.')
       } finally {
@@ -272,6 +300,7 @@ export default {
         const data = syncLocalPlayer(user, { debugAllowed: rootState.debug.enabled })
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
 
         if (data?.draw) {
           commit('setOpenResult', data.draw)
@@ -293,6 +322,7 @@ export default {
 
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
 
         if (data?.draw) {
           commit('setOpenResult', data.draw)
@@ -314,6 +344,7 @@ export default {
 
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
         commit('setError', error.message || 'Unable to remove card.')
         throw error
@@ -340,6 +371,7 @@ export default {
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
         commit('setOpenResult', data?.draw || null)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
         commit('setError', error.message || 'Unable to open pack.')
       } finally {
@@ -361,10 +393,57 @@ export default {
           : await apiBuyUpgrade({ upgradeKey })
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
         commit('setError', error.message || 'Unable to buy upgrade.')
       } finally {
         commit('setActionLoading', false)
+      }
+    },
+
+    async rebirth({ commit, rootState }) {
+      commit('setActionLoading', true)
+      commit('setError', null)
+
+      try {
+        const user = rootState.auth.user
+        const data = LOCAL_ECONOMY_ENABLED
+          ? rebirthLocalPlayer(user, { debugAllowed: rootState.debug.enabled })
+          : await apiRebirthPlayer()
+        const snapshot = normalizeSnapshot(data)
+        commit('applySnapshot', snapshot)
+        commit('setOpenResult', null)
+        commit('setRecentDraws', [])
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
+      } catch (error) {
+        commit('setError', error.message || 'Unable to rebirth.')
+        throw error
+      } finally {
+        commit('setActionLoading', false)
+      }
+    },
+
+    async fetchLifetimeCollection({ rootState, state }) {
+      const user = rootState.auth.user
+      if (!user?.id) {
+        return {
+          total_unique: 0,
+          per_layer: [],
+        }
+      }
+
+      if (LOCAL_ECONOMY_ENABLED) {
+        return getLocalLifetimeCollection(user)
+      }
+
+      const payload = await apiFetchLifetimeCollection()
+      if (payload && typeof payload === 'object') {
+        return payload
+      }
+
+      return state.snapshot?.lifetime || {
+        total_unique: 0,
+        per_layer: [],
       }
     },
 
@@ -382,7 +461,7 @@ export default {
         commit('setOpenResult', null)
         commit('setRecentDraws', [])
         commit('setDuckTheftStats', defaultDuckTheftStats())
-        writeDuckTheftStats(user?.id, defaultDuckTheftStats())
+        writeDuckTheftStats(user?.id, snapshot?.season?.id, defaultDuckTheftStats())
       } catch (error) {
         commit('setError', error.message || 'Unable to reset account.')
       } finally {
@@ -417,6 +496,7 @@ export default {
           : await apiUpdateNickname(parts)
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
         commit('setError', error.message || 'Unable to update nickname.')
         throw error
@@ -438,6 +518,7 @@ export default {
         const snapshot = normalizeSnapshot(data)
         commit('applySnapshot', snapshot)
         commit('setOpenResult', data?.draw || null)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
         commit('debug/setLastResult', data, { root: true })
       } catch (error) {
         const message = error.message || 'Debug action failed.'

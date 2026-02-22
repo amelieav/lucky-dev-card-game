@@ -4,12 +4,16 @@ import {
   bootstrapLocalPlayer,
   buyLocalUpgrade,
   debugApplyLocal,
+  getLocalLifetimeCollection,
+  getLocalSeasonHistory,
   keepAliveLocalPlayer,
   loseLocalCard,
   openLocalPack,
+  rebirthLocalPlayer,
   syncLocalPlayer,
   updateLocalNickname,
 } from '../src/lib/localEconomy.mjs'
+import { TERMS, TERMS_BY_KEY } from '../src/data/terms.mjs'
 
 function user(id) {
   return {
@@ -193,6 +197,33 @@ test('shop upgrade purchase spends coins and increments level', () => {
   assert.ok(result.snapshot.state.coins < 5_000)
 })
 
+test('debug full set grants all cards and sets coins', () => {
+  const account = user('pack-debug-full-set')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 2, term_key: 'merge_conflict', rarity: 'common', mutation: 'none' },
+    nowMs: 1_000,
+  })
+  loseLocalCard(account, {
+    termKey: 'merge_conflict',
+    debugAllowed: true,
+    nowMs: 2_000,
+  })
+
+  const result = debugApplyLocal(
+    account,
+    { type: 'grant_full_set', coins: 200_000 },
+    { debugAllowed: true, nowMs: 3_000 },
+  )
+
+  assert.equal(result.snapshot.state.coins, 200_000)
+  assert.equal(result.snapshot.terms.length, TERMS.length)
+  assert.ok(!result.snapshot.stolen_terms.includes('merge_conflict'))
+})
+
 test('nickname updates are validated and persisted', () => {
   const account = user('pack-nickname')
   bootstrapLocalPlayer(account, { nowMs: 0 })
@@ -204,4 +235,91 @@ test('nickname updates are validated and persisted', () => {
   )
 
   assert.equal(result.snapshot.profile.display_name, 'Agile Fox Nova')
+})
+
+test('rebirth requires full current collection', () => {
+  const account = user('pack-rebirth-gate')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  assert.throws(() => {
+    rebirthLocalPlayer(account, { debugAllowed: true, nowMs: 1_000 })
+  }, /Rebirth requires full collection/)
+})
+
+test('rebirth resets current run but preserves lifetime collection', () => {
+  const account = user('pack-rebirth-reset')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  for (const term of ['hello_world', 'merge_conflict']) {
+    openLocalPack(account, {
+      source: 'manual',
+      debugAllowed: true,
+      debugOverride: { tier: TERMS_BY_KEY[term].tier, term_key: term, rarity: TERMS_BY_KEY[term].rarity, mutation: 'none' },
+      nowMs: term === 'hello_world' ? 1_000 : 1_001,
+    })
+  }
+
+  // Fill the remaining cards quickly to satisfy rebirth gate.
+  let tickMs = 2_000
+  for (const term of Object.keys(TERMS_BY_KEY)) {
+    openLocalPack(account, {
+      source: 'manual',
+      debugAllowed: true,
+      debugOverride: { tier: TERMS_BY_KEY[term].tier, term_key: term, rarity: TERMS_BY_KEY[term].rarity, mutation: 'none' },
+      nowMs: tickMs,
+    })
+    tickMs += 1
+  }
+
+  const rebirth = rebirthLocalPlayer(account, { debugAllowed: true, nowMs: 3_000 })
+  assert.equal(rebirth.rebirth.rebirth_count, 1)
+  assert.equal(rebirth.rebirth.to_layer, 2)
+  assert.equal(rebirth.snapshot.state.coins, 100)
+  assert.equal(rebirth.snapshot.terms.length, 0)
+
+  const lifetime = getLocalLifetimeCollection(account, { nowMs: 3_100 })
+  assert.ok(lifetime.total_unique >= Object.keys(TERMS_BY_KEY).length)
+})
+
+test('stolen card appears in stolen slots until recollected', () => {
+  const account = user('pack-stolen-slot')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 2, term_key: 'merge_conflict', rarity: 'common', mutation: 'none' },
+    nowMs: 1_000,
+  })
+
+  const lost = loseLocalCard(account, {
+    termKey: 'merge_conflict',
+    debugAllowed: true,
+    nowMs: 2_000,
+  })
+  assert.equal(lost.loss.removed, true)
+  assert.ok(lost.snapshot.stolen_terms.includes('merge_conflict'))
+
+  const recollected = openLocalPack(account, {
+    source: 'manual',
+    debugAllowed: true,
+    debugOverride: { tier: 2, term_key: 'merge_conflict', rarity: 'common', mutation: 'none' },
+    nowMs: 3_000,
+  })
+  assert.ok(!recollected.snapshot.stolen_terms.includes('merge_conflict'))
+})
+
+test('season rollover archives history and resets progression', () => {
+  const account = user('pack-season-reset')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+
+  debugApplyLocal(account, { type: 'set_coins', amount: 9_999 }, { debugAllowed: true, nowMs: 1_000 })
+  const nextWeekMs = 8 * 24 * 60 * 60 * 1000
+  const afterRollover = bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: nextWeekMs })
+  assert.equal(afterRollover.state.coins, 100)
+  assert.equal(afterRollover.state.rebirth_count, 0)
+  assert.equal(afterRollover.state.active_layer, 1)
+
+  const history = getLocalSeasonHistory(account, { nowMs: nextWeekMs + 100 })
+  assert.ok(history.length >= 1)
 })
