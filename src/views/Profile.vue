@@ -44,8 +44,12 @@
       <ul class="mt-3 list-disc space-y-2 pl-5 text-sm text-muted">
         <li>3-16 characters.</li>
         <li>Only letters, numbers, and underscore.</li>
-        <li>Names are profanity-checked and reviewed server-side.</li>
+        <li>No profanity.</li>
+        <li>No references to religion.</li>
+        <li>No references to countries.</li>
+        <li>No derogatory language.</li>
       </ul>
+      <p class="mt-3 text-sm text-muted">These rules keep names simple, neutral, and respectful.</p>
     </article>
   </section>
 </template>
