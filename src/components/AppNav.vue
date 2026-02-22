@@ -18,7 +18,7 @@
       </nav>
 
       <div class="flex items-center gap-3" v-if="isAuthed">
-        <span class="duck-stolen-metric" title="Total cards stolen by duck raids">
+        <span v-if="duckCardsStolen > 0" class="duck-stolen-metric" title="Total cards stolen by duck raids">
           cards stolen by a duck: {{ duckCardsStolen }}
         </span>
         <span
