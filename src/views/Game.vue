@@ -260,6 +260,23 @@
             </button>
           </div>
         </article>
+
+        <article class="rounded-xl border border-soft bg-panel-soft p-4 shop-upgrade-card">
+          <div class="shop-upgrade-card__body">
+            <p class="text-xs text-muted">Missing Card Gift</p>
+            <p class="mt-1 text-xs text-muted">Spend coins to receive one random missing card from your current collection.</p>
+
+            <p class="mt-2 text-sm"><span class="font-semibold">Remaining:</span> {{ missingCardsRemaining }} card{{ missingCardsRemaining === 1 ? '' : 's' }}</p>
+            <p class="text-sm text-muted"><span class="font-semibold text-main">Effect:</span> +1 missing card</p>
+          </div>
+
+          <div class="flex items-center justify-between shop-upgrade-card__actions">
+            <p class="text-sm font-semibold">{{ formatNumber(MISSING_CARD_GIFT_COST) }} coins</p>
+            <button class="btn-primary" type="button" :disabled="!canBuyMissingCardGiftAction || actionLoading" @click="buyMissingCardGift">
+              {{ canBuyMissingCardGiftAction ? 'Buy' : missingCardGiftButtonLabel }}
+            </button>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -338,8 +355,10 @@ import { TERMS, TERMS_BY_KEY } from '../data/terms'
 import { BALANCE_CONFIG } from '../lib/balanceConfig.mjs'
 import {
   SHOP_UPGRADES,
+  MISSING_CARD_GIFT_COST,
   getAutoOpenIntervalMs,
   getBaseTierFromEffectiveTier,
+  canBuyMissingCardGift,
   canBuyUpgrade,
   computeCardReward,
   getEffectiveTierWeights,
@@ -662,6 +681,16 @@ const currentCollectionCount = computed(() => {
   return cardBookRows.value.filter((row) => row.owned).length
 })
 const totalCollectedCards = currentCollectionCount
+const missingCardsRemaining = computed(() => Math.max(0, TERMS.length - currentCollectionCount.value))
+const canBuyMissingCardGiftAction = computed(() => {
+  if (missingCardsRemaining.value <= 0) return false
+  return canBuyMissingCardGift(playerState.value || {})
+})
+const missingCardGiftButtonLabel = computed(() => {
+  if (missingCardsRemaining.value <= 0) return 'Complete'
+  if (!canBuyMissingCardGift(playerState.value || {})) return 'Not enough coins'
+  return 'Buy'
+})
 const rebirthReady = computed(() => currentCollectionCount.value >= TERMS.length)
 const rebirthLockLabel = computed(() => {
   const remaining = Math.max(0, TERMS.length - currentCollectionCount.value)
@@ -970,6 +999,11 @@ async function openManualPack() {
 
 async function buyUpgrade(upgradeKey) {
   await store.dispatch('game/buyUpgrade', { upgradeKey })
+}
+
+async function buyMissingCardGift() {
+  if (!canBuyMissingCardGiftAction.value || actionLoading.value) return
+  await store.dispatch('game/buyMissingCardGift')
 }
 
 async function rebirthPlayer() {

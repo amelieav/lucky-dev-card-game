@@ -1,5 +1,6 @@
 import {
   bootstrapPlayer as apiBootstrapPlayer,
+  buyMissingCardGift as apiBuyMissingCardGift,
   buyUpgrade as apiBuyUpgrade,
   debugApply as apiDebugApply,
   fetchLifetimeCollection as apiFetchLifetimeCollection,
@@ -12,6 +13,7 @@ import {
 } from '../../services/gameApi'
 import {
   bootstrapLocalPlayer,
+  buyLocalMissingCardGift,
   buyLocalUpgrade,
   debugApplyLocal,
   getLocalLifetimeCollection,
@@ -396,6 +398,28 @@ export default {
         commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
         commit('setError', error.message || 'Unable to buy upgrade.')
+      } finally {
+        commit('setActionLoading', false)
+      }
+    },
+
+    async buyMissingCardGift({ commit, rootState }) {
+      commit('setActionLoading', true)
+      commit('setError', null)
+
+      try {
+        const user = rootState.auth.user
+        const data = LOCAL_ECONOMY_ENABLED
+          ? buyLocalMissingCardGift(user, {
+              debugAllowed: rootState.debug.enabled,
+            })
+          : await apiBuyMissingCardGift()
+        const snapshot = normalizeSnapshot(data)
+        commit('applySnapshot', snapshot)
+        commit('setOpenResult', data?.gift || null)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
+      } catch (error) {
+        commit('setError', error.message || 'Unable to buy missing card gift.')
       } finally {
         commit('setActionLoading', false)
       }

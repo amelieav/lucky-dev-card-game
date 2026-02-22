@@ -475,7 +475,7 @@ as $$
     'dyke', 'fag', 'faggot', 'fuck', 'goddamn', 'hell', 'hentai', 'jerkoff', 'jizz', 'kike',
     'labia', 'masturbat', 'milf', 'motherfuck', 'nazi', 'nigg', 'penis', 'piss', 'porn', 'prick',
     'pussy', 'queer', 'rape', 'retard', 'scrot', 'sex', 'shit', 'slut', 'spic', 'suck', 'testicle',
-    'tit', 'twat', 'vagina', 'wank', 'whore'
+    'tit', 'twat', 'vagina', 'wank', 'whore', 'kkk', 'kukluxklan'
   ];
 $$;
 
@@ -3404,6 +3404,114 @@ begin
 end;
 $$;
 
+create or replace function public.buy_missing_card_gift()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  state_row public.player_state;
+  term_row public.player_terms;
+  chosen_term text;
+  chosen_term_name text;
+  chosen_tier int;
+  chosen_rarity text;
+  gift_cost bigint := 50000;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_auto_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  select * into state_row
+  from public.player_state
+  where user_id = uid
+  for update;
+
+  if state_row.coins < gift_cost then
+    raise exception 'Not enough coins';
+  end if;
+
+  select tc.term_key, tc.display_name, tc.tier, tc.rarity
+  into chosen_term, chosen_term_name, chosen_tier, chosen_rarity
+  from public.term_catalog tc
+  where not exists (
+    select 1
+    from public.player_terms pt
+    where pt.user_id = uid
+      and pt.term_key = tc.term_key
+  )
+  order by random()
+  limit 1;
+
+  if chosen_term is null then
+    raise exception 'Current collection is already complete';
+  end if;
+
+  update public.player_state
+  set coins = coins - gift_cost,
+      updated_at = now()
+  where user_id = uid
+  returning * into state_row;
+
+  insert into public.player_terms (user_id, term_key, copies, level, best_mutation)
+  values (uid, chosen_term, 1, 1, 'none')
+  on conflict (user_id, term_key)
+  do update set
+    copies = public.player_terms.copies + 1,
+    level = public.calc_level(public.player_terms.copies + 1),
+    best_mutation = case
+      when public.mutation_rank(excluded.best_mutation) > public.mutation_rank(public.player_terms.best_mutation)
+        then excluded.best_mutation
+      else public.player_terms.best_mutation
+    end,
+    updated_at = now();
+
+  perform public.record_lifetime_collect(
+    uid,
+    state_row.active_layer,
+    chosen_term,
+    'none',
+    1
+  );
+
+  delete from public.player_stolen_terms
+  where user_id = uid
+    and layer = state_row.active_layer
+    and term_key = chosen_term;
+
+  select * into term_row
+  from public.player_terms
+  where user_id = uid
+    and term_key = chosen_term;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'gift', jsonb_build_object(
+      'term_key', chosen_term,
+      'term_name', chosen_term_name,
+      'rarity', chosen_rarity,
+      'mutation', 'none',
+      'tier', chosen_tier,
+      'reward', 0,
+      'copies', term_row.copies,
+      'level', term_row.level,
+      'best_mutation', term_row.best_mutation,
+      'source', 'shop_gift',
+      'debug_applied', false,
+      'layer', state_row.active_layer
+    )
+  );
+end;
+$$;
+
 create or replace function public.rebirth_player()
 returns jsonb
 language plpgsql
@@ -3770,6 +3878,7 @@ end;
 $$;
 
 grant execute on function public.rebirth_player() to authenticated;
+grant execute on function public.buy_missing_card_gift() to authenticated;
 grant execute on function public.get_lifetime_collection() to authenticated;
 grant execute on function public.get_season_history(int) to authenticated;
 grant execute on function public.submit_name_report(text, text) to authenticated;

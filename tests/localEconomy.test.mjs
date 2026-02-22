@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   bootstrapLocalPlayer,
+  buyLocalMissingCardGift,
   buyLocalUpgrade,
   debugApplyLocal,
   getLocalLifetimeCollection,
@@ -197,6 +198,37 @@ test('shop upgrade purchase spends coins and increments level', () => {
   assert.ok(result.snapshot.state.coins < 5_000)
 })
 
+test('missing card gift spends 50,000 coins and grants a missing card', () => {
+  const account = user('pack-missing-gift')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+  debugApplyLocal(account, { type: 'set_coins', amount: 60_000 }, { debugAllowed: true, nowMs: 0 })
+
+  const result = buyLocalMissingCardGift(account, {
+    debugAllowed: true,
+    rng: () => 0,
+    nowMs: 1_000,
+  })
+
+  assert.equal(result.snapshot.state.coins, 10_000)
+  assert.equal(result.snapshot.terms.length, 1)
+  assert.equal(result.gift.source, 'shop_gift')
+  assert.equal(result.gift.term_key, 'hello_world')
+})
+
+test('missing card gift is blocked when current collection is complete', () => {
+  const account = user('pack-missing-gift-complete')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+  debugApplyLocal(
+    account,
+    { type: 'grant_full_set', coins: 200_000 },
+    { debugAllowed: true, nowMs: 1_000 },
+  )
+
+  assert.throws(() => {
+    buyLocalMissingCardGift(account, { debugAllowed: true, nowMs: 2_000 })
+  }, /already complete/)
+})
+
 test('debug full set grants all cards and sets coins', () => {
   const account = user('pack-debug-full-set')
   bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
@@ -252,6 +284,10 @@ test('nickname validation blocks profanity and invalid characters', () => {
 
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'f_u_c_k' }, { nowMs: 1_000 })
+  }, /blocked language/)
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'k_k_k' }, { nowMs: 1_000 })
   }, /blocked language/)
 })
 

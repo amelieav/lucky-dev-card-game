@@ -3,6 +3,10 @@ import leoProfanity from 'leo-profanity'
 export const DISPLAY_NAME_MIN_LENGTH = 3
 export const DISPLAY_NAME_MAX_LENGTH = 16
 export const DISPLAY_NAME_PATTERN = /^[A-Za-z0-9_]+$/
+const EXTRA_BLOCKED_FRAGMENTS = [
+  'kkk',
+  'kukluxklan',
+]
 
 export function normalizeDisplayNameForCheck(value) {
   return String(value || '')
@@ -41,6 +45,14 @@ export function validateDisplayName(inputValue) {
   }
 
   if (leoProfanity.check(normalizedForCheck)) {
+    return {
+      ok: false,
+      code: 'profanity',
+      message: 'Display name contains blocked language.',
+    }
+  }
+
+  if (EXTRA_BLOCKED_FRAGMENTS.some((fragment) => normalizedForCheck.includes(fragment))) {
     return {
       ok: false,
       code: 'profanity',

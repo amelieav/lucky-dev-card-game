@@ -163,6 +163,8 @@ import { TERMS_BY_KEY } from '../data/terms'
 const store = useStore()
 const AUTO_REFRESH_SECONDS = 15
 const refreshCountdown = ref(AUTO_REFRESH_SECONDS)
+const nextAutoRefreshAtMs = ref(0)
+const autoRefreshInFlight = ref(false)
 let refreshTimer = null
 const reportedNameInput = ref('')
 const reportDetailsInput = ref('')
@@ -224,6 +226,9 @@ onUnmounted(() => {
     window.clearInterval(refreshTimer)
     refreshTimer = null
   }
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', onVisibilityChange)
+  }
 })
 
 function startAutoRefresh() {
@@ -231,20 +236,49 @@ function startAutoRefresh() {
     window.clearInterval(refreshTimer)
   }
 
-  refreshCountdown.value = AUTO_REFRESH_SECONDS
-  refreshTimer = window.setInterval(() => {
-    if (refreshCountdown.value <= 1) {
-      refreshCountdown.value = AUTO_REFRESH_SECONDS
-      void refreshLeaderboard(true)
-      return
-    }
+  scheduleNextAutoRefresh(Date.now())
+  updateAutoRefreshCountdown()
 
-    refreshCountdown.value -= 1
-  }, 1000)
+  refreshTimer = window.setInterval(() => {
+    updateAutoRefreshCountdown()
+  }, 250)
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibilityChange)
+  }
 }
 
 async function refreshLeaderboard(force = true) {
   await store.dispatch('leaderboard/fetch', { force, limit: 50 })
+}
+
+function scheduleNextAutoRefresh(fromMs = Date.now()) {
+  nextAutoRefreshAtMs.value = fromMs + (AUTO_REFRESH_SECONDS * 1000)
+}
+
+function updateAutoRefreshCountdown() {
+  const remainingMs = nextAutoRefreshAtMs.value - Date.now()
+  refreshCountdown.value = Math.max(0, Math.ceil(remainingMs / 1000))
+
+  if (remainingMs > 0 || autoRefreshInFlight.value) {
+    return
+  }
+
+  autoRefreshInFlight.value = true
+  void refreshLeaderboard(true)
+    .catch(() => {
+      // Fetch errors are already surfaced through store state.
+    })
+    .finally(() => {
+      autoRefreshInFlight.value = false
+      scheduleNextAutoRefresh(Date.now())
+      refreshCountdown.value = AUTO_REFRESH_SECONDS
+    })
+}
+
+function onVisibilityChange() {
+  if (typeof document === 'undefined' || document.hidden) return
+  updateAutoRefreshCountdown()
 }
 
 async function submitNameReportForm() {

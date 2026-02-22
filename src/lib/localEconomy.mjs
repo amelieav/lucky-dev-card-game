@@ -13,6 +13,7 @@ import {
   getEffectiveTierWeights,
   getEffectiveTierForLayer,
   getHighestUnlockedTier,
+  MISSING_CARD_GIFT_COST,
   normalizeLayer,
   getMutationWeights,
   getPassiveIncomeSummaryFromTerms,
@@ -1106,6 +1107,11 @@ function currentCollectionComplete(record) {
   return collected.size >= TERMS_TOTAL
 }
 
+function currentCollectionMissingTerms(record) {
+  const collected = new Set((record.terms || []).map((row) => row.term_key))
+  return TERMS.filter((term) => !collected.has(term.key))
+}
+
 export function bootstrapLocalPlayer(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
   assertAuthenticatedUser(user)
 
@@ -1204,6 +1210,55 @@ export function buyLocalUpgrade(
   return {
     snapshot: toSnapshot(record, debugAllowed, nowMs),
     purchase,
+  }
+}
+
+export function buyLocalMissingCardGift(
+  user,
+  { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
+) {
+  assertAuthenticatedUser(user)
+
+  const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
+  applyAutoProgress(record, { debugAllowed, rng, nowMs })
+  touchRecordActivity(record, { nowMs })
+
+  if (Number(record.coins || 0) < MISSING_CARD_GIFT_COST) {
+    throw new Error('Not enough coins')
+  }
+
+  const missingTerms = currentCollectionMissingTerms(record)
+  if (!missingTerms.length) {
+    throw new Error('Current collection is already complete')
+  }
+
+  const chosenTerm = chooseRandom(missingTerms, rng)
+  record.coins = Number(record.coins || 0) - MISSING_CARD_GIFT_COST
+  upsertTerm(record, chosenTerm.key, { copiesToAdd: 1, mutation: 'none' }, nowMs)
+  record.updated_at = nowIso(nowMs)
+  record.highest_tier_unlocked = getHighestUnlockedTier(record)
+  writeRecord(user, record)
+
+  const termRow = getTermRow(record, chosenTerm.key)
+  const activeLayer = normalizeActiveLayer(record.active_layer)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    gift: {
+      term_key: chosenTerm.key,
+      term_name: chosenTerm.name,
+      rarity: chosenTerm.rarity,
+      mutation: 'none',
+      tier: getEffectiveTierForLayer(Number(chosenTerm.tier || 1), activeLayer),
+      reward: 0,
+      copies: termRow?.copies || 1,
+      level: termRow?.level || 1,
+      best_mutation: normalizeMutation(termRow?.best_mutation || 'none'),
+      source: 'shop_gift',
+      debug_applied: false,
+      layer: activeLayer,
+    },
   }
 }
 

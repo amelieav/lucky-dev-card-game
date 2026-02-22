@@ -97,6 +97,20 @@ export async function buyUpgrade({ upgradeKey } = {}) {
   throw new Error('buy_upgrade RPC is not available on this backend yet')
 }
 
+export async function buyMissingCardGift() {
+  const primary = await supabase.rpc('buy_missing_card_gift')
+
+  if (!primary.error) {
+    return primary.data
+  }
+
+  if (!isMissingRpcError(primary.error, 'buy_missing_card_gift')) {
+    throw primary.error
+  }
+
+  throw new Error('buy_missing_card_gift RPC is not available on this backend yet')
+}
+
 // Backward-compatible wrappers for older callers.
 export async function openEgg(tier, debugOverride = null) {
   const normalizedTier = Math.max(1, Math.min(6, Number(tier || 1)))

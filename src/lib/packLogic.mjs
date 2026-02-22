@@ -58,6 +58,7 @@ export const SHOP_UPGRADES = [
     description: 'Shift rarity odds away from common into rare and legendary.',
   },
 ]
+export const MISSING_CARD_GIFT_COST = 50000
 
 const LEGACY_UPGRADE_KEY_MAP = {
   luck_engine: 'value_upgrade',
@@ -383,6 +384,10 @@ export function canBuyUpgrade(stateLike, upgradeKey) {
   }
 
   return Number(stateLike?.coins || 0) >= cost
+}
+
+export function canBuyMissingCardGift(stateLike) {
+  return Number(stateLike?.coins || 0) >= MISSING_CARD_GIFT_COST
 }
 
 export function applyUpgrade(stateLike, upgradeKey) {
