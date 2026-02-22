@@ -14,7 +14,7 @@
         title="Click the duck before it escapes with your card"
         @click="scareDuck"
       >
-        <img :src="duckRaidFrameSrc" alt="Duck raider" class="duck-raid__img" />
+        <img :src="duckRaidFrameSrc" alt="Duck raider" class="duck-raid__img" @error="handleDuckFrameError" />
       </button>
     </div>
 
@@ -402,13 +402,13 @@ const CHICK_HIGH_TIER_INACTIVITY_MIN_MS = 30_000
 const CHICK_HIGH_TIER_INACTIVITY_MAX_MS = 150_000
 const CHICK_MONITOR_MS = 1000
 const CHICK_COOLDOWN_MS = 20_000
-const DUCK_ASSET_BASE = `${import.meta.env.BASE_URL}ducks`
 const DUCK_RAID_FRAMES = {
   walk: [duckAsset('walk1.png'), duckAsset('walk2.png'), duckAsset('walk3.png'), duckAsset('walk4.png')],
   drag: [duckAsset('drag1.png'), duckAsset('drag2.png'), duckAsset('drag3.png'), duckAsset('drag4.png')],
   cry: [duckAsset('cry1.png'), duckAsset('cry2.png')],
   runaway: [duckAsset('runaway1.png'), duckAsset('runaway2.png'), duckAsset('runaway3.png'), duckAsset('runaway4.png')],
 }
+const DUCK_FALLBACK_FRAME = DUCK_RAID_FRAMES.walk[0]
 const CHICK_APPROACH_MS = 10500
 const CHICK_DRAG_MS = 7000
 const CHICK_ESCAPE_MS = 7000
@@ -437,6 +437,7 @@ const duckFrameIndex = ref({
   cry: 0,
   runaway: 0,
 })
+const failedDuckFrameSrcSet = ref(new Set())
 const duckRaidActorRef = ref(null)
 const chickRaid = ref({
   active: false,
@@ -523,10 +524,12 @@ const duckRaidFrameKey = computed(() => {
 })
 const duckRaidFrameSrc = computed(() => {
   const key = duckRaidFrameKey.value
-  const frames = DUCK_RAID_FRAMES[key] || []
-  if (!frames.length) return ''
+  const allFrames = DUCK_RAID_FRAMES[key] || []
+  const failedSet = failedDuckFrameSrcSet.value
+  const frames = allFrames.filter((src) => !failedSet.has(src))
+  if (!frames.length) return DUCK_FALLBACK_FRAME || ''
   const idx = Number(duckFrameIndex.value[key] || 0) % frames.length
-  return frames[idx]
+  return frames[idx] || DUCK_FALLBACK_FRAME || ''
 })
 const duckRaidTargetCard = computed(() => {
   if (!chickRaid.value.targetTermKey) return null
@@ -1459,7 +1462,30 @@ function resetChickInactivityTarget() {
 }
 
 function duckAsset(fileName) {
-  return `${DUCK_ASSET_BASE}/${fileName}`
+  const basePath = `${import.meta.env.BASE_URL || '/'}ducks/${fileName}`
+  if (typeof window === 'undefined') {
+    return basePath
+  }
+
+  try {
+    return new URL(basePath, window.location.href).toString()
+  } catch (_) {
+    return basePath
+  }
+}
+
+function handleDuckFrameError(event) {
+  const target = event?.target
+  if (!target || !target.src) return
+
+  failedDuckFrameSrcSet.value = new Set([
+    ...failedDuckFrameSrcSet.value,
+    target.src,
+  ])
+
+  if (DUCK_FALLBACK_FRAME && target.src !== DUCK_FALLBACK_FRAME) {
+    target.src = DUCK_FALLBACK_FRAME
+  }
 }
 </script>
 
