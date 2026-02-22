@@ -289,6 +289,22 @@ test('nickname validation blocks profanity and invalid characters', () => {
   assert.throws(() => {
     updateLocalNickname(account, { displayName: 'k_k_k' }, { nowMs: 1_000 })
   }, /blocked language/)
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'f_r_a_n_c_e' }, { nowMs: 1_000 })
+  }, /blocked language/)
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'muslim_dev' }, { nowMs: 1_000 })
+  }, /blocked language/)
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'palestine_1' }, { nowMs: 1_000 })
+  }, /blocked language/)
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'immigrant99' }, { nowMs: 1_000 })
+  }, /blocked language/)
 })
 
 test('rebirth requires full current collection', () => {

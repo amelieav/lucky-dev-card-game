@@ -7,6 +7,36 @@ const EXTRA_BLOCKED_FRAGMENTS = [
   'kkk',
   'kukluxklan',
 ]
+const RESTRICTED_TOPIC_FRAGMENTS = [
+  'afghanistan', 'albania', 'algeria', 'andorra', 'angola', 'argentina', 'armenia', 'australia', 'austria', 'azerbaijan',
+  'bahamas', 'bahrain', 'bangladesh', 'barbados', 'belarus', 'belgium', 'belize', 'benin', 'bhutan', 'bolivia',
+  'bosnia', 'botswana', 'brazil', 'brunei', 'bulgaria', 'burkina', 'burundi', 'cambodia', 'cameroon', 'canada',
+  'chad', 'chile', 'china', 'colombia', 'comoros', 'congo', 'costarica', 'croatia', 'cuba', 'cyprus',
+  'czechia', 'denmark', 'djibouti', 'dominica', 'ecuador', 'egypt', 'eritrea', 'estonia', 'eswatini', 'ethiopia',
+  'fiji', 'finland', 'france', 'gabon', 'gambia', 'georgia', 'germany', 'ghana', 'greece', 'grenada',
+  'guatemala', 'guinea', 'guyana', 'haiti', 'honduras', 'hungary', 'iceland', 'india', 'indonesia', 'iran',
+  'iraq', 'ireland', 'israel', 'italy', 'jamaica', 'japan', 'jordan', 'kazakhstan', 'kenya', 'kiribati',
+  'kosovo', 'kuwait', 'kyrgyzstan', 'laos', 'latvia', 'lebanon', 'lesotho', 'liberia', 'libya', 'liechtenstein',
+  'lithuania', 'luxembourg', 'madagascar', 'malawi', 'malaysia', 'maldives', 'mali', 'malta', 'mauritania', 'mauritius',
+  'mexico', 'micronesia', 'moldova', 'monaco', 'mongolia', 'montenegro', 'morocco', 'mozambique', 'myanmar', 'namibia',
+  'nauru', 'nepal', 'netherlands', 'newzealand', 'nicaragua', 'niger', 'nigeria', 'norway', 'oman', 'pakistan',
+  'palau', 'palestine', 'panama', 'paraguay', 'peru', 'philippines', 'poland', 'portugal', 'qatar', 'romania', 'russia',
+  'rwanda', 'samoa', 'sanmarino', 'saudiarabia', 'senegal', 'serbia', 'seychelles', 'singapore', 'slovakia', 'slovenia',
+  'somalia', 'spain', 'srilanka', 'sudan', 'suriname', 'sweden', 'switzerland', 'syria', 'taiwan', 'tajikistan',
+  'tanzania', 'thailand', 'timorleste', 'togo', 'tonga', 'tunisia', 'turkiye', 'turkey', 'turkmenistan', 'tuvalu',
+  'uganda', 'ukraine', 'unitedarabemirates', 'uae', 'unitedkingdom', 'britain', 'england', 'scotland', 'wales', 'uk',
+  'unitedstates', 'america', 'usa', 'uruguay', 'uzbekistan', 'vanuatu', 'venezuela', 'vietnam', 'yemen', 'zambia',
+  'zimbabwe',
+  'christian', 'christianity', 'catholic', 'protestant', 'orthodox', 'muslim', 'islam', 'islamic', 'hindu', 'hinduism',
+  'buddhist', 'buddhism', 'jewish', 'judaism', 'jew', 'sikh', 'sikhism', 'atheist', 'atheism', 'agnostic',
+  'taoist', 'taoism', 'shinto', 'jain', 'jainism', 'pagan', 'wicca', 'bahai', 'zoroastrian', 'religion',
+  'allah', 'jesus', 'christ', 'yahweh', 'bible', 'quran', 'torah',
+  'immigrant', 'immigrants', 'immigration', 'migrant', 'migrants', 'migration', 'refugee', 'refugees', 'asylum',
+]
+const BLOCKED_FRAGMENTS = Array.from(new Set([
+  ...EXTRA_BLOCKED_FRAGMENTS,
+  ...RESTRICTED_TOPIC_FRAGMENTS,
+]))
 
 export function normalizeDisplayNameForCheck(value) {
   return String(value || '')
@@ -52,7 +82,7 @@ export function validateDisplayName(inputValue) {
     }
   }
 
-  if (EXTRA_BLOCKED_FRAGMENTS.some((fragment) => normalizedForCheck.includes(fragment))) {
+  if (BLOCKED_FRAGMENTS.some((fragment) => normalizedForCheck.includes(fragment))) {
     return {
       ok: false,
       code: 'profanity',
