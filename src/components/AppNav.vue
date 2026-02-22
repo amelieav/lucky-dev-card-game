@@ -36,7 +36,7 @@
             cards stolen by a duck: {{ duckCardsStolen }}
           </button>
           <div v-if="duckInfoOpen" id="duck-info-popover" class="duck-info-popover" role="note">
-            Duck raids can trigger if you stay AFK for a while (about 60 to 180 seconds). The duck targets a random
+            Duck raids can trigger if you're AFK for too long. The duck targets a random
             owned card from your highest completed tier and drags it away. Click the duck to scare it off before it
             escapes.
           </div>

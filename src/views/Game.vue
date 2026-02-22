@@ -827,8 +827,15 @@ async function runAutoRollTick() {
     return
   }
 
-  await runAutoRollCycle()
-  scheduleAutoRoll(80)
+  try {
+    await runAutoRollCycle()
+  } catch (_) {
+    manualPackPhase.value = 'ready'
+  } finally {
+    if (viewActive && autoUnlocked.value && autoRollEnabled.value) {
+      scheduleAutoRoll(80)
+    }
+  }
 }
 
 async function runAutoRollCycle() {
@@ -1031,7 +1038,6 @@ function pickChickTargetCard() {
 async function maybeStartChickRaid() {
   if (!viewActive || !currentUserId.value) return
   if (chickRaid.value.active) return
-  if (actionLoading.value) return
 
   const inactivityTargetMs = Number(chickInactivityTargetMs.value || 0)
   if (inactivityTargetMs <= 0) return
