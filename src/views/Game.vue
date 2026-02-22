@@ -346,11 +346,12 @@ const CHICK_INACTIVITY_MIN_MS = 60_000
 const CHICK_INACTIVITY_MAX_MS = 180_000
 const CHICK_MONITOR_MS = 1000
 const CHICK_COOLDOWN_MS = 8000
+const DUCK_ASSET_BASE = `${import.meta.env.BASE_URL}ducks`
 const DUCK_RAID_FRAMES = {
-  walk: ['/ducks/walk1.png', '/ducks/walk2.png', '/ducks/walk3.png', '/ducks/walk4.png'],
-  drag: ['/ducks/drag1.png', '/ducks/drag2.png', '/ducks/drag3.png', '/ducks/drag4.png'],
-  cry: ['/ducks/cry1.png', '/ducks/cry2.png'],
-  runaway: ['/ducks/runaway1.png', '/ducks/runaway2.png', '/ducks/runaway3.png', '/ducks/runaway4.png'],
+  walk: [duckAsset('walk1.png'), duckAsset('walk2.png'), duckAsset('walk3.png'), duckAsset('walk4.png')],
+  drag: [duckAsset('drag1.png'), duckAsset('drag2.png'), duckAsset('drag3.png'), duckAsset('drag4.png')],
+  cry: [duckAsset('cry1.png'), duckAsset('cry2.png')],
+  runaway: [duckAsset('runaway1.png'), duckAsset('runaway2.png'), duckAsset('runaway3.png'), duckAsset('runaway4.png')],
 }
 const CHICK_APPROACH_MS = 10500
 const CHICK_DRAG_MS = 7000
@@ -1337,6 +1338,10 @@ function getRandomChickInactivityMs() {
   const min = Math.max(0, CHICK_INACTIVITY_MIN_MS)
   const max = Math.max(min, CHICK_INACTIVITY_MAX_MS)
   return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+function duckAsset(fileName) {
+  return `${DUCK_ASSET_BASE}/${fileName}`
 }
 </script>
 

@@ -18,9 +18,29 @@
       </nav>
 
       <div class="flex items-center gap-3" v-if="isAuthed">
-        <span v-if="duckCardsStolen > 0" class="duck-stolen-metric" title="Total cards stolen by duck raids">
-          cards stolen by a duck: {{ duckCardsStolen }}
-        </span>
+        <div
+          v-if="duckCardsStolen > 0"
+          class="duck-stolen-wrap"
+          @mouseenter="showDuckInfo"
+          @mouseleave="hideDuckInfo"
+        >
+          <button
+            class="duck-stolen-metric duck-stolen-metric--button"
+            type="button"
+            :aria-expanded="duckInfoOpen ? 'true' : 'false'"
+            aria-controls="duck-info-popover"
+            @click="toggleDuckInfo"
+            @focus="showDuckInfo"
+            @blur="hideDuckInfo"
+          >
+            cards stolen by a duck: {{ duckCardsStolen }}
+          </button>
+          <div v-if="duckInfoOpen" id="duck-info-popover" class="duck-info-popover" role="note">
+            Duck raids can trigger if you stay AFK for a while (about 60 to 180 seconds). The duck targets a random
+            owned card from your highest completed tier and drags it away. Click the duck to scare it off before it
+            escapes.
+          </div>
+        </div>
         <span
           class="afk-debug"
           :class="isAfk ? 'afk-debug--afk' : 'afk-debug--active'"
@@ -49,6 +69,8 @@ const KEEP_ALIVE_MS = 5_000
 const isAuthed = computed(() => !!store.state.auth.user)
 const userEmail = computed(() => store.state.auth.user?.email || '')
 const duckCardsStolen = computed(() => Math.max(0, Number(store.state.game.duckTheftStats?.count || 0)))
+const duckInfoOpen = ref(false)
+const duckInfoPinned = ref(false)
 const nowMs = ref(Date.now())
 const lastMouseMoveMs = ref(Date.now())
 const isAfk = computed(() => {
@@ -82,6 +104,26 @@ function stopKeepAlive() {
   if (!keepAliveTimer) return
   window.clearInterval(keepAliveTimer)
   keepAliveTimer = null
+}
+
+function showDuckInfo() {
+  duckInfoOpen.value = true
+}
+
+function hideDuckInfo() {
+  if (duckInfoPinned.value) return
+  duckInfoOpen.value = false
+}
+
+function toggleDuckInfo() {
+  if (duckInfoPinned.value) {
+    duckInfoPinned.value = false
+    duckInfoOpen.value = false
+    return
+  }
+
+  duckInfoPinned.value = true
+  duckInfoOpen.value = true
 }
 
 onMounted(() => {
@@ -118,6 +160,8 @@ watch(isAuthed, (authed) => {
   lastMouseMoveMs.value = nowMs.value
 
   if (!authed) {
+    duckInfoPinned.value = false
+    duckInfoOpen.value = false
     stopKeepAlive()
     return
   }
@@ -174,6 +218,41 @@ async function handleSignOut() {
   letter-spacing: 0.04em;
   color: #34517f;
   white-space: nowrap;
+}
+
+.duck-stolen-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.duck-stolen-metric--button {
+  cursor: pointer;
+}
+
+.duck-stolen-metric--button:focus-visible {
+  outline: 2px solid rgba(52, 81, 127, 0.45);
+  outline-offset: 2px;
+}
+
+.duck-info-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  z-index: 40;
+  width: min(24rem, 72vw);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(120, 143, 194, 0.35);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 10px 24px rgba(26, 46, 94, 0.2);
+  padding: 0.55rem 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  color: #2e4b79;
+  white-space: normal;
+  text-transform: none;
 }
 
 .afk-debug--active {
