@@ -91,7 +91,8 @@
           <thead>
             <tr class="text-left text-muted">
               <th class="px-2 py-2">Season</th>
-              <th class="px-2 py-2">Rank</th>
+              <th class="px-2 py-2">Your Rank</th>
+              <th class="px-2 py-2">1st / 2nd / 3rd</th>
               <th class="px-2 py-2">Best Card</th>
               <th class="px-2 py-2">Coins</th>
             </tr>
@@ -100,6 +101,7 @@
             <tr v-for="row in seasonHistory" :key="`season-history-${row.season_id}`" class="border-t border-soft">
               <td class="px-2 py-2">{{ row.season_id }}</td>
               <td class="px-2 py-2">{{ row.rank }}/{{ row.total_players }}</td>
+              <td class="px-2 py-2">{{ seasonPodiumLabel(row) }}</td>
               <td class="px-2 py-2">
                 <span v-if="row.best_term_key">
                   {{ row.best_term_name || row.best_term_key }}
@@ -332,6 +334,16 @@ function mutationLabel(mutation) {
   if (key === 'holo' || key === 'prismatic' || key === 'glitched') return 'HOLO'
   if (key === 'foil') return 'FOIL'
   return 'None'
+}
+
+function seasonPodiumLabel(row) {
+  const firstName = String(row?.first_place_name || '').trim() || '-'
+  const secondName = String(row?.second_place_name || '').trim() || '-'
+  const thirdName = String(row?.third_place_name || '').trim() || '-'
+  const firstScore = Number(row?.first_place_score || 0)
+  const secondScore = Number(row?.second_place_score || 0)
+  const thirdScore = Number(row?.third_place_score || 0)
+  return `1st ${firstName} (${formatNumber(firstScore)}) · 2nd ${secondName} (${formatNumber(secondScore)}) · 3rd ${thirdName} (${formatNumber(thirdScore)})`
 }
 
 function toOrdinal(value) {

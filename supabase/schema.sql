@@ -3723,6 +3723,8 @@ begin
 end;
 $$;
 
+drop function if exists public.get_season_history(int);
+
 create or replace function public.get_season_history(p_limit int default 200)
 returns table (
   season_id text,
@@ -3736,7 +3738,13 @@ returns table (
   best_term_tier int,
   best_term_rarity text,
   best_term_mutation text,
-  best_term_copies int
+  best_term_copies int,
+  first_place_name text,
+  first_place_score bigint,
+  second_place_name text,
+  second_place_score bigint,
+  third_place_name text,
+  third_place_score bigint
 )
 language plpgsql
 security definer
@@ -3754,23 +3762,60 @@ begin
   perform public.ensure_player_initialized(uid);
 
   return query
+  with viewer_history as (
+    select
+      h.season_id,
+      h.starts_at,
+      h.ends_at,
+      h.rank,
+      h.total_players,
+      h.score,
+      h.best_term_key,
+      h.best_term_name,
+      h.best_term_tier,
+      h.best_term_rarity,
+      h.best_term_mutation,
+      h.best_term_copies
+    from public.player_season_history h
+    where h.user_id = uid
+    order by h.ends_at desc
+    limit greatest(1, least(coalesce(p_limit, 200), 500))
+  ), podium as (
+    select
+      h.season_id,
+      max(case when h.rank = 1 then pp.display_name end) as first_place_name,
+      max(case when h.rank = 1 then h.score end)::bigint as first_place_score,
+      max(case when h.rank = 2 then pp.display_name end) as second_place_name,
+      max(case when h.rank = 2 then h.score end)::bigint as second_place_score,
+      max(case when h.rank = 3 then pp.display_name end) as third_place_name,
+      max(case when h.rank = 3 then h.score end)::bigint as third_place_score
+    from public.player_season_history h
+    left join public.player_profile pp on pp.user_id = h.user_id
+    where h.season_id in (select vh.season_id from viewer_history vh)
+    group by h.season_id
+  )
   select
-    h.season_id,
-    h.starts_at,
-    h.ends_at,
-    h.rank,
-    h.total_players,
-    h.score,
-    h.best_term_key,
-    h.best_term_name,
-    h.best_term_tier,
-    h.best_term_rarity,
-    h.best_term_mutation,
-    h.best_term_copies
-  from public.player_season_history h
-  where h.user_id = uid
-  order by h.ends_at desc
-  limit greatest(1, least(coalesce(p_limit, 200), 500));
+    vh.season_id,
+    vh.starts_at,
+    vh.ends_at,
+    vh.rank,
+    vh.total_players,
+    vh.score,
+    vh.best_term_key,
+    vh.best_term_name,
+    vh.best_term_tier,
+    vh.best_term_rarity,
+    vh.best_term_mutation,
+    vh.best_term_copies,
+    p.first_place_name,
+    coalesce(p.first_place_score, 0)::bigint as first_place_score,
+    p.second_place_name,
+    coalesce(p.second_place_score, 0)::bigint as second_place_score,
+    p.third_place_name,
+    coalesce(p.third_place_score, 0)::bigint as third_place_score
+  from viewer_history vh
+  left join podium p on p.season_id = vh.season_id
+  order by vh.ends_at desc;
 end;
 $$;
 

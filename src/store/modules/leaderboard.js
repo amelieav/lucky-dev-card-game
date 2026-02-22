@@ -163,6 +163,12 @@ function normalizeSeasonHistoryRows(rows) {
     best_term_rarity: normalizeRarity(row?.best_term_rarity),
     best_term_mutation: normalizeMutation(row?.best_term_mutation),
     best_term_copies: Math.max(0, Number(row?.best_term_copies || 0)),
+    first_place_name: row?.first_place_name || null,
+    first_place_score: Math.max(0, Number(row?.first_place_score || 0)),
+    second_place_name: row?.second_place_name || null,
+    second_place_score: Math.max(0, Number(row?.second_place_score || 0)),
+    third_place_name: row?.third_place_name || null,
+    third_place_score: Math.max(0, Number(row?.third_place_score || 0)),
   }))
 }
 

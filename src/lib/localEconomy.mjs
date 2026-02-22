@@ -293,6 +293,12 @@ function normalizeSeasonHistoryEntry(entry, nowMs = Date.now()) {
     best_term_rarity: normalizeRarity(entry.best_term_rarity),
     best_term_mutation: normalizeMutation(entry.best_term_mutation || 'none'),
     best_term_copies: Math.max(0, toInt(entry.best_term_copies, 0)),
+    first_place_name: entry.first_place_name || null,
+    first_place_score: Math.max(0, Number(entry.first_place_score || 0)),
+    second_place_name: entry.second_place_name || null,
+    second_place_score: Math.max(0, Number(entry.second_place_score || 0)),
+    third_place_name: entry.third_place_name || null,
+    third_place_score: Math.max(0, Number(entry.third_place_score || 0)),
     viewer_previous_rank: entry.viewer_previous_rank == null ? null : Math.max(1, toInt(entry.viewer_previous_rank, 1)),
     recorded_at: Number.isFinite(recordedAtMs) ? nowIso(recordedAtMs) : nowIso(nowMs),
   }
@@ -513,6 +519,7 @@ function latestSeasonHistoryRow(record) {
 
 function buildSeasonArchiveRow(record, nowMs = Date.now()) {
   const best = buildBestCardFromTerms(record.terms, normalizeActiveLayer(record.active_layer))
+  const displayName = String(record?.profile?.display_name || 'Local Player').trim() || 'Local Player'
   return {
     season_id: record.season?.id || `legacy-${nowMs}`,
     starts_at: record.season?.starts_at || nowIso(nowMs),
@@ -526,6 +533,12 @@ function buildSeasonArchiveRow(record, nowMs = Date.now()) {
     best_term_rarity: best?.rarity || 'common',
     best_term_mutation: best?.mutation || 'none',
     best_term_copies: Number(best?.copies || 0),
+    first_place_name: displayName,
+    first_place_score: Math.max(0, Number(record.coins || 0)),
+    second_place_name: null,
+    second_place_score: 0,
+    third_place_name: null,
+    third_place_score: 0,
     viewer_previous_rank: 1,
     recorded_at: nowIso(nowMs),
   }
