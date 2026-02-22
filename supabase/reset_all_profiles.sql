@@ -10,6 +10,7 @@ truncate table
   public.player_lifetime_terms,
   public.player_stolen_terms,
   public.player_season_history,
+  public.player_name_reports,
   public.player_debug_state,
   public.player_profile,
   public.player_state

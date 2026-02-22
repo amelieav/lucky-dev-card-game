@@ -87,9 +87,13 @@ create table if not exists public.player_profile (
   nick_part_b text not null,
   nick_part_c text not null,
   display_name text not null,
+  name_customized boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.player_profile
+  add column if not exists name_customized boolean not null default true;
 
 create table if not exists public.debug_allowlist (
   email text primary key,
@@ -458,6 +462,66 @@ as $$
     when 'holo' then 2
     else 0
   end;
+$$;
+
+create or replace function public.blocked_name_fragments()
+returns text[]
+language sql
+stable
+as $$
+  select array[
+    'anal', 'anus', 'arse', 'asshole', 'ballsack', 'bastard', 'bitch', 'bollock', 'boner',
+    'boob', 'buttplug', 'clit', 'cock', 'coon', 'crap', 'cum', 'cunt', 'dick', 'dildo',
+    'dyke', 'fag', 'faggot', 'fuck', 'goddamn', 'hell', 'hentai', 'jerkoff', 'jizz', 'kike',
+    'labia', 'masturbat', 'milf', 'motherfuck', 'nazi', 'nigg', 'penis', 'piss', 'porn', 'prick',
+    'pussy', 'queer', 'rape', 'retard', 'scrot', 'sex', 'shit', 'slut', 'spic', 'suck', 'testicle',
+    'tit', 'twat', 'vagina', 'wank', 'whore'
+  ];
+$$;
+
+create or replace function public.normalize_display_name_for_check(p_display_name text)
+returns text
+language sql
+immutable
+as $$
+  select lower(regexp_replace(coalesce($1, ''), '[^A-Za-z0-9]+', '', 'g'));
+$$;
+
+create or replace function public.validate_display_name(p_display_name text)
+returns text
+language plpgsql
+stable
+as $$
+declare
+  name_value text := btrim(coalesce(p_display_name, ''));
+  normalized text;
+  blocked text;
+begin
+  if char_length(name_value) < 3 or char_length(name_value) > 16 then
+    raise exception 'Display name must be 3-16 characters.';
+  end if;
+
+  if name_value !~ '^[A-Za-z0-9_]+$' then
+    raise exception 'Display name can only use letters, numbers, and underscores.';
+  end if;
+
+  normalized := public.normalize_display_name_for_check(name_value);
+  if normalized = '' then
+    raise exception 'Display name is invalid.';
+  end if;
+
+  select word
+  into blocked
+  from unnest(public.blocked_name_fragments()) as word
+  where normalized like ('%' || word || '%')
+  limit 1;
+
+  if blocked is not null then
+    raise exception 'Display name contains blocked language.';
+  end if;
+
+  return name_value;
+end;
 $$;
 
 create or replace function public.rarity_multiplier(p_rarity text)
@@ -980,8 +1044,8 @@ begin
     part_b := public.random_array_item(public.allowed_nick_part_b());
     part_c := public.random_array_item(public.allowed_nick_part_c());
 
-    insert into public.player_profile (user_id, nick_part_a, nick_part_b, nick_part_c, display_name)
-    values (p_user_id, part_a, part_b, part_c, concat(part_a, ' ', part_b, ' ', part_c));
+    insert into public.player_profile (user_id, nick_part_a, nick_part_b, nick_part_c, display_name, name_customized)
+    values (p_user_id, part_a, part_b, part_c, concat(part_a, ' ', part_b, ' ', part_c), false);
   end if;
 
   insert into public.player_debug_state (user_id, next_reward)
@@ -1259,6 +1323,7 @@ as $$
       nick_part_a,
       nick_part_b,
       nick_part_c,
+      name_customized,
       updated_at
     from public.player_profile
     where user_id = p_user_id
@@ -1726,7 +1791,7 @@ begin
 end;
 $$;
 
-create or replace function public.update_nickname(p_a text, p_b text, p_c text)
+create or replace function public.update_nickname(p_display_name text)
 returns jsonb
 language plpgsql
 security definer
@@ -1734,6 +1799,7 @@ set search_path = public
 as $$
 declare
   uid uuid;
+  safe_name text;
 begin
   uid := auth.uid();
   if uid is null then
@@ -1742,28 +1808,27 @@ begin
 
   perform public.ensure_player_initialized(uid);
   perform public.touch_player_activity(uid, 15);
-
-  if not (p_a = any(public.allowed_nick_part_a())) then
-    raise exception 'Invalid nickname part A';
-  end if;
-
-  if not (p_b = any(public.allowed_nick_part_b())) then
-    raise exception 'Invalid nickname part B';
-  end if;
-
-  if not (p_c = any(public.allowed_nick_part_c())) then
-    raise exception 'Invalid nickname part C';
-  end if;
+  safe_name := public.validate_display_name(p_display_name);
 
   update public.player_profile
-  set nick_part_a = p_a,
-      nick_part_b = p_b,
-      nick_part_c = p_c,
-      display_name = concat(p_a, ' ', p_b, ' ', p_c),
+  set display_name = safe_name,
+      name_customized = true,
       updated_at = now()
   where user_id = uid;
 
   return jsonb_build_object('snapshot', public.player_snapshot(uid));
+end;
+$$;
+
+-- Backward-compatible wrapper for old clients.
+create or replace function public.update_nickname(p_a text, p_b text, p_c text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return public.update_nickname(concat(p_a, '_', p_b, '_', p_c));
 end;
 $$;
 
@@ -1822,6 +1887,7 @@ begin
       nick_part_b = part_b,
       nick_part_c = part_c,
       display_name = concat(part_a, ' ', part_b, ' ', part_c),
+      name_customized = false,
       updated_at = now()
   where user_id = uid;
 
@@ -2162,6 +2228,7 @@ grant execute on function public.lose_card(text) to authenticated;
 grant execute on function public.buy_upgrade(text) to authenticated;
 grant execute on function public.open_egg(int, jsonb) to authenticated;
 grant execute on function public.upgrade_luck() to authenticated;
+grant execute on function public.update_nickname(text) to authenticated;
 grant execute on function public.update_nickname(text, text, text) to authenticated;
 grant execute on function public.reset_account() to authenticated;
 grant execute on function public.get_leaderboard(int) to authenticated;
@@ -2170,6 +2237,7 @@ grant execute on function public.debug_apply_action(jsonb) to authenticated;
 -- v2: rebirth, lifetime collection, stolen markers, and seasonal leaderboard support.
 alter table public.player_state add column if not exists rebirth_count int not null default 0;
 alter table public.player_state add column if not exists active_layer int not null default 1;
+alter table public.player_profile add column if not exists name_customized boolean not null default true;
 
 create table if not exists public.player_lifetime_terms (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -2231,6 +2299,16 @@ create table if not exists public.player_season_history (
   primary key (user_id, season_id)
 );
 
+create table if not exists public.player_name_reports (
+  id bigint generated always as identity primary key,
+  reporter_user_id uuid not null references auth.users(id) on delete cascade,
+  reported_name text not null,
+  notes text,
+  season_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.season_runtime (
   singleton boolean primary key default true check (singleton),
   season_id text not null,
@@ -2254,6 +2332,11 @@ create trigger player_season_history_updated_at
 before update on public.player_season_history
 for each row execute function public.set_updated_at();
 
+drop trigger if exists player_name_reports_updated_at on public.player_name_reports;
+create trigger player_name_reports_updated_at
+before update on public.player_name_reports
+for each row execute function public.set_updated_at();
+
 drop trigger if exists season_runtime_updated_at on public.season_runtime;
 create trigger season_runtime_updated_at
 before update on public.season_runtime
@@ -2262,6 +2345,7 @@ for each row execute function public.set_updated_at();
 alter table public.player_lifetime_terms enable row level security;
 alter table public.player_stolen_terms enable row level security;
 alter table public.player_season_history enable row level security;
+alter table public.player_name_reports enable row level security;
 
 drop policy if exists player_lifetime_terms_self_all on public.player_lifetime_terms;
 create policy player_lifetime_terms_self_all on public.player_lifetime_terms
@@ -2279,6 +2363,11 @@ drop policy if exists player_season_history_self_select on public.player_season_
 create policy player_season_history_self_select on public.player_season_history
 for select
 using (auth.uid() = user_id);
+
+drop policy if exists player_name_reports_self_select on public.player_name_reports;
+create policy player_name_reports_self_select on public.player_name_reports
+for select
+using (auth.uid() = reporter_user_id);
 
 create or replace function public.current_season_window()
 returns table (season_id text, starts_at timestamptz, ends_at timestamptz)
@@ -2562,6 +2651,7 @@ as $$
       nick_part_a,
       nick_part_b,
       nick_part_c,
+      name_customized,
       updated_at
     from public.player_profile
     where user_id = p_user_id
@@ -3459,6 +3549,7 @@ begin
       nick_part_b = part_b,
       nick_part_c = part_c,
       display_name = concat(part_a, ' ', part_b, ' ', part_c),
+      name_customized = false,
       updated_at = now()
   where user_id = uid;
 
@@ -3546,6 +3637,50 @@ begin
   where h.user_id = uid
   order by h.ends_at desc
   limit greatest(1, least(coalesce(p_limit, 200), 500));
+end;
+$$;
+
+create or replace function public.submit_name_report(
+  p_reported_name text,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  name_value text := left(btrim(coalesce(p_reported_name, '')), 64);
+  notes_value text := left(btrim(coalesce(p_notes, '')), 500);
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  if name_value = '' then
+    raise exception 'Reported name is required';
+  end if;
+
+  insert into public.player_name_reports (
+    reporter_user_id,
+    reported_name,
+    notes,
+    season_id
+  )
+  values (
+    uid,
+    name_value,
+    nullif(notes_value, ''),
+    (select sr.season_id from public.season_runtime sr where sr.singleton = true)
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'reported_name', name_value,
+    'submitted_at', now()
+  );
 end;
 $$;
 
@@ -3637,4 +3772,5 @@ $$;
 grant execute on function public.rebirth_player() to authenticated;
 grant execute on function public.get_lifetime_collection() to authenticated;
 grant execute on function public.get_season_history(int) to authenticated;
+grant execute on function public.submit_name_report(text, text) to authenticated;
 grant execute on function public.get_leaderboard(int) to authenticated;

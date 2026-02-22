@@ -600,6 +600,11 @@ fraction.js@^4.1.1:
   resolved "https://registry.npmjs.org/fraction.js/-/fraction.js-4.1.1.tgz"
   integrity sha512-MHOhvvxHTfRFpF1geTK9czMIZ6xclsEor2wkIGYYq+PxcQqT7vStJqjhe6S1TenZrMZzo+wlqOufBDVepUEgPg==
 
+french-badwords-list@^1.0.7:
+  version "1.0.7"
+  resolved "https://registry.npmjs.org/french-badwords-list/-/french-badwords-list-1.0.7.tgz"
+  integrity sha512-H1ziKs2PJh2+UXZ9oCGJ/rRQpsI9NBykGf2Sc7WaKaj1OnWFuBXfsvANTdRcfVmOghGQaUmRyZ1hJOPbDpy04Q==
+
 fs-extra@^10.0.0:
   version "10.0.0"
   resolved "https://registry.npmjs.org/fs-extra/-/fs-extra-10.0.0.tgz"
@@ -827,6 +832,14 @@ jsonfile@^6.0.1:
     universalify "^2.0.0"
   optionalDependencies:
     graceful-fs "^4.1.6"
+
+leo-profanity@^1.9.0:
+  version "1.9.0"
+  resolved "https://registry.npmjs.org/leo-profanity/-/leo-profanity-1.9.0.tgz"
+  integrity sha512-vMrrrjsbT+fA5I/1rlBEVT5YjJsw1ASIVF8/xBEdZ6ylsg5AEIBrEvHxwe5XAmfVuTBi7aw2KcO2L3s9ddpKzw==
+  optionalDependencies:
+    french-badwords-list "^1.0.7"
+    russian-bad-words "^0.5.0"
 
 lilconfig@^2.0.3:
   version "2.0.3"
@@ -1180,6 +1193,11 @@ run-parallel@^1.1.9:
   integrity sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==
   dependencies:
     queue-microtask "^1.2.2"
+
+russian-bad-words@^0.5.0:
+  version "0.5.0"
+  resolved "https://registry.npmjs.org/russian-bad-words/-/russian-bad-words-0.5.0.tgz"
+  integrity sha512-euNvEYki6iYYpkNbeudW+lEMMYGEmN7EBwVF8ezlbv0bZoQpVYB7W10cCeUIGV7Ed50sJynLQ0c559q5iI0ejQ==
 
 sass@^1.39.0:
   version "1.39.0"

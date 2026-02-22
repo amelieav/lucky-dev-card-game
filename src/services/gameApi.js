@@ -117,9 +117,14 @@ export async function upgradeLuck() {
 
 export async function updateNickname(parts) {
   return unwrap(await supabase.rpc('update_nickname', {
-    p_a: parts.partA,
-    p_b: parts.partB,
-    p_c: parts.partC,
+    p_display_name: parts.displayName,
+  }))
+}
+
+export async function submitNameReport({ reportedName, details = '' } = {}) {
+  return unwrap(await supabase.rpc('submit_name_report', {
+    p_reported_name: reportedName,
+    p_notes: details,
   }))
 }
 

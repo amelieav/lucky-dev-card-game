@@ -230,11 +230,29 @@ test('nickname updates are validated and persisted', () => {
 
   const result = updateLocalNickname(
     account,
-    { partA: 'Agile', partB: 'Fox', partC: 'Nova' },
+    { displayName: 'AgileFox_1' },
     { nowMs: 1_000 },
   )
 
-  assert.equal(result.snapshot.profile.display_name, 'Agile Fox Nova')
+  assert.equal(result.snapshot.profile.display_name, 'AgileFox_1')
+  assert.equal(result.snapshot.profile.name_customized, true)
+})
+
+test('nickname validation blocks profanity and invalid characters', () => {
+  const account = user('pack-nickname-validation')
+  bootstrapLocalPlayer(account, { nowMs: 0 })
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'ab' }, { nowMs: 1_000 })
+  }, /3-16 characters/)
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'bad name' }, { nowMs: 1_000 })
+  }, /letters, numbers, and underscores/)
+
+  assert.throws(() => {
+    updateLocalNickname(account, { displayName: 'f_u_c_k' }, { nowMs: 1_000 })
+  }, /blocked language/)
 })
 
 test('rebirth requires full current collection', () => {

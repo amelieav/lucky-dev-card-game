@@ -1,4 +1,8 @@
-import { fetchLeaderboard, fetchSeasonHistory as apiFetchSeasonHistory } from '../../services/gameApi'
+import {
+  fetchLeaderboard,
+  fetchSeasonHistory as apiFetchSeasonHistory,
+  submitNameReport as apiSubmitNameReport,
+} from '../../services/gameApi'
 import { getLocalSeasonHistory } from '../../lib/localEconomy.mjs'
 import { TERMS_BY_KEY } from '../../data/terms'
 import { getEffectiveTierForLayer, normalizeLayer } from '../../lib/packLogic.mjs'
@@ -264,6 +268,31 @@ export default {
       } finally {
         commit('setHistoryLoading', false)
       }
+    },
+
+    async submitNameReport({ rootState }, { reportedName, details = '' } = {}) {
+      const normalizedName = String(reportedName || '').trim()
+      const normalizedDetails = String(details || '').trim()
+
+      if (!normalizedName) {
+        throw new Error('Please provide the reported name.')
+      }
+
+      if (LOCAL_ECONOMY_ENABLED) {
+        return {
+          ok: true,
+          submitted_at: new Date().toISOString(),
+          reported_name: normalizedName,
+          details: normalizedDetails,
+          local_only: true,
+          reporter_user_id: rootState.auth.user?.id || null,
+        }
+      }
+
+      return apiSubmitNameReport({
+        reportedName: normalizedName,
+        details: normalizedDetails,
+      })
     },
   },
 }

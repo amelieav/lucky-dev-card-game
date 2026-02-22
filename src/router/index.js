@@ -65,6 +65,12 @@ const router = createRouter({
   routes,
 })
 
+function requiresProfileNameSetup() {
+  const profile = store.state.game.snapshot?.profile
+  if (!profile) return false
+  return !Boolean(profile.name_customized)
+}
+
 router.beforeEach(async (to) => {
   if (!store.state.auth.initialized) {
     await store.dispatch('debug/hydrate')
@@ -77,16 +83,26 @@ router.beforeEach(async (to) => {
     return { name: 'SignIn' }
   }
 
+  if (
+    isAuthenticated
+    && requiresProfileNameSetup()
+    && to.name !== 'Profile'
+    && to.name !== 'AuthCallback'
+    && to.name !== 'AuthConfirm'
+  ) {
+    return { name: 'Profile' }
+  }
+
   if (to.name === 'NotFound' && hasAuthParamsInUrl()) {
     return { name: 'AuthCallback' }
   }
 
   if (to.name === 'NotFound' && isAuthenticated) {
-    return { name: 'Game' }
+    return requiresProfileNameSetup() ? { name: 'Profile' } : { name: 'Game' }
   }
 
   if (to.name === 'SignIn' && isAuthenticated) {
-    return { name: 'Game' }
+    return requiresProfileNameSetup() ? { name: 'Profile' } : { name: 'Game' }
   }
 
   return true

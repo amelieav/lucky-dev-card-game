@@ -113,6 +113,45 @@
         </table>
       </div>
     </section>
+
+    <section class="mt-6 rounded-xl border border-soft bg-panel-soft p-4">
+      <h2 class="text-base font-semibold">Report Inappropriate Name</h2>
+      <p class="mt-1 text-sm text-muted">
+        Please contact me if there are any inappropriate names. Use this form and I will review it.
+      </p>
+
+      <form class="mt-3 grid gap-3" @submit.prevent="submitNameReportForm">
+        <div>
+          <label class="text-xs uppercase tracking-wide text-muted">Reported Name</label>
+          <input
+            v-model="reportedNameInput"
+            class="form-input mt-2"
+            type="text"
+            maxlength="64"
+            placeholder="Exact leaderboard name"
+            required
+          />
+        </div>
+        <div>
+          <label class="text-xs uppercase tracking-wide text-muted">Details (Optional)</label>
+          <textarea
+            v-model="reportDetailsInput"
+            class="form-input mt-2"
+            style="min-height:96px;"
+            maxlength="500"
+            placeholder="Any context that helps moderation"
+          ></textarea>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="btn-primary" type="submit" :disabled="reportSubmitting">
+            {{ reportSubmitting ? 'Submitting...' : 'Send Report' }}
+          </button>
+        </div>
+      </form>
+
+      <p v-if="reportSuccessMessage" class="mt-3 text-sm text-green-700">{{ reportSuccessMessage }}</p>
+      <p v-if="reportErrorMessage" class="mt-3 text-sm text-red-700">{{ reportErrorMessage }}</p>
+    </section>
   </section>
 </template>
 
@@ -125,6 +164,11 @@ const store = useStore()
 const AUTO_REFRESH_SECONDS = 15
 const refreshCountdown = ref(AUTO_REFRESH_SECONDS)
 let refreshTimer = null
+const reportedNameInput = ref('')
+const reportDetailsInput = ref('')
+const reportSubmitting = ref(false)
+const reportSuccessMessage = ref('')
+const reportErrorMessage = ref('')
 
 const rows = computed(() => store.state.leaderboard.rows)
 const loading = computed(() => store.state.leaderboard.loading)
@@ -201,6 +245,30 @@ function startAutoRefresh() {
 
 async function refreshLeaderboard(force = true) {
   await store.dispatch('leaderboard/fetch', { force, limit: 50 })
+}
+
+async function submitNameReportForm() {
+  reportSuccessMessage.value = ''
+  reportErrorMessage.value = ''
+
+  const reportedName = String(reportedNameInput.value || '').trim()
+  const details = String(reportDetailsInput.value || '').trim()
+
+  if (!reportedName) {
+    reportErrorMessage.value = 'Please provide the reported name.'
+    return
+  }
+
+  reportSubmitting.value = true
+  try {
+    await store.dispatch('leaderboard/submitNameReport', { reportedName, details })
+    reportSuccessMessage.value = 'Report submitted. Thank you.'
+    reportDetailsInput.value = ''
+  } catch (error) {
+    reportErrorMessage.value = error?.message || 'Unable to submit report.'
+  } finally {
+    reportSubmitting.value = false
+  }
 }
 
 function formatNumber(value) {

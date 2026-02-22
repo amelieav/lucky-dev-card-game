@@ -1,6 +1,7 @@
 import { NICK_PARTS_A, NICK_PARTS_B, NICK_PARTS_C } from '../data/nicknameParts.mjs'
 import { TERMS, TERMS_BY_KEY } from '../data/terms.mjs'
 import { BALANCE_CONFIG } from './balanceConfig.mjs'
+import { validateDisplayName } from './displayNameValidation.mjs'
 import {
   RARITIES,
   applyUpgrade,
@@ -63,6 +64,22 @@ function normalizeActiveLayer(value) {
 
 function chooseRandom(values, rng = Math.random) {
   return values[Math.floor(rng() * values.length)]
+}
+
+function generateDefaultDisplayName(partA, partB, partC) {
+  const candidates = [
+    `${partA}_${partB}`,
+    `${partA}_${partC}`,
+    `${partB}_${partC}`,
+    `${partA}${partB}`,
+  ]
+
+  for (const candidate of candidates) {
+    const check = validateDisplayName(candidate)
+    if (check.ok) return check.value
+  }
+
+  return `Player_${Math.floor(Math.random() * 9000) + 1000}`
 }
 
 function assertAuthenticatedUser(user) {
@@ -336,7 +353,8 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
       nick_part_a: partA,
       nick_part_b: partB,
       nick_part_c: partC,
-      display_name: `${partA} ${partB} ${partC}`,
+      display_name: generateDefaultDisplayName(partA, partB, partC),
+      name_customized: false,
       updated_at: timestamp,
     },
     next_reward: null,
@@ -596,6 +614,13 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
     season_history: Array.isArray(record.season_history) ? record.season_history : [],
   }
 
+  if (merged.profile?.name_customized == null) {
+    // Preserve behavior for existing local profiles created before this flag.
+    merged.profile.name_customized = true
+  } else {
+    merged.profile.name_customized = Boolean(merged.profile.name_customized)
+  }
+
   if (merged.packs_opened == null && merged.eggs_opened != null) {
     merged.packs_opened = Number(merged.eggs_opened || 0)
   }
@@ -836,6 +861,20 @@ function validateNicknameParts(parts) {
   if (!NICK_PARTS_A.includes(parts.partA)) throw new Error('Invalid nickname part A')
   if (!NICK_PARTS_B.includes(parts.partB)) throw new Error('Invalid nickname part B')
   if (!NICK_PARTS_C.includes(parts.partC)) throw new Error('Invalid nickname part C')
+}
+
+function resolveRequestedDisplayName(parts = {}) {
+  if (parts && typeof parts === 'object' && typeof parts.displayName === 'string') {
+    const direct = String(parts.displayName || '').trim()
+    if (direct) return direct
+  }
+
+  if (parts && typeof parts === 'object' && parts.partA && parts.partB && parts.partC) {
+    validateNicknameParts(parts)
+    return `${parts.partA}_${parts.partB}_${parts.partC}`
+  }
+
+  throw new Error('Missing display name')
 }
 
 function validateDebugOverride(override) {
@@ -1253,7 +1292,11 @@ export function upgradeLocalLuck(user, { debugAllowed = false, rng = Math.random
 
 export function updateLocalNickname(user, parts, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {
   assertAuthenticatedUser(user)
-  validateNicknameParts(parts)
+  const requestedName = resolveRequestedDisplayName(parts)
+  const validation = validateDisplayName(requestedName)
+  if (!validation.ok) {
+    throw new Error(validation.message || 'Invalid display name')
+  }
 
   const record = readRecord(user, rng, nowMs)
   ensureSeasonState(record, nowMs)
@@ -1261,10 +1304,9 @@ export function updateLocalNickname(user, parts, { debugAllowed = false, rng = M
   const timestamp = nowIso(nowMs)
 
   record.profile = {
-    nick_part_a: parts.partA,
-    nick_part_b: parts.partB,
-    nick_part_c: parts.partC,
-    display_name: `${parts.partA} ${parts.partB} ${parts.partC}`,
+    ...(record.profile || {}),
+    display_name: validation.value,
+    name_customized: true,
     updated_at: timestamp,
   }
   record.updated_at = timestamp
@@ -1298,7 +1340,8 @@ export function resetLocalAccount(user, { debugAllowed = false, rng = Math.rando
     nick_part_a: partA,
     nick_part_b: partB,
     nick_part_c: partC,
-    display_name: `${partA} ${partB} ${partC}`,
+    display_name: generateDefaultDisplayName(partA, partB, partC),
+    name_customized: false,
     updated_at: timestamp,
   }
   record.updated_at = timestamp
