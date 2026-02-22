@@ -492,6 +492,12 @@ const playerCoinsDisplay = computed(() => {
   const elapsedSeconds = Math.max(0, Math.floor((effectiveNowMs - lastTickMs) / 1000))
   return baseCoins + (elapsedSeconds * passiveRateCps.value)
 })
+const shopAffordabilityState = computed(() => {
+  return {
+    ...(playerState.value || {}),
+    coins: Math.max(0, Number(playerCoinsDisplay.value || 0)),
+  }
+})
 const leaderboardPosition = computed(() => {
   const rowByFlag = leaderboardRows.value.find((row) => row?.is_you)
   const rowById = rowByFlag || leaderboardRows.value.find((row) => row?.user_id && row.user_id === currentUserId.value)
@@ -690,11 +696,11 @@ const totalCollectedCards = currentCollectionCount
 const missingCardsRemaining = computed(() => Math.max(0, TERMS.length - currentCollectionCount.value))
 const canBuyMissingCardGiftAction = computed(() => {
   if (missingCardsRemaining.value <= 0) return false
-  return canBuyMissingCardGift(playerState.value || {})
+  return canBuyMissingCardGift(shopAffordabilityState.value)
 })
 const missingCardGiftButtonLabel = computed(() => {
   if (missingCardsRemaining.value <= 0) return 'Complete'
-  if (!canBuyMissingCardGift(playerState.value || {})) return 'Not enough coins'
+  if (!canBuyMissingCardGift(shopAffordabilityState.value)) return 'Not enough coins'
   return 'Buy'
 })
 const rebirthReady = computed(() => currentCollectionCount.value >= TERMS.length)
@@ -724,6 +730,7 @@ const cardBookByTier = computed(() => {
 
 const shopRows = computed(() => {
   const state = playerState.value || {}
+  const affordabilityState = shopAffordabilityState.value
 
   return SHOP_UPGRADES.map((upgrade) => {
     const preview = getUpgradePreview(state, upgrade.key)
@@ -733,7 +740,7 @@ const shopRows = computed(() => {
       cost,
       currentEffect: preview.current,
       nextEffect: preview.next,
-      canBuy: canBuyUpgrade(state, upgrade.key),
+      canBuy: canBuyUpgrade(affordabilityState, upgrade.key),
     }
 
     if (upgrade.key !== 'tier_boost') {
