@@ -1,10 +1,5 @@
 <template>
   <section class="space-y-4">
-    <div v-if="legendarySparkleActive" class="legendary-sparkle" :style="legendarySparkleStyle" aria-hidden="true">
-      <div class="legendary-sparkle__layer legendary-sparkle__layer--a"></div>
-      <div class="legendary-sparkle__layer legendary-sparkle__layer--b"></div>
-    </div>
-
     <div v-if="chickRaid.active" class="duck-raid" aria-live="polite">
       <p class="duck-raid__note">{{ chickRaid.message }}</p>
       <article v-if="showDuckRaidCard" class="duck-raid__card" :style="duckRaidCardStyle" aria-hidden="true">
@@ -91,6 +86,11 @@
           role="status"
           aria-live="polite"
         >
+          <div v-if="legendarySparkleActive" class="legendary-sparkle" aria-hidden="true">
+            <div class="legendary-sparkle__layer legendary-sparkle__layer--a"></div>
+            <div class="legendary-sparkle__layer legendary-sparkle__layer--b"></div>
+          </div>
+
           <template v-if="manualPackPhase === 'ready'">
             <div class="manual-pack__card" aria-hidden="true"></div>
             <p class="manual-pack__eyebrow">{{ autoRollEnabled ? 'Card pack ready' : 'Auto roll paused' }}</p>
@@ -125,6 +125,11 @@
           :disabled="!canOpenManual"
           @click="openManualPack"
         >
+          <div v-if="legendarySparkleActive" class="legendary-sparkle" aria-hidden="true">
+            <div class="legendary-sparkle__layer legendary-sparkle__layer--a"></div>
+            <div class="legendary-sparkle__layer legendary-sparkle__layer--b"></div>
+          </div>
+
           <template v-if="manualPackPhase === 'ready'">
             <div class="manual-pack__card" aria-hidden="true"></div>
             <p class="manual-pack__eyebrow">{{ autoUnlocked ? 'Auto roll paused' : 'Card pack ready' }}</p>
@@ -339,11 +344,13 @@ const autoRollEnabled = ref(true)
 const REVEAL_READ_MS = 2750
 const MANUAL_OPENING_EXTRA_MS = 500
 const AUTO_OPENING_MS = 420
-const LEGENDARY_SPARKLE_MS = 5000
+const LEGENDARY_SPARKLE_MS = 3000
 const LEADERBOARD_REFRESH_MS = 15000
 const LIVE_METRICS_TICK_MS = 500
-const CHICK_INACTIVITY_MIN_MS = 60_000
-const CHICK_INACTIVITY_MAX_MS = 180_000
+const CHICK_MID_TIER_INACTIVITY_MIN_MS = 120_000
+const CHICK_MID_TIER_INACTIVITY_MAX_MS = 360_000
+const CHICK_HIGH_TIER_INACTIVITY_MIN_MS = 10_000
+const CHICK_HIGH_TIER_INACTIVITY_MAX_MS = 80_000
 const CHICK_MONITOR_MS = 1000
 const CHICK_COOLDOWN_MS = 8000
 const DUCK_ASSET_BASE = `${import.meta.env.BASE_URL}ducks`
@@ -373,7 +380,7 @@ let duckFrameTimer = null
 const cardBookItemRefs = new Map()
 const cardBookSectionRef = ref(null)
 const lastMouseActivityMs = ref(Date.now())
-const chickInactivityTargetMs = ref(getRandomChickInactivityMs())
+const chickInactivityTargetMs = ref(null)
 const lastChickRaidMs = ref(0)
 const duckFrameIndex = ref({
   walk: 0,
@@ -401,7 +408,6 @@ const actionLoading = computed(() => store.state.game.actionLoading)
 const recentDraws = computed(() => displayedRecentDraws.value)
 const legendarySparkleActive = ref(false)
 const liveNowMs = ref(Date.now())
-const legendaryOrigin = ref({ x: 50, y: 50 })
 
 const debugEnabled = computed(() => store.state.debug.enabled)
 const debugPanelOpen = computed(() => store.state.debug.panelOpen)
@@ -451,10 +457,6 @@ const leaderboardPositionToneClass = computed(() => {
   if (rank === 4 || rank === 5) return 'leaderboard-tile--fourth-fifth'
   return 'leaderboard-tile--other'
 })
-const legendarySparkleStyle = computed(() => ({
-  '--legendary-origin-x': `${legendaryOrigin.value.x}%`,
-  '--legendary-origin-y': `${legendaryOrigin.value.y}%`,
-}))
 const duckRaidStyle = computed(() => ({
   left: `${Number(chickRaid.value.x || 50)}%`,
   top: `${Number(chickRaid.value.y || 50)}%`,
@@ -529,6 +531,13 @@ const tierWeightByTier = computed(() => {
     acc[row.tier] = Number(row.weight || 0)
     return acc
   }, {})
+})
+const duckStealMaxTierCoverage = computed(() => {
+  const available = tierRows.value
+    .filter((row) => Number(row.weight || 0) > 0)
+    .map((row) => Number(row.tier || 0))
+  if (!available.length) return 1
+  return Math.max(...available)
 })
 const tierCoverageLabel = computed(() => {
   const available = tierRows.value
@@ -680,7 +689,7 @@ onMounted(async () => {
 
   displayedRecentDraws.value = [...(store.state.game.recentDraws || [])]
   lastMouseActivityMs.value = Date.now()
-  chickInactivityTargetMs.value = getRandomChickInactivityMs()
+  resetChickInactivityTarget()
   bindActivityListeners()
 
   metricsTickTimer = window.setInterval(() => {
@@ -790,6 +799,10 @@ watch(autoRollEnabled, (enabled) => {
   if (autoUnlocked.value && manualPackPhase.value === 'ready') {
     scheduleAutoRoll(120)
   }
+})
+
+watch(duckStealMaxTierCoverage, () => {
+  resetChickInactivityTarget()
 })
 
 function scheduleAutoRoll(delayMs = 120) {
@@ -912,7 +925,7 @@ function setCardBookItemRef(termKey, el) {
 
 function noteUserActivity() {
   lastMouseActivityMs.value = Date.now()
-  chickInactivityTargetMs.value = getRandomChickInactivityMs()
+  resetChickInactivityTarget()
 }
 
 function bindActivityListeners() {
@@ -959,7 +972,7 @@ function getDuckActorViewportPoint() {
 function resetChickRaid() {
   clearChickRaidTimers()
   lastMouseActivityMs.value = Date.now()
-  chickInactivityTargetMs.value = getRandomChickInactivityMs()
+  resetChickInactivityTarget()
   chickRaid.value = {
     active: false,
     stage: 'idle',
@@ -1020,8 +1033,11 @@ async function maybeStartChickRaid() {
   if (chickRaid.value.active) return
   if (actionLoading.value) return
 
+  const inactivityTargetMs = Number(chickInactivityTargetMs.value || 0)
+  if (inactivityTargetMs <= 0) return
+
   const now = Date.now()
-  if ((now - lastMouseActivityMs.value) < chickInactivityTargetMs.value) return
+  if ((now - lastMouseActivityMs.value) < inactivityTargetMs) return
   if ((now - lastChickRaidMs.value) < CHICK_COOLDOWN_MS) return
 
   const targetChoice = pickChickTargetCard()
@@ -1200,7 +1216,6 @@ function appendRecentDraw(draw) {
 function triggerLegendarySparkle(draw) {
   if (normalizeRarity(draw?.rarity) !== 'legendary') return
 
-  setLegendaryOriginFromCard()
   legendarySparkleActive.value = true
   if (legendarySparkleTimer) {
     window.clearTimeout(legendarySparkleTimer)
@@ -1210,30 +1225,6 @@ function triggerLegendarySparkle(draw) {
     legendarySparkleActive.value = false
     legendarySparkleTimer = null
   }, LEGENDARY_SPARKLE_MS)
-}
-
-function setLegendaryOriginFromCard() {
-  if (typeof window === 'undefined' || typeof document === 'undefined') return
-
-  const packEl = document.querySelector('.manual-pack')
-  if (!packEl) {
-    legendaryOrigin.value = { x: 50, y: 50 }
-    return
-  }
-
-  const rect = packEl.getBoundingClientRect()
-  if (rect.width <= 0 || rect.height <= 0 || window.innerWidth <= 0 || window.innerHeight <= 0) {
-    legendaryOrigin.value = { x: 50, y: 50 }
-    return
-  }
-
-  const x = ((rect.left + (rect.width / 2)) / window.innerWidth) * 100
-  const y = ((rect.top + (rect.height / 2)) / window.innerHeight) * 100
-
-  legendaryOrigin.value = {
-    x: Math.max(0, Math.min(100, x)),
-    y: Math.max(0, Math.min(100, y)),
-  }
 }
 
 async function toggleDebugPanel() {
@@ -1334,10 +1325,32 @@ function sleep(ms) {
   })
 }
 
-function getRandomChickInactivityMs() {
-  const min = Math.max(0, CHICK_INACTIVITY_MIN_MS)
-  const max = Math.max(min, CHICK_INACTIVITY_MAX_MS)
+function getChickInactivityWindowMs(maxTierCoverage) {
+  const tier = Math.max(0, Number(maxTierCoverage || 0))
+  if (tier <= 1) return null
+  if (tier <= 3) {
+    return {
+      min: CHICK_MID_TIER_INACTIVITY_MIN_MS,
+      max: CHICK_MID_TIER_INACTIVITY_MAX_MS,
+    }
+  }
+
+  return {
+    min: CHICK_HIGH_TIER_INACTIVITY_MIN_MS,
+    max: CHICK_HIGH_TIER_INACTIVITY_MAX_MS,
+  }
+}
+
+function getRandomChickInactivityMs(maxTierCoverage) {
+  const window = getChickInactivityWindowMs(maxTierCoverage)
+  if (!window) return null
+  const min = Math.max(0, Number(window.min || 0))
+  const max = Math.max(min, Number(window.max || min))
   return Math.floor(Math.random() * (max - min + 1)) + min
+}
+
+function resetChickInactivityTarget() {
+  chickInactivityTargetMs.value = getRandomChickInactivityMs(duckStealMaxTierCoverage.value)
 }
 
 function duckAsset(fileName) {
@@ -1482,64 +1495,65 @@ function duckAsset(fileName) {
 }
 
 .legendary-sparkle {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: clamp(480px, 66vw, 750px);
+  height: clamp(660px, 90vw, 1020px);
+  transform: translate(-50%, -50%);
+  z-index: 1;
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .legendary-sparkle::before {
   content: '';
   position: absolute;
-  inset: -18%;
+  inset: 28% 24%;
+  border-radius: 999px;
   background:
-    radial-gradient(
-      circle at var(--legendary-origin-x, 50%) var(--legendary-origin-y, 50%),
-      rgba(177, 114, 255, 0.72) 0%,
-      rgba(176, 112, 255, 0.44) 18%,
-      rgba(155, 97, 245, 0.28) 34%,
-      rgba(132, 78, 224, 0.12) 52%,
-      transparent 68%
-    );
+    radial-gradient(circle, rgba(195, 126, 255, 0.88) 0%, rgba(155, 91, 247, 0.46) 46%, rgba(129, 74, 230, 0) 80%);
   animation: legendary-origin-burst 1.8s ease-out infinite;
+  filter: blur(1.6px);
 }
 
 .legendary-sparkle__layer {
   position: absolute;
-  inset: -10%;
+  inset: 0;
+  border-radius: 1rem;
 }
 
 .legendary-sparkle__layer--a {
   background:
-    radial-gradient(circle at 8% 14%, rgba(195, 142, 255, 0.8) 0 1.5px, transparent 2.4px),
-    radial-gradient(circle at 18% 62%, rgba(224, 174, 255, 0.72) 0 1.8px, transparent 2.8px),
-    radial-gradient(circle at 33% 28%, rgba(179, 123, 255, 0.76) 0 1.4px, transparent 2.3px),
-    radial-gradient(circle at 49% 74%, rgba(244, 206, 255, 0.72) 0 1.7px, transparent 2.8px),
-    radial-gradient(circle at 63% 18%, rgba(200, 147, 255, 0.8) 0 1.5px, transparent 2.5px),
-    radial-gradient(circle at 78% 64%, rgba(235, 190, 255, 0.74) 0 1.7px, transparent 2.7px),
-    radial-gradient(circle at 92% 34%, rgba(182, 126, 255, 0.75) 0 1.4px, transparent 2.2px),
-    radial-gradient(circle at 70% 44%, rgba(155, 102, 247, 0.34), transparent 44%);
+    radial-gradient(circle at 12% 10%, rgba(233, 192, 255, 0.95) 0 2px, transparent 3px),
+    radial-gradient(circle at 24% 34%, rgba(201, 149, 255, 0.82) 0 1.6px, transparent 2.5px),
+    radial-gradient(circle at 42% 18%, rgba(178, 119, 249, 0.84) 0 1.7px, transparent 2.7px),
+    radial-gradient(circle at 58% 52%, rgba(244, 204, 255, 0.82) 0 2px, transparent 3px),
+    radial-gradient(circle at 74% 24%, rgba(188, 128, 255, 0.84) 0 1.7px, transparent 2.7px),
+    radial-gradient(circle at 88% 44%, rgba(224, 173, 255, 0.84) 0 1.9px, transparent 2.9px),
+    radial-gradient(circle at 34% 78%, rgba(196, 136, 255, 0.8) 0 1.7px, transparent 2.6px),
+    radial-gradient(circle at 66% 82%, rgba(177, 118, 250, 0.82) 0 1.8px, transparent 2.8px);
   animation: legendary-sparkle-shift 1.8s ease-in-out infinite;
-  opacity: 0.72;
+  opacity: 0.84;
 }
 
 .legendary-sparkle__layer--b {
   background:
-    radial-gradient(circle at 12% 82%, rgba(246, 214, 255, 0.78) 0 1.7px, transparent 2.8px),
-    radial-gradient(circle at 26% 46%, rgba(193, 128, 255, 0.74) 0 1.3px, transparent 2.2px),
-    radial-gradient(circle at 39% 14%, rgba(237, 191, 255, 0.75) 0 1.7px, transparent 2.7px),
-    radial-gradient(circle at 56% 86%, rgba(172, 117, 255, 0.72) 0 1.3px, transparent 2.1px),
-    radial-gradient(circle at 71% 24%, rgba(244, 208, 255, 0.74) 0 1.6px, transparent 2.6px),
-    radial-gradient(circle at 84% 56%, rgba(188, 132, 255, 0.74) 0 1.4px, transparent 2.2px),
-    radial-gradient(circle at 96% 72%, rgba(239, 198, 255, 0.75) 0 1.7px, transparent 2.8px),
-    radial-gradient(circle at 44% 52%, rgba(121, 77, 217, 0.32), transparent 48%);
+    radial-gradient(circle at 16% 84%, rgba(248, 224, 255, 0.84) 0 2px, transparent 3.1px),
+    radial-gradient(circle at 30% 56%, rgba(201, 144, 255, 0.78) 0 1.6px, transparent 2.5px),
+    radial-gradient(circle at 46% 72%, rgba(231, 183, 255, 0.82) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 62% 16%, rgba(170, 112, 247, 0.8) 0 1.5px, transparent 2.3px),
+    radial-gradient(circle at 78% 66%, rgba(220, 166, 255, 0.78) 0 1.7px, transparent 2.6px),
+    radial-gradient(circle at 92% 30%, rgba(243, 202, 255, 0.8) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 54% 40%, rgba(139, 86, 229, 0.38), transparent 46%);
   mix-blend-mode: screen;
   animation: legendary-sparkle-twinkle 1.15s ease-in-out infinite;
-  opacity: 0.68;
+  opacity: 0.74;
 }
 
 .manual-pack {
+  position: relative;
+  z-index: 2;
   width: min(250px, 100%);
   min-height: 340px;
   margin: 0 auto;
@@ -1628,6 +1642,8 @@ function duckAsset(fileName) {
 
 .manual-pack__preview-card {
   width: min(228px, 96%);
+  position: relative;
+  z-index: 3;
 }
 
 .recent-mini-strip {

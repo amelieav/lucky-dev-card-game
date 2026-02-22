@@ -108,15 +108,16 @@ function rgbVar(rgb) {
 
 const cardCssVars = computed(() => {
   const base = hexToRgb(tierColor.value)
-  const foilHighlight = mixRgb(base, [240, 198, 112], 0.72)
-  const foilMid = mixRgb(base, [165, 102, 52], 0.6)
-  const holoA = mixRgb(base, [178, 232, 255], 0.7)
-  const holoB = mixRgb(base, [232, 186, 255], 0.66)
-  const holoC = mixRgb(base, [198, 255, 238], 0.62)
+  const brightBase = mixRgb(base, [255, 255, 255], 0.12)
+  const foilHighlight = mixRgb(brightBase, [240, 198, 112], 0.72)
+  const foilMid = mixRgb(brightBase, [165, 102, 52], 0.6)
+  const holoA = mixRgb(brightBase, [178, 232, 255], 0.7)
+  const holoB = mixRgb(brightBase, [232, 186, 255], 0.66)
+  const holoC = mixRgb(brightBase, [198, 255, 238], 0.62)
 
   return {
-    '--term-card-base': tierColor.value,
-    '--term-card-base-rgb': rgbVar(base),
+    '--term-card-base': `rgb(${rgbVar(brightBase)})`,
+    '--term-card-base-rgb': rgbVar(brightBase),
     '--term-card-foil-hi-rgb': rgbVar(foilHighlight),
     '--term-card-foil-mid-rgb': rgbVar(foilMid),
     '--term-card-holo-a-rgb': rgbVar(holoA),
@@ -175,61 +176,96 @@ const formattedCoins = computed(() => {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.04)),
-    repeating-linear-gradient(
-      180deg,
-      transparent 0%,
-      transparent calc((100% / 7) - 1px),
-      rgba(255, 255, 255, 0.13) calc((100% / 7) - 1px),
-      rgba(255, 255, 255, 0.13) calc(100% / 7)
-    );
+    linear-gradient(160deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.05) 45%, rgba(255, 255, 255, 0)),
+    radial-gradient(circle at 22% 12%, rgba(255, 255, 255, 0.35), transparent 38%);
+  mix-blend-mode: soft-light;
 }
 
 .term-card--mutation-foil::before {
-  opacity: 0.82;
+  opacity: 0.94;
   background:
     linear-gradient(
-      120deg,
-      rgba(var(--term-card-foil-hi-rgb), 0.36),
-      rgba(var(--term-card-foil-mid-rgb), 0.62),
-      rgba(var(--term-card-base-rgb), 0.36)
+      124deg,
+      rgba(var(--term-card-foil-hi-rgb), 0.56) 0%,
+      rgba(var(--term-card-foil-mid-rgb), 0.58) 34%,
+      rgba(var(--term-card-foil-hi-rgb), 0.52) 68%,
+      rgba(var(--term-card-base-rgb), 0.42) 100%
     ),
-    radial-gradient(circle at 20% 15%, rgba(var(--term-card-foil-hi-rgb), 0.76), transparent 42%),
-    linear-gradient(135deg, rgba(var(--term-card-foil-mid-rgb), 0.52), rgba(var(--term-card-foil-hi-rgb), 0.45)),
-    repeating-linear-gradient(
-      -28deg,
-      rgba(var(--term-card-foil-mid-rgb), 0.44) 0px,
-      rgba(var(--term-card-foil-mid-rgb), 0.44) 1px,
-      transparent 1px,
-      transparent 6px
+    radial-gradient(circle at 20% 12%, rgba(var(--term-card-foil-hi-rgb), 0.9), transparent 36%),
+    radial-gradient(circle at 82% 80%, rgba(var(--term-card-foil-hi-rgb), 0.42), transparent 42%),
+    linear-gradient(154deg, rgba(var(--term-card-base-rgb), 0.36), rgba(var(--term-card-foil-mid-rgb), 0.26));
+  background-size: 230% 230%, auto, auto, auto;
+  animation: foil-spectrum 3.2s ease-in-out infinite;
+  filter: saturate(1.45) brightness(1.2);
+}
+
+.term-card--mutation-foil::after {
+  opacity: 0.88;
+  background:
+    linear-gradient(
+      112deg,
+      transparent 22%,
+      rgba(255, 255, 255, 0.02) 28%,
+      rgba(255, 246, 221, 0.8) 43%,
+      rgba(255, 255, 255, 0.96) 50%,
+      rgba(255, 222, 168, 0.58) 57%,
+      rgba(255, 255, 255, 0.03) 66%,
+      transparent 76%
     );
-  background-size: 200% 200%, auto, auto, auto;
-  animation: foil-sheen 3.2s ease-in-out infinite;
-  filter: saturate(1.25) brightness(1.12);
+  background-size: 240% 100%;
+  mix-blend-mode: screen;
+  animation: foil-glint 2.6s ease-in-out infinite;
 }
 
 .term-card--mutation-holo::before {
+  opacity: 0.94;
+  background:
+    linear-gradient(
+      122deg,
+      rgba(var(--term-card-holo-a-rgb), 0.62) 0%,
+      rgba(var(--term-card-holo-b-rgb), 0.64) 24%,
+      rgba(var(--term-card-holo-c-rgb), 0.62) 48%,
+      rgba(var(--term-card-holo-b-rgb), 0.64) 74%,
+      rgba(var(--term-card-holo-a-rgb), 0.62) 100%
+    ),
+    radial-gradient(circle at 14% 14%, rgba(var(--term-card-holo-a-rgb), 0.82), transparent 36%),
+    radial-gradient(circle at 86% 72%, rgba(var(--term-card-holo-b-rgb), 0.78), transparent 38%),
+    radial-gradient(circle at 26% 84%, rgba(var(--term-card-holo-c-rgb), 0.72), transparent 42%),
+    radial-gradient(circle at 74% 26%, rgba(var(--term-card-holo-b-rgb), 0.66), transparent 40%),
+    linear-gradient(
+      142deg,
+      rgba(var(--term-card-base-rgb), 0.34),
+      rgba(var(--term-card-holo-a-rgb), 0.56),
+      rgba(var(--term-card-holo-b-rgb), 0.52)
+    );
+  background-size: 260% 260%, auto, auto, auto, auto, auto;
+  animation: holo-spectrum 3.4s ease-in-out infinite;
+  filter: saturate(1.7) brightness(1.16);
+}
+
+.term-card--mutation-holo::after {
   opacity: 0.86;
   background:
     linear-gradient(
       118deg,
-      rgba(var(--term-card-holo-a-rgb), 0.44),
-      rgba(var(--term-card-holo-b-rgb), 0.58),
-      rgba(var(--term-card-holo-c-rgb), 0.5)
+      transparent 20%,
+      rgba(255, 255, 255, 0.04) 28%,
+      rgba(226, 255, 255, 0.62) 40%,
+      rgba(255, 255, 255, 0.85) 50%,
+      rgba(255, 216, 255, 0.58) 58%,
+      rgba(210, 255, 239, 0.5) 64%,
+      rgba(255, 255, 255, 0.04) 72%,
+      transparent 82%
     ),
-    radial-gradient(circle at 16% 18%, rgba(var(--term-card-holo-a-rgb), 0.68), transparent 38%),
-    radial-gradient(circle at 82% 70%, rgba(var(--term-card-holo-a-rgb), 0.58), transparent 42%),
-    radial-gradient(circle at 32% 72%, rgba(var(--term-card-holo-b-rgb), 0.44), transparent 46%),
     linear-gradient(
-      140deg,
-      rgba(var(--term-card-base-rgb), 0.22),
-      rgba(var(--term-card-holo-a-rgb), 0.56),
-      rgba(var(--term-card-holo-b-rgb), 0.48)
-    ),
-    radial-gradient(circle, rgba(255, 255, 255, 0.52) 0.8px, transparent 1px);
-  background-size: 220% 220%, auto, auto, auto, auto, 14px 14px;
-  animation: holo-sheen 2.8s ease-in-out infinite;
-  filter: saturate(1.28) brightness(1.16);
+      32deg,
+      rgba(147, 235, 255, 0.24),
+      rgba(255, 157, 236, 0.24),
+      rgba(155, 255, 217, 0.24)
+    );
+  background-size: 240% 100%, 220% 220%;
+  mix-blend-mode: screen;
+  animation: holo-glint 2.9s ease-in-out infinite;
 }
 
 .term-card__section {
@@ -348,63 +384,104 @@ const formattedCoins = computed(() => {
   background: rgba(255, 255, 255, 0.32);
 }
 
-@keyframes foil-sheen {
+@keyframes foil-spectrum {
   0% {
     background-position:
-      0% 0%,
-      20% 15%,
-      0% 0%,
+      0% 20%,
+      20% 12%,
+      82% 80%,
       0% 0%;
   }
   50% {
     background-position:
-      100% 100%,
-      26% 20%,
-      20% 10%,
-      0% 0%;
+      100% 80%,
+      24% 18%,
+      76% 74%,
+      100% 100%;
   }
   100% {
     background-position:
-      0% 0%,
-      20% 15%,
-      0% 0%,
+      0% 20%,
+      20% 12%,
+      82% 80%,
       0% 0%;
   }
 }
 
-@keyframes holo-sheen {
+@keyframes foil-glint {
+  0% {
+    background-position: 0% 0%;
+    opacity: 0.74;
+  }
+  50% {
+    background-position: 100% 0%;
+    opacity: 0.96;
+  }
+  100% {
+    background-position: 0% 0%;
+    opacity: 0.74;
+  }
+}
+
+@keyframes holo-spectrum {
   0% {
     background-position:
-      0% 10%,
-      16% 18%,
-      82% 70%,
-      32% 72%,
-      0% 0%,
-      0 0;
+      0% 12%,
+      14% 14%,
+      86% 72%,
+      26% 84%,
+      74% 26%,
+      0% 0%;
+    filter: saturate(1.6) brightness(1.12) hue-rotate(0deg);
   }
   50% {
     background-position:
-      100% 90%,
-      20% 24%,
-      76% 64%,
-      36% 76%,
-      100% 100%,
-      7px 5px;
+      100% 88%,
+      20% 22%,
+      80% 64%,
+      34% 76%,
+      68% 32%,
+      100% 100%;
+    filter: saturate(1.9) brightness(1.2) hue-rotate(22deg);
   }
   100% {
     background-position:
-      0% 10%,
-      16% 18%,
-      82% 70%,
-      32% 72%,
+      0% 12%,
+      14% 14%,
+      86% 72%,
+      26% 84%,
+      74% 26%,
+      0% 0%;
+    filter: saturate(1.6) brightness(1.12) hue-rotate(0deg);
+  }
+}
+
+@keyframes holo-glint {
+  0% {
+    background-position:
       0% 0%,
-      0 0;
+      0% 0%;
+    opacity: 0.72;
+  }
+  50% {
+    background-position:
+      100% 100%,
+      100% 100%;
+    opacity: 0.92;
+  }
+  100% {
+    background-position:
+      0% 0%,
+      0% 0%;
+    opacity: 0.72;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .term-card--mutation-foil::before,
-  .term-card--mutation-holo::before {
+  .term-card--mutation-foil::after,
+  .term-card--mutation-holo::before,
+  .term-card--mutation-holo::after {
     animation: none;
   }
 }
