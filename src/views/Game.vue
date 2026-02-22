@@ -212,27 +212,30 @@
     </div>
 
     <section ref="cardBookSectionRef" class="card p-5">
-      <div class="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 class="text-lg font-semibold">Shop</h2>
-          <p class="text-xs text-muted">Spend coins to improve auto opening, odds, and value.</p>
-        </div>
-        <div class="text-right">
-          <p class="text-xs text-muted">Rebirth unlock</p>
-          <p class="text-sm font-semibold">{{ currentCollectionCount }}/{{ TERMS.length }} cards</p>
+      <div class="mb-4">
+        <h2 class="text-lg font-semibold">Shop</h2>
+        <p class="text-xs text-muted">Spend coins to improve auto opening, odds, and value.</p>
+      </div>
+
+      <article class="mb-4 rounded-xl border border-soft bg-panel-soft p-4 rebirth-shop-panel">
+        <div class="rebirth-shop-panel__inner">
+          <div>
+            <p class="text-xs uppercase tracking-wide text-muted">Rebirth</p>
+            <p class="mt-1 text-sm font-semibold">{{ currentCollectionCount }}/{{ TERMS.length }} cards in current collection</p>
+            <p class="mt-1 text-[11px] text-muted">
+              {{ rebirthReady ? 'Ready: full collection complete.' : rebirthLockLabel }}
+            </p>
+          </div>
           <button
-            class="btn-secondary mt-2"
+            class="rebirth-cta-btn"
             type="button"
             :disabled="!rebirthReady || actionLoading"
             @click="rebirthPlayer"
           >
             Rebirth
           </button>
-          <p class="mt-1 text-[11px] text-muted">
-            {{ rebirthReady ? 'Ready: full collection complete.' : rebirthLockLabel }}
-          </p>
         </div>
-      </div>
+      </article>
 
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <article v-for="upgrade in shopRows" :key="upgrade.key" class="rounded-xl border border-soft bg-panel-soft p-4 shop-upgrade-card">
@@ -1628,6 +1631,44 @@ function handleDuckFrameError(event) {
   flex-direction: column;
 }
 
+.rebirth-shop-panel {
+  border-color: rgba(106, 149, 246, 0.45);
+  background: linear-gradient(160deg, rgba(239, 246, 255, 0.98), rgba(228, 240, 255, 0.96));
+}
+
+.rebirth-shop-panel__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.rebirth-cta-btn {
+  min-width: clamp(200px, 24vw, 300px);
+  border: none;
+  border-radius: 0.72rem;
+  padding: 0.7rem 1.05rem;
+  background: linear-gradient(140deg, #3b82f6, #2563eb);
+  color: #f7fbff;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.25);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.rebirth-cta-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.28);
+  filter: brightness(1.03);
+}
+
+.rebirth-cta-btn:disabled {
+  cursor: not-allowed;
+  background: #9baccc;
+  color: #e8eefc;
+  box-shadow: none;
+}
+
 .shop-upgrade-card__body {
   flex: 1 1 auto;
   min-height: 0;
@@ -1644,6 +1685,18 @@ function handleDuckFrameError(event) {
 @media (min-width: 640px) {
   .shop-upgrade-card {
     --shop-upgrade-card-height: 19.6rem;
+  }
+}
+
+@media (max-width: 820px) {
+  .rebirth-shop-panel__inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rebirth-cta-btn {
+    width: 100%;
+    min-width: 0;
   }
 }
 
