@@ -2105,7 +2105,7 @@ best_card as (
     pt.user_id,
     pt.term_key as best_term_key,
     tc.display_name as best_term_name,
-    tc.tier as best_term_tier,
+    (tc.tier + ((least(2, greatest(1, coalesce(ps.active_layer, 1))) - 1) * 6)) as best_term_tier,
     tc.rarity as best_term_rarity,
     public.mutation_rank(pt.best_mutation) as best_mutation_rank,
     pt.best_mutation as best_term_mutation,
@@ -2113,7 +2113,7 @@ best_card as (
     row_number() over (
       partition by pt.user_id
       order by
-        tc.tier desc,
+        (tc.tier + ((least(2, greatest(1, coalesce(ps.active_layer, 1))) - 1) * 6)) desc,
         case tc.rarity
           when 'legendary' then 3
           when 'rare' then 2
@@ -2124,6 +2124,7 @@ best_card as (
         pt.term_key asc
     ) as row_num
   from public.player_terms pt
+  join public.player_state ps on ps.user_id = pt.user_id
   join public.term_catalog tc on tc.term_key = pt.term_key
 )
 select
