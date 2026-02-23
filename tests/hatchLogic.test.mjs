@@ -26,9 +26,8 @@ function assertApproxHundred(value) {
 
 test('highest available tier follows non-zero pack odds', () => {
   assert.equal(getHighestUnlockedTier({ packs_opened: 0, tier_boost_level: 0 }), 1)
-  assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 1 }), 2)
-  assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 10 }), 2)
-  assert.equal(getHighestUnlockedTier({ packs_opened: 1_100, tier_boost_level: 10 }), 5)
+  assert.equal(getHighestUnlockedTier({ packs_opened: 0, tier_boost_level: 1 }), 2)
+  assert.equal(getHighestUnlockedTier({ packs_opened: 0, tier_boost_level: 10 }), 5)
   assert.equal(getHighestUnlockedTier({ packs_opened: 1900, tier_boost_level: 13 }), 6)
 })
 
@@ -48,7 +47,7 @@ test('effective tier weights sum to 100 and shift with tier boost', () => {
   assert.ok(late[6] > mid[6])
 })
 
-test('base tier profile equalizes to even tier odds at max boost', () => {
+test('base tier profile at max boost favors higher tiers', () => {
   const lvl13 = getBaseTierWeightsForBoostLevel(13)
   const lvl20 = getBaseTierWeightsForBoostLevel(20)
 
@@ -56,13 +55,7 @@ test('base tier profile equalizes to even tier odds at max boost', () => {
   assertApproxHundred(sum(Object.values(lvl20)))
   assert.ok(lvl20[1] < lvl13[1])
   assert.ok(lvl20[6] > lvl13[6])
-  const equalTarget = 100 / 6
-  for (const tier of [1, 2, 3, 4, 5, 6]) {
-    assert.ok(
-      Math.abs(Number(lvl20[tier]) - equalTarget) < 0.0005,
-      `Expected Tier ${tier} near ${equalTarget}, got ${lvl20[tier]}`,
-    )
-  }
+  assert.ok(lvl20[6] > lvl20[1], `Expected T6 > T1 at max boost (${lvl20[6]} vs ${lvl20[1]})`)
 })
 
 test('rarity weights stay normalized and common floor holds', () => {

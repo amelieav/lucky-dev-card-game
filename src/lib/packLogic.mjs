@@ -11,14 +11,6 @@ export const MUTATION_RANK = {
   holo: 2,
 }
 export const PACK_NAMES_BY_TIER = BALANCE_CONFIG.packTierNames
-const TIER_UNLOCK_REQUIRED_PACKS = {
-  1: 0,
-  2: 40,
-  3: 200,
-  4: 550,
-  5: 1100,
-  6: 1900,
-}
 const TIER_UNLOCK_REQUIRED_BOOST = {
   1: 0,
   2: 1,
@@ -125,15 +117,17 @@ export function getBaseTierWeightsForBoostLevel(tierBoostLevel) {
 
   const equalizationStart = Number(BALANCE_CONFIG.tierEqualization?.startLevel || 13)
   const equalizationEnd = Number(BALANCE_CONFIG.tierEqualization?.endLevel || BALANCE_CONFIG.upgradeCaps.tier_boost)
+  const configuredTarget = BALANCE_CONFIG.tierEqualization?.targetProfile || {}
+  const targetByTier = Object.fromEntries(TIERS.map((tier) => [tier, Number(configuredTarget[tier] || (100 / TIERS.length))]))
   if (clamped > equalizationStart && equalizationEnd > equalizationStart) {
     const progress = Math.max(
       0,
       Math.min(1, (clamped - equalizationStart) / (equalizationEnd - equalizationStart)),
     )
-    const equalTarget = 100 / TIERS.length
     for (const tier of TIERS) {
       const current = Number(base[tier] || 0)
-      base[tier] = current + ((equalTarget - current) * progress)
+      const target = Number(targetByTier[tier] || (100 / TIERS.length))
+      base[tier] = current + ((target - current) * progress)
     }
   }
 
@@ -168,15 +162,11 @@ export function getHighestUnlockedTier(stateLike) {
 }
 
 function getMaxUnlockedBaseTier(stateLike) {
-  const packsOpenedRaw = stateLike?.packs_opened
-  const legacyPacksRaw = stateLike?.eggs_opened
-  const packsOpened = Math.max(0, Number(packsOpenedRaw == null ? legacyPacksRaw || 0 : packsOpenedRaw))
   const tierBoostLevel = Math.max(0, Number(stateLike?.tier_boost_level || 0))
 
   for (let tier = 6; tier >= 1; tier -= 1) {
-    const requiredPacks = Math.max(0, Number(TIER_UNLOCK_REQUIRED_PACKS[tier] || 0))
     const requiredBoost = Math.max(0, Number(TIER_UNLOCK_REQUIRED_BOOST[tier] || 0))
-    if (packsOpened >= requiredPacks && tierBoostLevel >= requiredBoost) {
+    if (tierBoostLevel >= requiredBoost) {
       return tier
     }
   }

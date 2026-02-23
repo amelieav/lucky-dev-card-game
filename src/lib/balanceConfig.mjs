@@ -35,6 +35,7 @@ export const BALANCE_CONFIG = {
   tierEqualization: {
     startLevel: 13,
     endLevel: 20,
+    targetProfile: { 1: 8, 2: 10, 3: 12, 4: 16, 5: 22, 6: 32 },
   },
 
   rarityWeightsByTier: {

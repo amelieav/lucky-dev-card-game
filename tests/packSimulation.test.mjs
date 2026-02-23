@@ -86,12 +86,15 @@ test('drawn pack tier always yields a card from the same tier', () => {
   }
 })
 
-test('tier odds remain locked until both packs and boost thresholds are met', () => {
-  const levelOneWithoutPacks = getEffectiveTierWeights({ tier_boost_level: 1, packs_opened: 0 })
-  assert.equal(levelOneWithoutPacks[1], 100)
-  assert.equal(levelOneWithoutPacks[2], 0)
+test('tier odds unlock by tier boost level and favor high tiers at max', () => {
+  const levelZero = getEffectiveTierWeights({ tier_boost_level: 0, packs_opened: 0 })
+  assert.equal(levelZero[1], 100)
+  assert.equal(levelZero[2], 0)
 
-  const levelOneWithUnlockPacks = getEffectiveTierWeights({ tier_boost_level: 1, packs_opened: 40 })
-  assert.ok(levelOneWithUnlockPacks[2] > 0)
-  assert.ok(levelOneWithUnlockPacks[1] < 100)
+  const levelOne = getEffectiveTierWeights({ tier_boost_level: 1, packs_opened: 0 })
+  assert.ok(levelOne[2] > 0)
+  assert.ok(levelOne[1] < 100)
+
+  const levelTwenty = getEffectiveTierWeights({ tier_boost_level: 20, packs_opened: 0 })
+  assert.ok(levelTwenty[6] > levelTwenty[1], `Expected T6 > T1 (${levelTwenty[6]} vs ${levelTwenty[1]})`)
 })

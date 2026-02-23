@@ -639,11 +639,11 @@ immutable
 as $$
   select case $1
     when 1 then 0
-    when 2 then 40
-    when 3 then 200
-    when 4 then 550
-    when 5 then 1100
-    when 6 then 1900
+    when 2 then 0
+    when 3 then 0
+    when 4 then 0
+    when 5 then 0
+    when 6 then 0
     else 2147483647
   end;
 $$;
@@ -670,17 +670,15 @@ language plpgsql
 immutable
 as $$
 declare
-  packs int;
   boost int;
 begin
-  packs := greatest(0, coalesce(total_packs_opened, 0));
   boost := greatest(0, coalesce(tier_boost_level, 0));
 
-  if boost >= 13 and packs >= 1900 then return 6; end if;
-  if boost >= 10 and packs >= 1100 then return 5; end if;
-  if boost >= 7 and packs >= 550 then return 4; end if;
-  if boost >= 4 and packs >= 200 then return 3; end if;
-  if boost >= 1 and packs >= 40 then return 2; end if;
+  if boost >= 13 then return 6; end if;
+  if boost >= 10 then return 5; end if;
+  if boost >= 7 then return 4; end if;
+  if boost >= 4 then return 3; end if;
+  if boost >= 1 then return 2; end if;
   return 1;
 end;
 $$;
@@ -709,7 +707,12 @@ as $$
 declare
   lvl int;
   progress numeric;
-  equal_target numeric := (100.0 / 6.0);
+  target_t1 numeric := 8;
+  target_t2 numeric := 10;
+  target_t3 numeric := 12;
+  target_t4 numeric := 16;
+  target_t5 numeric := 22;
+  target_t6 numeric := 32;
 begin
   lvl := greatest(0, least(20, coalesce(p_tier_boost_level, 0)));
 
@@ -731,12 +734,12 @@ begin
     progress := ((lvl - 13)::numeric / 7.0);
     progress := greatest(0, least(1, progress));
 
-    t1 := t1 + ((equal_target - t1) * progress);
-    t2 := t2 + ((equal_target - t2) * progress);
-    t3 := t3 + ((equal_target - t3) * progress);
-    t4 := t4 + ((equal_target - t4) * progress);
-    t5 := t5 + ((equal_target - t5) * progress);
-    t6 := t6 + ((equal_target - t6) * progress);
+    t1 := t1 + ((target_t1 - t1) * progress);
+    t2 := t2 + ((target_t2 - t2) * progress);
+    t3 := t3 + ((target_t3 - t3) * progress);
+    t4 := t4 + ((target_t4 - t4) * progress);
+    t5 := t5 + ((target_t5 - t5) * progress);
+    t6 := t6 + ((target_t6 - t6) * progress);
   end if;
 
   return next;
