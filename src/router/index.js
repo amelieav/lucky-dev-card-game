@@ -102,7 +102,7 @@ router.beforeEach(async (to) => {
     to.name === 'DuckCave'
     && isAuthenticated
     && store.state.game.snapshot
-    && Math.max(0, Number(store.state.game.snapshot?.state?.rebirth_count || 0)) < 2
+    && Math.max(0, Number(store.state.game.snapshot?.state?.rebirth_count || 0)) < 1
   ) {
     return { name: 'Game' }
   }

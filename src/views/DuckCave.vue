@@ -9,7 +9,7 @@
     </div>
 
     <div v-if="!duckCaveUnlocked" class="rounded-xl border border-soft bg-panel-soft p-4 text-sm text-muted">
-      Duck Cave unlocks at Rebirth 2.
+      Duck Cave unlocks at Rebirth 1.
     </div>
 
     <template v-else>
@@ -73,7 +73,7 @@ const MAX_RENDERED_CARDS = 90
 const snapshot = computed(() => store.state.game.snapshot || null)
 const playerState = computed(() => snapshot.value?.state || null)
 const rebirthCount = computed(() => Math.max(0, Number(playerState.value?.rebirth_count || 0)))
-const duckCaveUnlocked = computed(() => rebirthCount.value >= 2)
+const duckCaveUnlocked = computed(() => rebirthCount.value >= 1)
 const seasonIdLabel = computed(() => snapshot.value?.season?.id || 'Unknown')
 const activeLayer = computed(() => normalizeLayer(playerState.value?.active_layer || 1))
 const duckTheftStats = computed(() => store.state.game.duckTheftStats || {})
