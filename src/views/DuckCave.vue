@@ -70,7 +70,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import TermCard from '../components/game/TermCard.vue'
 import { TERMS_BY_KEY } from '../data/terms'
@@ -82,6 +82,11 @@ const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 const DUCK_CAVE_COLUMNS = 11
 const DUCK_CAVE_CARD_ROW_REM = 3.85
 const DUCK_CAVE_CARD_START_REM = 4.1
+const DUCK_CAVE_FRAMES = {
+  walk: [duckAsset('walk1.png'), duckAsset('walk2.png'), duckAsset('walk3.png'), duckAsset('walk4.png')],
+  cry: [duckAsset('cry1.png'), duckAsset('cry2.png')],
+}
+const DUCK_CAVE_FRAME_TICK_MS = 220
 const DUCK_RARITY_RANK = {
   common: 1,
   rare: 2,
@@ -104,6 +109,11 @@ const localEconomyEnabled = computed(() => LOCAL_ECONOMY_ENABLED)
 const caveLoading = ref(false)
 const caveLoadError = ref(null)
 const caveEntriesRaw = ref([])
+const duckFrameIndex = ref({
+  walk: 0,
+  cry: 0,
+})
+let duckFrameTimer = null
 
 const stolenEntries = computed(() => {
   return (Array.isArray(caveEntriesRaw.value) ? caveEntriesRaw.value : [])
@@ -155,11 +165,13 @@ const highestStolenLabel = computed(() => {
   return `${entry.name} · T${entry.tier} · ${entry.rarity}`
 })
 
-const duckSpriteSrc = computed(() => (
-  laidOutEntries.value.length > 0
-    ? duckAsset('walk2.png')
-    : duckAsset('cry1.png')
-))
+const duckSpriteSrc = computed(() => {
+  const key = laidOutEntries.value.length > 0 ? 'walk' : 'cry'
+  const frames = DUCK_CAVE_FRAMES[key] || []
+  if (!frames.length) return ''
+  const idx = Number(duckFrameIndex.value[key] || 0) % frames.length
+  return frames[idx] || frames[0]
+})
 
 const caveRows = computed(() => {
   if (!stackedEntries.value.length) return 1
@@ -189,7 +201,20 @@ const laidOutEntries = computed(() => {
 })
 
 onMounted(async () => {
+  duckFrameTimer = window.setInterval(() => {
+    duckFrameIndex.value = {
+      walk: (duckFrameIndex.value.walk + 1) % DUCK_CAVE_FRAMES.walk.length,
+      cry: (duckFrameIndex.value.cry + 1) % DUCK_CAVE_FRAMES.cry.length,
+    }
+  }, DUCK_CAVE_FRAME_TICK_MS)
   await loadDuckCaveEntries()
+})
+
+onUnmounted(() => {
+  if (duckFrameTimer) {
+    window.clearInterval(duckFrameTimer)
+    duckFrameTimer = null
+  }
 })
 
 watch(() => snapshot.value?.season?.id, () => {
@@ -379,8 +404,8 @@ function formatNumber(value) {
 
 .duck-cave-duck--walk {
   animation:
-    duck-cave-stroll 13s linear infinite,
-    duck-cave-bob 1.15s ease-in-out infinite;
+    duck-cave-stroll 16s linear infinite,
+    duck-cave-bob 1.3s ease-in-out infinite;
 }
 
 @keyframes duck-cave-stroll {
