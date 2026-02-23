@@ -396,6 +396,7 @@ const autoRollEnabled = ref(true)
 const REVEAL_READ_MS = 2750
 const MANUAL_OPENING_EXTRA_MS = 500
 const AUTO_OPENING_MS = 420
+const GAME_RECOVERY_COOLDOWN_MS = 1500
 const LEGENDARY_SPARKLE_MS = 3000
 const LEADERBOARD_REFRESH_MS = 15000
 const LIVE_METRICS_TICK_MS = 500
@@ -429,6 +430,8 @@ let chickMonitorTimer = null
 let chickFailTimer = null
 let chickPhaseTimer = null
 let duckFrameTimer = null
+let recoveryInFlight = false
+let lastRecoveryAtMs = 0
 const cardBookItemRefs = new Map()
 const cardBookSectionRef = ref(null)
 const lastMouseActivityMs = ref(Date.now())
@@ -787,36 +790,48 @@ const manualOpenHint = computed(() => {
   return autoUnlocked.value ? 'Resume auto anytime from the button above' : 'Tier is decided by probability'
 })
 
-async function recoverGameIfStale() {
+async function recoverGameIfStale({ force = false } = {}) {
   if (!viewActive) return
   if (store.state.game.actionLoading || store.state.game.loading || store.state.auth.loading) return
+  if (recoveryInFlight) return
 
-  await store.dispatch('auth/initAuth')
-  if (!viewActive) return
-  if (!store.state.auth.user) return
+  const now = Date.now()
+  if (!force && (now - lastRecoveryAtMs) < GAME_RECOVERY_COOLDOWN_MS) {
+    return
+  }
 
-  if (!store.state.game.snapshot) {
+  recoveryInFlight = true
+
+  try {
+    await store.dispatch('auth/initAuth')
+    if (!viewActive) return
+    if (!store.state.auth.user) return
+
     await store.dispatch('game/bootstrapPlayer')
+    if (!viewActive) return
+
+    if (autoUnlocked.value && autoRollEnabled.value && manualPackPhase.value === 'ready') {
+      scheduleAutoRoll(120)
+    }
+  } finally {
+    lastRecoveryAtMs = Date.now()
+    recoveryInFlight = false
   }
 }
 
 function handleWindowFocus() {
-  void recoverGameIfStale()
+  void recoverGameIfStale({ force: true })
 }
 
 function handleVisibilityChange() {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
-  void recoverGameIfStale()
+  void recoverGameIfStale({ force: true })
 }
 
 onMounted(async () => {
   viewActive = true
-  await store.dispatch('auth/initAuth')
+  await recoverGameIfStale({ force: true })
   if (!viewActive) return
-  if (!store.state.game.snapshot) {
-    await store.dispatch('game/bootstrapPlayer')
-    if (!viewActive) return
-  }
   await store.dispatch('leaderboard/fetch', { force: true, limit: 100 })
   if (!viewActive) return
   await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
