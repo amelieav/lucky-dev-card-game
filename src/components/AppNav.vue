@@ -71,7 +71,12 @@ const KEEP_ALIVE_MS = 5_000
 const isAuthed = computed(() => !!store.state.auth.user)
 const userEmail = computed(() => store.state.auth.user?.email || '')
 const supportsLifetimeCollection = computed(() => Boolean(store.state.game.capabilities?.supports_lifetime_collection))
-const duckCaveUnlocked = computed(() => Math.max(0, Number(store.state.game.snapshot?.state?.rebirth_count || 0)) >= 1)
+const duckCaveUnlocked = computed(() => {
+  const state = store.state.game.snapshot?.state || {}
+  const rebirthCount = Math.max(0, Number(state.rebirth_count || 0))
+  const activeLayer = Math.max(1, Number(state.active_layer || 1))
+  return rebirthCount >= 1 || activeLayer > 1
+})
 const duckCardsStolen = computed(() => Math.max(0, Number(store.state.game.duckTheftStats?.count || 0)))
 const duckInfoOpen = ref(false)
 const duckInfoPinned = ref(false)

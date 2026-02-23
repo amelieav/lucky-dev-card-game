@@ -72,10 +72,10 @@ const MAX_RENDERED_CARDS = 90
 
 const snapshot = computed(() => store.state.game.snapshot || null)
 const playerState = computed(() => snapshot.value?.state || null)
-const rebirthCount = computed(() => Math.max(0, Number(playerState.value?.rebirth_count || 0)))
-const duckCaveUnlocked = computed(() => rebirthCount.value >= 1)
-const seasonIdLabel = computed(() => snapshot.value?.season?.id || 'Unknown')
 const activeLayer = computed(() => normalizeLayer(playerState.value?.active_layer || 1))
+const rebirthCount = computed(() => Math.max(0, Number(playerState.value?.rebirth_count || 0)))
+const duckCaveUnlocked = computed(() => rebirthCount.value >= 1 || activeLayer.value > 1)
+const seasonIdLabel = computed(() => snapshot.value?.season?.id || 'Unknown')
 const duckTheftStats = computed(() => store.state.game.duckTheftStats || {})
 const duckTheftCount = computed(() => Math.max(0, Number(duckTheftStats.value?.count || 0)))
 const highestStolen = computed(() => duckTheftStats.value?.highest || null)
