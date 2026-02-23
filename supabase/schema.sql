@@ -549,6 +549,33 @@ begin
 end;
 $$;
 
+create or replace function public.generate_default_display_name(p_a text, p_b text, p_c text)
+returns text
+language plpgsql
+volatile
+as $$
+declare
+  candidate text;
+  candidates text[] := array[
+    left(coalesce(p_a, ''), 4) || '_' || left(coalesce(p_b, ''), 5),
+    left(coalesce(p_a, ''), 4) || '_' || left(coalesce(p_c, ''), 5),
+    left(coalesce(p_b, ''), 4) || '_' || left(coalesce(p_c, ''), 5),
+    left(coalesce(p_a, ''), 5) || left(coalesce(p_b, ''), 5)
+  ];
+begin
+  foreach candidate in array candidates loop
+    begin
+      return public.validate_display_name(candidate);
+    exception
+      when others then
+        null;
+    end;
+  end loop;
+
+  return 'P_' || substring(replace(gen_random_uuid()::text, '-', '') from 1 for 8);
+end;
+$$;
+
 create or replace function public.rarity_multiplier(p_rarity text)
 returns numeric
 language sql
@@ -1070,7 +1097,7 @@ begin
     part_c := public.random_array_item(public.allowed_nick_part_c());
 
     insert into public.player_profile (user_id, nick_part_a, nick_part_b, nick_part_c, display_name, name_customized)
-    values (p_user_id, part_a, part_b, part_c, concat(part_a, ' ', part_b, ' ', part_c), false);
+    values (p_user_id, part_a, part_b, part_c, public.generate_default_display_name(part_a, part_b, part_c), false);
   end if;
 
   insert into public.player_debug_state (user_id, next_reward)
@@ -1911,7 +1938,7 @@ begin
   set nick_part_a = part_a,
       nick_part_b = part_b,
       nick_part_c = part_c,
-      display_name = concat(part_a, ' ', part_b, ' ', part_c),
+      display_name = public.generate_default_display_name(part_a, part_b, part_c),
       name_customized = false,
       updated_at = now()
   where user_id = uid;
@@ -2504,8 +2531,10 @@ security definer
 set search_path = public
 as $$
 begin
-  delete from public.player_terms;
-  delete from public.player_stolen_terms;
+  delete from public.player_terms
+  where true;
+  delete from public.player_stolen_terms
+  where true;
 
   update public.player_state
   set coins = 100,
@@ -2526,11 +2555,13 @@ begin
       active_layer = 1,
       active_until_at = now(),
       last_tick_at = now(),
-      updated_at = now();
+      updated_at = now()
+  where true;
 
   update public.player_debug_state
   set next_reward = null,
-      updated_at = now();
+      updated_at = now()
+  where true;
 end;
 $$;
 
@@ -3682,7 +3713,7 @@ begin
   set nick_part_a = part_a,
       nick_part_b = part_b,
       nick_part_c = part_c,
-      display_name = concat(part_a, ' ', part_b, ' ', part_c),
+      display_name = public.generate_default_display_name(part_a, part_b, part_c),
       name_customized = false,
       updated_at = now()
   where user_id = uid;
