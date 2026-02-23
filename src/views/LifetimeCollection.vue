@@ -19,11 +19,7 @@
       </div>
     </div>
 
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <article class="rounded-xl border border-soft bg-panel-soft p-3">
-        <p class="text-xs text-muted">Current Collection</p>
-        <p class="text-2xl font-semibold">{{ currentCollected }}/{{ totalCards }}</p>
-      </article>
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       <article class="rounded-xl border border-soft bg-panel-soft p-3">
         <p class="text-xs text-muted">Current Missing</p>
         <p class="text-2xl font-semibold">{{ Math.max(0, totalCards - currentCollected) }}</p>
