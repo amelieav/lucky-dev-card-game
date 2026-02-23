@@ -221,10 +221,8 @@ export async function fetchSeasonHistory(limit = 200) {
   }), 'get_season_history'))
 }
 
-export async function fetchDuckCaveStash(limit = 5000) {
-  const primary = await withRpcTimeout(supabase.rpc('get_duck_cave_stash', {
-    p_limit: limit,
-  }), 'get_duck_cave_stash')
+export async function fetchDuckCaveStash() {
+  const primary = await withRpcTimeout(supabase.rpc('get_duck_cave_stash'), 'get_duck_cave_stash')
 
   if (!primary.error) {
     return primary.data || []

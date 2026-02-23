@@ -355,7 +355,7 @@ export default {
       writeDuckTheftStats(rootState.auth.user?.id, seasonId, state.duckTheftStats)
     },
 
-    async fetchDuckCaveStash({ commit, rootState, state }, { limit = 5000 } = {}) {
+    async fetchDuckCaveStash({ commit, rootState, state }) {
       if (LOCAL_ECONOMY_ENABLED) {
         const localEntries = normalizeDuckTheftStats(state.duckTheftStats).entries.map((entry) => ({
           ...entry,
@@ -370,7 +370,7 @@ export default {
         return localEntries
       }
 
-      const rows = await apiFetchDuckCaveStash(limit)
+      const rows = await apiFetchDuckCaveStash()
       commit('setDuckCaveStash', rows)
       return rows
     },

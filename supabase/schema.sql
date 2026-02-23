@@ -2336,6 +2336,20 @@ create table if not exists public.player_stolen_terms (
   primary key (user_id, layer, term_key)
 );
 
+create table if not exists public.player_duck_theft_events (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  season_id text not null,
+  layer int not null check (layer >= 1),
+  term_key text not null references public.term_catalog(term_key) on delete cascade,
+  mutation text not null default 'none' check (mutation in ('none', 'foil', 'holo')),
+  stolen_at timestamptz not null default now(),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_player_duck_theft_events_season_time
+  on public.player_duck_theft_events (season_id, stolen_at desc);
+
 create table if not exists public.player_season_history (
   user_id uuid not null references auth.users(id) on delete cascade,
   season_id text not null,
@@ -3256,6 +3270,8 @@ declare
   normalized_term text;
   removed_count int := 0;
   active_layer_value int := 1;
+  current_season_id text := null;
+  removed_term public.player_terms;
 begin
   uid := auth.uid();
   if uid is null then
@@ -3276,6 +3292,15 @@ begin
   from public.player_state
   where user_id = uid;
 
+  select season_id into current_season_id
+  from public.season_runtime
+  where singleton = true;
+
+  select * into removed_term
+  from public.player_terms
+  where user_id = uid
+    and term_key = normalized_term;
+
   delete from public.player_terms
   where user_id = uid
     and term_key = normalized_term;
@@ -3289,6 +3314,16 @@ begin
     do update set
       stolen_at = excluded.stolen_at,
       updated_at = now();
+
+    insert into public.player_duck_theft_events (user_id, season_id, layer, term_key, mutation, stolen_at)
+    values (
+      uid,
+      coalesce(current_season_id, 'unknown'),
+      least(2, greatest(1, coalesce(active_layer_value, 1))),
+      normalized_term,
+      public.normalize_mutation(coalesce(removed_term.best_mutation, 'none')),
+      now()
+    );
   end if;
 
   perform public.recompute_passive_rate_bp(uid);
@@ -4045,7 +4080,8 @@ as $$
   );
 $$;
 
-create or replace function public.get_duck_cave_stash(p_limit int default 5000)
+drop function if exists public.get_duck_cave_stash(int);
+create or replace function public.get_duck_cave_stash()
 returns table (
   user_id uuid,
   display_name text,
@@ -4070,26 +4106,31 @@ as $$
     where singleton = true
   )
   select
-    pst.user_id,
+    pte.user_id,
     coalesce(pp.display_name, 'Unknown Player') as display_name,
-    pst.term_key,
+    pte.term_key,
     tc.display_name as term_name,
     tc.tier,
     tc.rarity,
-    'none'::text as mutation,
-    public.card_reward(tc.term_key, tc.rarity, 'none', 0)::bigint as value,
-    pst.stolen_at,
-    pst.layer,
+    public.normalize_mutation(pte.mutation) as mutation,
+    public.card_reward(
+      tc.term_key,
+      tc.rarity,
+      public.normalize_mutation(pte.mutation),
+      0
+    )::bigint as value,
+    pte.stolen_at,
+    pte.layer,
     runtime.season_id
-  from public.player_stolen_terms pst
+  from public.player_duck_theft_events pte
   join public.term_catalog tc
-    on tc.term_key = pst.term_key
+    on tc.term_key = pte.term_key
   left join public.player_profile pp
-    on pp.user_id = pst.user_id
+    on pp.user_id = pte.user_id
   cross join runtime
-  order by pst.stolen_at desc
-  limit greatest(1, least(coalesce(p_limit, 5000), 5000));
+  where pte.season_id = runtime.season_id
+  order by pte.stolen_at desc, pte.id desc;
 $$;
 
 grant execute on function public.get_runtime_capabilities() to authenticated;
-grant execute on function public.get_duck_cave_stash(int) to authenticated;
+grant execute on function public.get_duck_cave_stash() to authenticated;

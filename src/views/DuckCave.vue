@@ -79,10 +79,9 @@ import { getBaseTierFromEffectiveTier, normalizeLayer } from '../lib/packLogic.m
 
 const store = useStore()
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
-const DUCK_CAVE_FETCH_LIMIT = 5000
-const DUCK_CAVE_COLUMNS = 10
-const DUCK_CAVE_CARD_ROW_REM = 4.8
-const DUCK_CAVE_CARD_START_REM = 3.4
+const DUCK_CAVE_COLUMNS = 11
+const DUCK_CAVE_CARD_ROW_REM = 3.85
+const DUCK_CAVE_CARD_START_REM = 4.1
 const DUCK_RARITY_RANK = {
   common: 1,
   rare: 2,
@@ -116,6 +115,22 @@ const stolenEntries = computed(() => {
       return bMs - aMs
     })
 })
+const stackedEntries = computed(() => {
+  return [...stolenEntries.value]
+    .sort((a, b) => {
+      if (a.value !== b.value) return a.value - b.value
+      if (a.tier !== b.tier) return a.tier - b.tier
+      const aRarity = DUCK_RARITY_RANK[a.rarity] || 1
+      const bRarity = DUCK_RARITY_RANK[b.rarity] || 1
+      if (aRarity !== bRarity) return aRarity - bRarity
+      const aMutation = DUCK_MUTATION_RANK[a.mutation] || 1
+      const bMutation = DUCK_MUTATION_RANK[b.mutation] || 1
+      if (aMutation !== bMutation) return aMutation - bMutation
+      const aMs = Date.parse(a.stolenAt || '') || 0
+      const bMs = Date.parse(b.stolenAt || '') || 0
+      return aMs - bMs
+    })
+})
 
 const duckTheftCount = computed(() => stolenEntries.value.length)
 const highestStolen = computed(() => {
@@ -147,19 +162,19 @@ const duckSpriteSrc = computed(() => (
 ))
 
 const caveRows = computed(() => {
-  if (!stolenEntries.value.length) return 1
-  return Math.max(1, Math.ceil(stolenEntries.value.length / DUCK_CAVE_COLUMNS))
+  if (!stackedEntries.value.length) return 1
+  return Math.max(1, Math.ceil(stackedEntries.value.length / DUCK_CAVE_COLUMNS))
 })
 const duckCaveSceneStyle = computed(() => {
-  const minHeightRem = Math.max(22, (DUCK_CAVE_CARD_START_REM + (caveRows.value * DUCK_CAVE_CARD_ROW_REM) + 7))
+  const minHeightRem = Math.max(22, (DUCK_CAVE_CARD_START_REM + (caveRows.value * DUCK_CAVE_CARD_ROW_REM) + 8))
   return {
     '--duck-cave-min-height-rem': `${minHeightRem.toFixed(1)}rem`,
   }
 })
 
 const laidOutEntries = computed(() => {
-  return stolenEntries.value.map((entry, index) => {
-    const layout = layoutForEntry(entry, index)
+  return stackedEntries.value.map((entry, index) => {
+    const layout = layoutForEntry(entry, index, stackedEntries.value.length)
     return {
       ...entry,
       style: {
@@ -190,7 +205,7 @@ async function loadDuckCaveEntries() {
       await store.dispatch('game/bootstrapPlayer')
     }
     await store.dispatch('game/hydrateDuckTheftStats')
-    const rows = await store.dispatch('game/fetchDuckCaveStash', { limit: DUCK_CAVE_FETCH_LIMIT })
+    const rows = await store.dispatch('game/fetchDuckCaveStash')
     caveEntriesRaw.value = Array.isArray(rows) ? rows : []
   } catch (error) {
     caveEntriesRaw.value = []
@@ -234,22 +249,25 @@ function hashString(value) {
   return hash >>> 0
 }
 
-function layoutForEntry(entry, index) {
+function layoutForEntry(entry, index, totalCount) {
   const seed = hashString(`${entry.id}:${index}`)
-  const row = Math.floor(index / DUCK_CAVE_COLUMNS)
+  const rows = Math.max(1, Math.ceil(Math.max(1, totalCount) / DUCK_CAVE_COLUMNS))
+  const layerFromBottom = Math.floor(index / DUCK_CAVE_COLUMNS)
+  const row = Math.max(0, rows - 1 - layerFromBottom)
   const column = index % DUCK_CAVE_COLUMNS
   const leftBase = 6 + (column * (88 / Math.max(1, DUCK_CAVE_COLUMNS - 1)))
   const jitterX = ((seed % 200) - 100) / 60
-  const jitterY = (((Math.floor(seed / 31) % 200) - 100) / 160)
+  const jitterY = (((Math.floor(seed / 31) % 180) - 90) / 180)
   const rotate = -14 + ((Math.floor(seed / 71) % 2800) / 100)
-  const scale = 0.86 + ((Math.floor(seed / 191) % 24) / 100)
+  const scale = 0.78 + ((Math.floor(seed / 191) % 20) / 100)
+  const valueVisibilityRank = index + 1
 
   return {
     left: clamp(leftBase + jitterX, 5, 95),
     top: `${(DUCK_CAVE_CARD_START_REM + (row * DUCK_CAVE_CARD_ROW_REM) + jitterY).toFixed(2)}rem`,
     rotate: clamp(rotate, -16, 16),
-    scale: clamp(scale, 0.84, 1.08),
-    zIndex: 12 + row,
+    scale: clamp(scale, 0.76, 0.98),
+    zIndex: 20 + valueVisibilityRank,
   }
 }
 
@@ -332,8 +350,8 @@ function formatNumber(value) {
 
 .duck-cave-card {
   position: absolute;
-  width: clamp(4.4rem, 10vw, 6.6rem);
-  max-width: 16vw;
+  width: clamp(3.4rem, 8.2vw, 5.2rem);
+  max-width: 13vw;
   pointer-events: none;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28));
 }
