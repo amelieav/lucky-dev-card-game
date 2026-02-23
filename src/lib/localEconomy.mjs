@@ -43,10 +43,11 @@ const MUTATION_RANK = {
 }
 
 // Local economy is a development fallback and not the authoritative runtime.
+// Keep local feature availability aligned with production so UI/testing surfaces match.
 const LOCAL_RUNTIME_CAPABILITIES = Object.freeze({
-  supports_rebirth: false,
-  supports_lifetime_collection: false,
-  supports_season_history: false,
+  supports_rebirth: true,
+  supports_lifetime_collection: true,
+  supports_season_history: true,
   economy_version: 'local-dev-fallback',
   config: {},
 })

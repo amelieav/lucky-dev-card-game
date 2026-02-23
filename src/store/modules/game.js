@@ -3,6 +3,7 @@ import {
   buyMissingCardGift as apiBuyMissingCardGift,
   buyUpgrade as apiBuyUpgrade,
   debugApply as apiDebugApply,
+  fetchDuckCaveStash as apiFetchDuckCaveStash,
   fetchRuntimeCapabilities as apiFetchRuntimeCapabilities,
   fetchLifetimeCollection as apiFetchLifetimeCollection,
   rebirthPlayer as apiRebirthPlayer,
@@ -212,6 +213,7 @@ export default {
     openResult: null,
     recentDraws: [],
     duckTheftStats: defaultDuckTheftStats(),
+    duckCaveStash: [],
     debugAllowed: false,
     economyMode: LOCAL_ECONOMY_ENABLED ? 'local' : 'server',
     capabilities: defaultCapabilities(),
@@ -245,6 +247,9 @@ export default {
     duckTheftStats(state) {
       return normalizeDuckTheftStats(state.duckTheftStats)
     },
+    duckCaveStash(state) {
+      return Array.isArray(state.duckCaveStash) ? state.duckCaveStash : []
+    },
     capabilities(state) {
       return normalizeCapabilities(state.capabilities)
     },
@@ -276,6 +281,9 @@ export default {
     },
     setDuckTheftStats(state, payload) {
       state.duckTheftStats = normalizeDuckTheftStats(payload)
+    },
+    setDuckCaveStash(state, payload) {
+      state.duckCaveStash = Array.isArray(payload) ? payload : []
     },
     recordDuckTheft(state, payload) {
       const current = normalizeDuckTheftStats(state.duckTheftStats)
@@ -318,6 +326,7 @@ export default {
       state.openResult = null
       state.recentDraws = []
       state.duckTheftStats = defaultDuckTheftStats()
+      state.duckCaveStash = []
       state.debugAllowed = false
       state.capabilities = defaultCapabilities()
     },
@@ -344,6 +353,26 @@ export default {
       commit('recordDuckTheft', payload)
       const seasonId = state.snapshot?.season?.id
       writeDuckTheftStats(rootState.auth.user?.id, seasonId, state.duckTheftStats)
+    },
+
+    async fetchDuckCaveStash({ commit, rootState, state }, { limit = 5000 } = {}) {
+      if (LOCAL_ECONOMY_ENABLED) {
+        const localEntries = normalizeDuckTheftStats(state.duckTheftStats).entries.map((entry) => ({
+          ...entry,
+          user_id: rootState.auth.user?.id || null,
+          display_name: state.snapshot?.profile?.display_name || 'Local Player',
+          term_key: entry.termKey || null,
+          term_name: entry.name || null,
+          stolen_at: entry.at || null,
+          layer: Number(state.snapshot?.state?.active_layer || 1),
+        }))
+        commit('setDuckCaveStash', localEntries)
+        return localEntries
+      }
+
+      const rows = await apiFetchDuckCaveStash(limit)
+      commit('setDuckCaveStash', rows)
+      return rows
     },
 
     async bootstrapPlayer({ commit, rootState, state }) {

@@ -4045,4 +4045,51 @@ as $$
   );
 $$;
 
+create or replace function public.get_duck_cave_stash(p_limit int default 5000)
+returns table (
+  user_id uuid,
+  display_name text,
+  term_key text,
+  term_name text,
+  tier int,
+  rarity text,
+  mutation text,
+  value bigint,
+  stolen_at timestamptz,
+  layer int,
+  season_id text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with runtime as (
+    select season_id
+    from public.season_runtime
+    where singleton = true
+  )
+  select
+    pst.user_id,
+    coalesce(pp.display_name, 'Unknown Player') as display_name,
+    pst.term_key,
+    tc.display_name as term_name,
+    tc.tier,
+    tc.rarity,
+    'none'::text as mutation,
+    public.card_reward(tc.term_key, tc.rarity, 'none', 0)::bigint as value,
+    pst.stolen_at,
+    pst.layer,
+    runtime.season_id
+  from public.player_stolen_terms pst
+  join public.term_catalog tc
+    on tc.term_key = pst.term_key
+  left join public.player_profile pp
+    on pp.user_id = pst.user_id
+  cross join runtime
+  order by pst.stolen_at desc
+  limit greatest(1, least(coalesce(p_limit, 5000), 5000));
+$$;
+
 grant execute on function public.get_runtime_capabilities() to authenticated;
+grant execute on function public.get_duck_cave_stash(int) to authenticated;

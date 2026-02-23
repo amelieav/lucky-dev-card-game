@@ -3,7 +3,13 @@
     <div class="flex items-start justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold">Duck Cave</h1>
-        <p class="text-sm text-muted">All cards stolen by the duck this season.</p>
+        <p class="text-sm text-muted">
+          Welcome to the duck cave. All the cards the duck has stolen get stashed in his duck cave.
+          These cards are from all players across the leaderboard.
+        </p>
+        <p v-if="localEconomyEnabled" class="mt-1 text-xs text-muted">
+          Local mode note: only your local player data exists in this runtime.
+        </p>
       </div>
       <p class="text-xs text-muted">Season {{ seasonIdLabel }}</p>
     </div>
@@ -15,7 +21,7 @@
     <template v-else>
       <div class="grid gap-3 sm:grid-cols-3">
         <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm">
-          <p class="text-xs text-muted">Cards stolen</p>
+          <p class="text-xs text-muted">Cards in cave</p>
           <p class="font-semibold">{{ formatNumber(duckTheftCount) }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm sm:col-span-2">
@@ -24,10 +30,13 @@
         </article>
       </div>
 
-      <div class="duck-cave-scene" :class="{ 'duck-cave-scene--empty': laidOutEntries.length === 0 }">
+      <p v-if="caveLoading" class="text-xs text-muted">Loading duck cave stash...</p>
+      <p v-else-if="caveLoadError" class="text-xs text-red-700">{{ caveLoadError }}</p>
+
+      <div class="duck-cave-scene" :class="{ 'duck-cave-scene--empty': laidOutEntries.length === 0 }" :style="duckCaveSceneStyle">
         <div class="duck-cave-ground" aria-hidden="true"></div>
 
-        <div v-if="laidOutEntries.length === 0" class="duck-cave-empty-note">
+        <div v-if="!caveLoading && laidOutEntries.length === 0" class="duck-cave-empty-note">
           <p>The duck looks sad. No stolen cards yet this season.</p>
         </div>
 
@@ -36,6 +45,7 @@
           :key="entry.id"
           class="duck-cave-card"
           :style="entry.style"
+          :title="entry.tooltip"
         >
           <term-card
             size="mini"
@@ -60,7 +70,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useStore } from 'vuex'
 import TermCard from '../components/game/TermCard.vue'
 import { TERMS_BY_KEY } from '../data/terms'
@@ -68,7 +78,21 @@ import { getTermPresentation } from '../data/boosterTerms.mjs'
 import { getBaseTierFromEffectiveTier, normalizeLayer } from '../lib/packLogic.mjs'
 
 const store = useStore()
-const MAX_RENDERED_CARDS = 90
+const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
+const DUCK_CAVE_FETCH_LIMIT = 5000
+const DUCK_CAVE_COLUMNS = 10
+const DUCK_CAVE_CARD_ROW_REM = 4.8
+const DUCK_CAVE_CARD_START_REM = 3.4
+const DUCK_RARITY_RANK = {
+  common: 1,
+  rare: 2,
+  legendary: 3,
+}
+const DUCK_MUTATION_RANK = {
+  none: 1,
+  foil: 2,
+  holo: 3,
+}
 
 const snapshot = computed(() => store.state.game.snapshot || null)
 const playerState = computed(() => snapshot.value?.state || null)
@@ -76,62 +100,130 @@ const activeLayer = computed(() => normalizeLayer(playerState.value?.active_laye
 const rebirthCount = computed(() => Math.max(0, Number(playerState.value?.rebirth_count || 0)))
 const duckCaveUnlocked = computed(() => rebirthCount.value >= 1 || activeLayer.value > 1)
 const seasonIdLabel = computed(() => snapshot.value?.season?.id || 'Unknown')
-const duckTheftStats = computed(() => store.state.game.duckTheftStats || {})
-const duckTheftCount = computed(() => Math.max(0, Number(duckTheftStats.value?.count || 0)))
-const highestStolen = computed(() => duckTheftStats.value?.highest || null)
+const localEconomyEnabled = computed(() => LOCAL_ECONOMY_ENABLED)
+
+const caveLoading = ref(false)
+const caveLoadError = ref(null)
+const caveEntriesRaw = ref([])
+
+const stolenEntries = computed(() => {
+  return (Array.isArray(caveEntriesRaw.value) ? caveEntriesRaw.value : [])
+    .map((entry, index) => normalizeEntry(entry, index))
+    .filter(Boolean)
+    .sort((a, b) => {
+      const aMs = Date.parse(a.stolenAt || '') || 0
+      const bMs = Date.parse(b.stolenAt || '') || 0
+      return bMs - aMs
+    })
+})
+
+const duckTheftCount = computed(() => stolenEntries.value.length)
+const highestStolen = computed(() => {
+  if (!stolenEntries.value.length) return null
+  return stolenEntries.value.reduce((best, candidate) => {
+    if (!best) return candidate
+    if (candidate.tier !== best.tier) return candidate.tier > best.tier ? candidate : best
+    const candidateRarity = DUCK_RARITY_RANK[candidate.rarity] || 1
+    const bestRarity = DUCK_RARITY_RANK[best.rarity] || 1
+    if (candidateRarity !== bestRarity) return candidateRarity > bestRarity ? candidate : best
+    const candidateMutation = DUCK_MUTATION_RANK[candidate.mutation] || 1
+    const bestMutation = DUCK_MUTATION_RANK[best.mutation] || 1
+    if (candidateMutation !== bestMutation) return candidateMutation > bestMutation ? candidate : best
+    const candidateAt = Date.parse(candidate.stolenAt || '') || 0
+    const bestAt = Date.parse(best.stolenAt || '') || 0
+    return candidateAt > bestAt ? candidate : best
+  }, null)
+})
 const highestStolenLabel = computed(() => {
   const entry = highestStolen.value
   if (!entry) return 'None yet'
-  const tier = Math.max(0, Number(entry.tier || 0))
-  const rarity = String(entry.rarity || 'common').toLowerCase()
-  return `${entry.name || 'Unknown Card'} · T${tier || '?'} · ${rarity}`
+  return `${entry.name} · T${entry.tier} · ${entry.rarity}`
 })
-const stolenEntries = computed(() => {
-  const rows = Array.isArray(duckTheftStats.value?.entries) ? duckTheftStats.value.entries : []
-  return rows.slice(0, MAX_RENDERED_CARDS)
-})
+
 const duckSpriteSrc = computed(() => (
-  stolenEntries.value.length > 0
+  laidOutEntries.value.length > 0
     ? duckAsset('walk2.png')
     : duckAsset('cry1.png')
 ))
 
+const caveRows = computed(() => {
+  if (!stolenEntries.value.length) return 1
+  return Math.max(1, Math.ceil(stolenEntries.value.length / DUCK_CAVE_COLUMNS))
+})
+const duckCaveSceneStyle = computed(() => {
+  const minHeightRem = Math.max(22, (DUCK_CAVE_CARD_START_REM + (caveRows.value * DUCK_CAVE_CARD_ROW_REM) + 7))
+  return {
+    '--duck-cave-min-height-rem': `${minHeightRem.toFixed(1)}rem`,
+  }
+})
+
 const laidOutEntries = computed(() => {
   return stolenEntries.value.map((entry, index) => {
     const layout = layoutForEntry(entry, index)
-    const term = TERMS_BY_KEY[entry.termKey] || null
-    const presentation = getTermPresentation(entry.termKey, activeLayer.value)
-    const effectiveTier = Math.max(1, Number(entry.tier || term?.tier || 1))
-    const baseTier = getBaseTierFromEffectiveTier(effectiveTier)
     return {
       ...entry,
-      name: entry.name || presentation.name || term?.name || 'Unknown Card',
-      icon: presentation.icon || term?.icon || 'help-circle',
-      rarity: normalizeRarity(entry.rarity || term?.rarity || 'common'),
-      mutation: normalizeMutation(entry.mutation || 'none'),
-      value: Math.max(0, Number(entry.value || 0)),
-      baseTier,
       style: {
         left: `${layout.left}%`,
-        top: `${layout.top}%`,
+        top: `${layout.top}`,
         transform: `translate(-50%, -50%) rotate(${layout.rotate}deg) scale(${layout.scale})`,
         zIndex: String(layout.zIndex),
       },
-      id: entry.id || `${entry.termKey || 'unknown'}-${entry.at || index}-${index}`,
+      tooltip: `${entry.name} · ${entry.ownerName}`,
     }
   })
 })
 
 onMounted(async () => {
-  if (!store.state.game.snapshot) {
-    await store.dispatch('game/bootstrapPlayer')
-  }
-  await store.dispatch('game/hydrateDuckTheftStats')
+  await loadDuckCaveEntries()
 })
 
 watch(() => snapshot.value?.season?.id, () => {
-  void store.dispatch('game/hydrateDuckTheftStats')
+  void loadDuckCaveEntries()
 })
+
+async function loadDuckCaveEntries() {
+  caveLoading.value = true
+  caveLoadError.value = null
+
+  try {
+    if (!store.state.game.snapshot) {
+      await store.dispatch('game/bootstrapPlayer')
+    }
+    await store.dispatch('game/hydrateDuckTheftStats')
+    const rows = await store.dispatch('game/fetchDuckCaveStash', { limit: DUCK_CAVE_FETCH_LIMIT })
+    caveEntriesRaw.value = Array.isArray(rows) ? rows : []
+  } catch (error) {
+    caveEntriesRaw.value = []
+    caveLoadError.value = error?.message || 'Unable to load duck cave stash.'
+  } finally {
+    caveLoading.value = false
+  }
+}
+
+function normalizeEntry(entry, index) {
+  if (!entry || typeof entry !== 'object') return null
+
+  const termKey = String(entry.term_key || entry.termKey || '').trim() || null
+  const term = termKey ? TERMS_BY_KEY[termKey] : null
+  const layer = normalizeLayer(entry.layer || activeLayer.value || 1)
+  const presentation = termKey ? getTermPresentation(termKey, layer) : null
+  const effectiveTier = Math.max(1, Number(entry.tier || term?.tier || 1))
+  const baseTier = getBaseTierFromEffectiveTier(effectiveTier)
+
+  return {
+    id: String(entry.id || `${entry.user_id || 'u'}:${layer}:${termKey || 'unknown'}:${entry.stolen_at || entry.at || index}`),
+    termKey,
+    name: entry.term_name || entry.name || presentation?.name || term?.name || 'Unknown Card',
+    icon: presentation?.icon || term?.icon || 'help-circle',
+    rarity: normalizeRarity(entry.rarity || term?.rarity || 'common'),
+    mutation: normalizeMutation(entry.mutation || entry.best_mutation || 'none'),
+    value: Math.max(0, Number(entry.value || 0)),
+    tier: effectiveTier,
+    baseTier,
+    ownerName: String(entry.display_name || entry.owner_name || 'Unknown Player'),
+    stolenAt: entry.stolen_at || entry.at || null,
+  }
+}
 
 function hashString(value) {
   const text = String(value || '')
@@ -143,18 +235,21 @@ function hashString(value) {
 }
 
 function layoutForEntry(entry, index) {
-  const seed = hashString(`${entry.id || ''}:${entry.termKey || ''}:${entry.at || ''}:${index}`)
-  const left = 8 + ((seed % 8400) / 100)
-  const top = 18 + (((Math.floor(seed / 37) % 6400) / 100))
-  const rotate = -18 + ((Math.floor(seed / 101) % 3600) / 100)
-  const scale = 0.82 + ((Math.floor(seed / 211) % 34) / 100)
-  const zIndex = 8 + Math.floor(top)
+  const seed = hashString(`${entry.id}:${index}`)
+  const row = Math.floor(index / DUCK_CAVE_COLUMNS)
+  const column = index % DUCK_CAVE_COLUMNS
+  const leftBase = 6 + (column * (88 / Math.max(1, DUCK_CAVE_COLUMNS - 1)))
+  const jitterX = ((seed % 200) - 100) / 60
+  const jitterY = (((Math.floor(seed / 31) % 200) - 100) / 160)
+  const rotate = -14 + ((Math.floor(seed / 71) % 2800) / 100)
+  const scale = 0.86 + ((Math.floor(seed / 191) % 24) / 100)
+
   return {
-    left: clamp(left, 8, 92),
-    top: clamp(top, 18, 84),
-    rotate: clamp(rotate, -20, 20),
-    scale: clamp(scale, 0.82, 1.15),
-    zIndex,
+    left: clamp(leftBase + jitterX, 5, 95),
+    top: `${(DUCK_CAVE_CARD_START_REM + (row * DUCK_CAVE_CARD_ROW_REM) + jitterY).toFixed(2)}rem`,
+    rotate: clamp(rotate, -16, 16),
+    scale: clamp(scale, 0.84, 1.08),
+    zIndex: 12 + row,
   }
 }
 
@@ -198,7 +293,7 @@ function formatNumber(value) {
 <style scoped>
 .duck-cave-scene {
   position: relative;
-  min-height: 26rem;
+  min-height: var(--duck-cave-min-height-rem, 26rem);
   border-radius: 1rem;
   border: 1px solid rgba(120, 143, 194, 0.4);
   background:
@@ -237,7 +332,7 @@ function formatNumber(value) {
 
 .duck-cave-card {
   position: absolute;
-  width: clamp(4.2rem, 10vw, 6.5rem);
+  width: clamp(4.4rem, 10vw, 6.6rem);
   max-width: 16vw;
   pointer-events: none;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28));
@@ -245,50 +340,51 @@ function formatNumber(value) {
 
 .duck-cave-duck {
   position: absolute;
-  width: clamp(5.2rem, 12vw, 7.5rem);
+  width: clamp(7rem, 15vw, 10.2rem);
   height: auto;
   left: 50%;
-  bottom: 9%;
+  bottom: 8%;
   transform: translateX(-50%);
   z-index: 120;
-  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.38));
+  will-change: left, transform, bottom;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
 }
 
 .duck-cave-duck--walk {
   animation:
-    duck-cave-stroll 16s linear infinite,
-    duck-cave-bob 1.6s ease-in-out infinite;
+    duck-cave-stroll 13s linear infinite,
+    duck-cave-bob 1.15s ease-in-out infinite;
 }
 
 @keyframes duck-cave-stroll {
   0% {
-    left: 10%;
+    left: 8%;
     transform: translateX(-50%) scaleX(1);
   }
-  48% {
-    left: 90%;
+  46% {
+    left: 92%;
     transform: translateX(-50%) scaleX(1);
   }
-  52% {
-    left: 90%;
+  50% {
+    left: 92%;
+    transform: translateX(-50%) scaleX(-1);
+  }
+  96% {
+    left: 8%;
     transform: translateX(-50%) scaleX(-1);
   }
   100% {
-    left: 10%;
-    transform: translateX(-50%) scaleX(-1);
+    left: 8%;
+    transform: translateX(-50%) scaleX(1);
   }
 }
 
 @keyframes duck-cave-bob {
-  0%, 100% { bottom: 9%; }
-  50% { bottom: 10.4%; }
+  0%, 100% { bottom: 8%; }
+  50% { bottom: 9.4%; }
 }
 
 @media (max-width: 900px) {
-  .duck-cave-scene {
-    min-height: 22rem;
-  }
-
   .duck-cave-card {
     width: clamp(3.8rem, 14vw, 5rem);
     max-width: 21vw;

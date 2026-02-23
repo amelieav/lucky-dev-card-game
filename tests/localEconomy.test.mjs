@@ -24,11 +24,11 @@ function user(id) {
   }
 }
 
-test('local runtime capabilities mark advanced server features unsupported', () => {
+test('local runtime capabilities mirror production feature surfaces', () => {
   const caps = getLocalRuntimeCapabilities()
-  assert.equal(caps.supports_rebirth, false)
-  assert.equal(caps.supports_lifetime_collection, false)
-  assert.equal(caps.supports_season_history, false)
+  assert.equal(caps.supports_rebirth, true)
+  assert.equal(caps.supports_lifetime_collection, true)
+  assert.equal(caps.supports_season_history, true)
   assert.equal(caps.economy_version, 'local-dev-fallback')
   assert.deepEqual(caps.config, {})
 })
