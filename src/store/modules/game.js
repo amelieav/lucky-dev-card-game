@@ -205,6 +205,7 @@ export default {
   state: () => ({
     loading: false,
     actionLoading: false,
+    openPackLoading: false,
     error: null,
     snapshot: null,
     lastSyncMs: 0,
@@ -254,6 +255,9 @@ export default {
     },
     setActionLoading(state, value) {
       state.actionLoading = value
+    },
+    setOpenPackLoading(state, value) {
+      state.openPackLoading = value
     },
     setError(state, message) {
       state.error = message || null
@@ -307,6 +311,7 @@ export default {
     clear(state) {
       state.loading = false
       state.actionLoading = false
+      state.openPackLoading = false
       state.error = null
       state.snapshot = null
       state.lastSyncMs = 0
@@ -438,7 +443,7 @@ export default {
     },
 
     async openPack({ commit, rootState }, { source = 'manual', debugOverride = null, pauseAutoProgress = false } = {}) {
-      commit('setActionLoading', true)
+      commit('setOpenPackLoading', true)
       commit('setError', null)
 
       try {
@@ -459,7 +464,7 @@ export default {
       } catch (error) {
         commit('setError', error.message || 'Unable to open pack.')
       } finally {
-        commit('setActionLoading', false)
+        commit('setOpenPackLoading', false)
       }
     },
 

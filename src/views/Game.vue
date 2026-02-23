@@ -467,6 +467,8 @@ const stolenTermKeys = computed(() => {
 })
 const gameError = computed(() => store.state.game.error)
 const actionLoading = computed(() => store.state.game.actionLoading)
+const openPackLoading = computed(() => Boolean(store.state.game.openPackLoading))
+const packActionBusy = computed(() => actionLoading.value || openPackLoading.value)
 const recentDraws = computed(() => displayedRecentDraws.value)
 const legendarySparkleActive = ref(false)
 const liveNowMs = ref(Date.now())
@@ -773,29 +775,29 @@ const canRunAutoRoll = computed(() => {
   return autoUnlocked.value
     && autoRollEnabled.value
     && !!playerState.value
-    && !actionLoading.value
+    && !packActionBusy.value
     && manualPackPhase.value === 'ready'
 })
 const canOpenManual = computed(() => {
   return (!autoUnlocked.value || !autoRollEnabled.value)
     && !!playerState.value
-    && !actionLoading.value
+    && !packActionBusy.value
     && manualPackPhase.value === 'ready'
 })
 const manualOpenTitle = computed(() => {
   if (!playerState.value) return 'Reconnecting...'
-  if (actionLoading.value) return 'Syncing...'
+  if (packActionBusy.value) return 'Syncing...'
   return autoUnlocked.value ? 'Tap to open manually' : 'Tap to open'
 })
 const manualOpenHint = computed(() => {
   if (!playerState.value) return 'Re-establishing session and player state'
-  if (actionLoading.value) return 'Please wait for the current action to finish'
+  if (packActionBusy.value) return 'Please wait for the current action to finish'
   return autoUnlocked.value ? 'Resume auto anytime from the button above' : 'Tier is decided by probability'
 })
 
 async function recoverGameIfStale({ force = false } = {}) {
   if (!viewActive) return
-  if (store.state.game.actionLoading || store.state.game.loading || store.state.auth.loading) return
+  if (store.state.game.actionLoading || store.state.game.openPackLoading || store.state.game.loading || store.state.auth.loading) return
   if (recoveryInFlight) return
 
   const now = Date.now()
@@ -889,7 +891,7 @@ onMounted(async () => {
 
   if (LOCAL_ECONOMY_ENABLED) {
     syncTimer = window.setInterval(async () => {
-      if (!store.state.game.actionLoading && !autoUnlocked.value) {
+      if (!store.state.game.actionLoading && !store.state.game.openPackLoading && !autoUnlocked.value) {
         await store.dispatch('game/syncPlayer')
       }
     }, 1000)
@@ -1051,7 +1053,9 @@ async function runAutoRollCycle() {
   if (!hasFreshDraw) {
     manualPackPhase.value = 'ready'
     if (autoUnlocked.value && autoRollEnabled.value) {
-      scheduleAutoRoll(120)
+      const message = String(store.state.game.error || '')
+      const retryDelayMs = /timed out/i.test(message) ? 1200 : 120
+      scheduleAutoRoll(retryDelayMs)
     }
     return
   }
