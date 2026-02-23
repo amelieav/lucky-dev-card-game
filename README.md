@@ -92,6 +92,8 @@ VITE_LOCAL_ECONOMY=1
 In this mode:
 - Economy runs from browser local storage per signed-in user
 - Leaderboard is local-only
+- Runtime is best-effort for development only (server RPC remains authoritative)
+- Advanced server features are intentionally disabled (`rebirth`, `lifetime collection`, `season history`)
 - You can quickly tune balance files without server RPC round-trips
 - Season timer can be shortened with `VITE_SEASON_DURATION_MS=60000` for minute-level reset testing
 

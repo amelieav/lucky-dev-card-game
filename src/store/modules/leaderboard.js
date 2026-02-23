@@ -260,6 +260,11 @@ export default {
       commit('setHistoryError', null)
 
       try {
+        if (!rootState.game?.capabilities?.supports_season_history) {
+          commit('setSeasonHistory', [])
+          return
+        }
+
         let rows
         if (LOCAL_ECONOMY_ENABLED) {
           const user = rootState.auth.user

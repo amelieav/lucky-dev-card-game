@@ -3985,3 +3985,45 @@ grant execute on function public.get_lifetime_collection() to authenticated;
 grant execute on function public.get_season_history(int) to authenticated;
 grant execute on function public.submit_name_report(text, text) to authenticated;
 grant execute on function public.get_leaderboard(int) to authenticated;
+
+create or replace function public.get_runtime_capabilities()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'supports_rebirth', true,
+    'supports_lifetime_collection', true,
+    'supports_season_history', true,
+    'economy_version', 'server-v2',
+    'config', jsonb_build_object(
+      'tier_unlock_required_packs', jsonb_build_object(
+        '1', public.tier_unlock_required_packs(1),
+        '2', public.tier_unlock_required_packs(2),
+        '3', public.tier_unlock_required_packs(3),
+        '4', public.tier_unlock_required_packs(4),
+        '5', public.tier_unlock_required_packs(5),
+        '6', public.tier_unlock_required_packs(6)
+      ),
+      'tier_unlock_required_boost', jsonb_build_object(
+        '1', public.tier_unlock_required_boost(1),
+        '2', public.tier_unlock_required_boost(2),
+        '3', public.tier_unlock_required_boost(3),
+        '4', public.tier_unlock_required_boost(4),
+        '5', public.tier_unlock_required_boost(5),
+        '6', public.tier_unlock_required_boost(6)
+      ),
+      'upgrade_caps', jsonb_build_object(
+        'auto_unlock', public.upgrade_cap('auto_unlock'),
+        'auto_speed', public.upgrade_cap('auto_speed'),
+        'tier_boost', public.upgrade_cap('tier_boost'),
+        'mutation_upgrade', public.upgrade_cap('mutation_upgrade'),
+        'value_upgrade', public.upgrade_cap('value_upgrade')
+      )
+    )
+  );
+$$;
+
+grant execute on function public.get_runtime_capabilities() to authenticated;

@@ -1,5 +1,10 @@
 <template>
   <section class="card p-5 space-y-5">
+    <div v-if="!supportsLifetimeCollection" class="rounded-xl border border-soft bg-panel-soft p-4 text-sm text-muted">
+      Lifetime Collection is unavailable in the current runtime mode.
+    </div>
+
+    <template v-else>
     <div class="flex items-center justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold">Lifetime Collection</h1>
@@ -91,6 +96,7 @@
         </div>
       </div>
     </section>
+    </template>
   </section>
 </template>
 
@@ -113,6 +119,7 @@ const lifetimePayload = ref({
 })
 
 const snapshot = computed(() => store.state.game.snapshot || null)
+const supportsLifetimeCollection = computed(() => Boolean(store.state.game.capabilities?.supports_lifetime_collection))
 const stateRow = computed(() => snapshot.value?.state || null)
 const currentTerms = computed(() => Array.isArray(snapshot.value?.terms) ? snapshot.value.terms : [])
 const totalCards = TERMS.length
@@ -200,6 +207,9 @@ onMounted(async () => {
   await store.dispatch('auth/initAuth')
   if (!store.state.game.snapshot) {
     await store.dispatch('game/bootstrapPlayer')
+  }
+  if (!supportsLifetimeCollection.value) {
+    return
   }
   await refreshLifetime()
 })

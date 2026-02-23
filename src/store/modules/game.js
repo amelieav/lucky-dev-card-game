@@ -3,6 +3,7 @@ import {
   buyMissingCardGift as apiBuyMissingCardGift,
   buyUpgrade as apiBuyUpgrade,
   debugApply as apiDebugApply,
+  fetchRuntimeCapabilities as apiFetchRuntimeCapabilities,
   fetchLifetimeCollection as apiFetchLifetimeCollection,
   rebirthPlayer as apiRebirthPlayer,
   keepAlive as apiKeepAlive,
@@ -16,6 +17,7 @@ import {
   buyLocalMissingCardGift,
   buyLocalUpgrade,
   debugApplyLocal,
+  getLocalRuntimeCapabilities,
   getLocalLifetimeCollection,
   keepAliveLocalPlayer,
   rebirthLocalPlayer,
@@ -38,6 +40,32 @@ const DUCK_MUTATION_RANK = {
   none: 1,
   foil: 2,
   holo: 3,
+}
+
+function defaultCapabilities() {
+  if (LOCAL_ECONOMY_ENABLED) {
+    return getLocalRuntimeCapabilities()
+  }
+
+  return {
+    supports_rebirth: true,
+    supports_lifetime_collection: true,
+    supports_season_history: true,
+    economy_version: 'legacy-server',
+    config: {},
+  }
+}
+
+function normalizeCapabilities(value) {
+  const base = defaultCapabilities()
+  const raw = value && typeof value === 'object' ? value : {}
+  return {
+    supports_rebirth: raw.supports_rebirth == null ? base.supports_rebirth : Boolean(raw.supports_rebirth),
+    supports_lifetime_collection: raw.supports_lifetime_collection == null ? base.supports_lifetime_collection : Boolean(raw.supports_lifetime_collection),
+    supports_season_history: raw.supports_season_history == null ? base.supports_season_history : Boolean(raw.supports_season_history),
+    economy_version: String(raw.economy_version || base.economy_version || 'unknown'),
+    config: raw.config && typeof raw.config === 'object' ? raw.config : (base.config || {}),
+  }
 }
 
 function normalizeSnapshot(data) {
@@ -165,6 +193,7 @@ export default {
     duckTheftStats: defaultDuckTheftStats(),
     debugAllowed: false,
     economyMode: LOCAL_ECONOMY_ENABLED ? 'local' : 'server',
+    capabilities: defaultCapabilities(),
   }),
   getters: {
     playerState(state) {
@@ -194,6 +223,9 @@ export default {
     },
     duckTheftStats(state) {
       return normalizeDuckTheftStats(state.duckTheftStats)
+    },
+    capabilities(state) {
+      return normalizeCapabilities(state.capabilities)
     },
   },
   mutations: {
@@ -248,6 +280,9 @@ export default {
       state.lastSyncMs = Date.now()
       state.debugAllowed = !!snapshot?.meta?.debug_allowed
     },
+    setCapabilities(state, payload) {
+      state.capabilities = normalizeCapabilities(payload)
+    },
     clear(state) {
       state.loading = false
       state.actionLoading = false
@@ -258,9 +293,21 @@ export default {
       state.recentDraws = []
       state.duckTheftStats = defaultDuckTheftStats()
       state.debugAllowed = false
+      state.capabilities = defaultCapabilities()
     },
   },
   actions: {
+    async fetchRuntimeCapabilities({ commit }) {
+      try {
+        const capabilities = LOCAL_ECONOMY_ENABLED
+          ? getLocalRuntimeCapabilities()
+          : await apiFetchRuntimeCapabilities()
+        commit('setCapabilities', capabilities)
+      } catch (_) {
+        commit('setCapabilities', defaultCapabilities())
+      }
+    },
+
     hydrateDuckTheftStats({ commit, rootState, state }) {
       const userId = rootState.auth.user?.id
       const seasonId = state.snapshot?.season?.id
@@ -278,6 +325,14 @@ export default {
       commit('setError', null)
 
       try {
+        if (!LOCAL_ECONOMY_ENABLED) {
+          await apiFetchRuntimeCapabilities()
+            .then((caps) => commit('setCapabilities', caps))
+            .catch(() => commit('setCapabilities', defaultCapabilities()))
+        } else {
+          commit('setCapabilities', getLocalRuntimeCapabilities())
+        }
+
         const user = rootState.auth.user
         const data = LOCAL_ECONOMY_ENABLED
           ? bootstrapLocalPlayer(user, { debugAllowed: rootState.debug.enabled })
@@ -432,6 +487,12 @@ export default {
     },
 
     async rebirth({ commit, rootState }) {
+      if (!rootState.game?.capabilities?.supports_rebirth) {
+        const err = new Error('Rebirth is only available on server-backed runtime.')
+        commit('setError', err.message)
+        throw err
+      }
+
       commit('setActionLoading', true)
       commit('setError', null)
 
@@ -459,6 +520,15 @@ export default {
         return {
           total_unique: 0,
           per_layer: [],
+        }
+      }
+
+      if (!rootState.game?.capabilities?.supports_lifetime_collection) {
+        return {
+          total_unique: 0,
+          per_layer: [],
+          cards: [],
+          highest_per_layer: [],
         }
       }
 

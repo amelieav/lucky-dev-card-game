@@ -42,6 +42,15 @@ const MUTATION_RANK = {
   holo: 3,
 }
 
+// Local economy is a development fallback and not the authoritative runtime.
+const LOCAL_RUNTIME_CAPABILITIES = Object.freeze({
+  supports_rebirth: false,
+  supports_lifetime_collection: false,
+  supports_season_history: false,
+  economy_version: 'local-dev-fallback',
+  config: {},
+})
+
 const TERMS_BY_TIER = TERMS.reduce((acc, term) => {
   if (!acc[term.tier]) acc[term.tier] = []
   acc[term.tier].push(term)
@@ -1136,6 +1145,10 @@ export function bootstrapLocalPlayer(user, { debugAllowed = false, rng = Math.ra
   writeRecord(user, record)
 
   return toSnapshot(record, debugAllowed, nowMs)
+}
+
+export function getLocalRuntimeCapabilities() {
+  return { ...LOCAL_RUNTIME_CAPABILITIES }
 }
 
 export function syncLocalPlayer(user, { debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {}) {

@@ -77,7 +77,7 @@
       <span class="font-semibold text-main">{{ duckHighestCardLabel }}</span>
     </p>
 
-    <section class="mt-6 rounded-xl border border-soft bg-panel-soft p-4">
+    <section v-if="supportsSeasonHistory" class="mt-6 rounded-xl border border-soft bg-panel-soft p-4">
       <div class="mb-3 flex items-center justify-between">
         <h2 class="text-base font-semibold">Season History</h2>
         <p class="text-xs text-muted">All completed seasons</p>
@@ -175,6 +175,7 @@ const reportSuccessMessage = ref('')
 const reportErrorMessage = ref('')
 
 const rows = computed(() => store.state.leaderboard.rows)
+const supportsSeasonHistory = computed(() => Boolean(store.state.game.capabilities?.supports_season_history))
 const loading = computed(() => store.state.leaderboard.loading)
 const error = computed(() => store.state.leaderboard.error)
 const historyLoading = computed(() => store.state.leaderboard.historyLoading)
@@ -219,7 +220,9 @@ const totalPlayers = computed(() => {
 onMounted(async () => {
   await store.dispatch('game/hydrateDuckTheftStats')
   await refreshLeaderboard(true)
-  await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
+  if (supportsSeasonHistory.value) {
+    await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
+  }
   startAutoRefresh()
 })
 

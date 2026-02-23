@@ -14,7 +14,7 @@
       <nav v-if="isAuthed" class="flex items-center gap-4 text-sm">
         <router-link class="nav-link" to="/game">Game</router-link>
         <router-link class="nav-link" to="/leaderboard">Leaderboard</router-link>
-        <router-link class="nav-link" to="/lifetime">Lifetime Collection</router-link>
+        <router-link v-if="supportsLifetimeCollection" class="nav-link" to="/lifetime">Lifetime Collection</router-link>
         <router-link class="nav-link" to="/profile">Profile</router-link>
       </nav>
 
@@ -69,6 +69,7 @@ const KEEP_ALIVE_MS = 5_000
 
 const isAuthed = computed(() => !!store.state.auth.user)
 const userEmail = computed(() => store.state.auth.user?.email || '')
+const supportsLifetimeCollection = computed(() => Boolean(store.state.game.capabilities?.supports_lifetime_collection))
 const duckCardsStolen = computed(() => Math.max(0, Number(store.state.game.duckTheftStats?.count || 0)))
 const duckInfoOpen = ref(false)
 const duckInfoPinned = ref(false)

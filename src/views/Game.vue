@@ -217,7 +217,7 @@
         <p class="text-xs text-muted">Spend coins to improve auto opening, odds, and value.</p>
       </div>
 
-      <article class="mb-4 rounded-xl border border-soft bg-panel-soft p-4 rebirth-shop-panel">
+      <article v-if="supportsRebirth" class="mb-4 rounded-xl border border-soft bg-panel-soft p-4 rebirth-shop-panel">
         <div class="rebirth-shop-panel__inner">
           <div>
             <p class="text-xs uppercase tracking-wide text-muted">Rebirth</p>
@@ -457,6 +457,7 @@ const chickRaid = ref({
 })
 
 const snapshot = computed(() => store.state.game.snapshot)
+const capabilities = computed(() => store.state.game.capabilities || {})
 const playerState = computed(() => snapshot.value?.state || null)
 const playerTerms = computed(() => snapshot.value?.terms || [])
 const seasonInfo = computed(() => snapshot.value?.season || null)
@@ -473,6 +474,7 @@ const leaderboardRows = computed(() => store.state.leaderboard.rows || [])
 const leaderboardLoading = computed(() => Boolean(store.state.leaderboard.loading))
 const currentUserId = computed(() => store.state.auth.user?.id || null)
 const rebirthCount = computed(() => Number(playerState.value?.rebirth_count || 0))
+const supportsRebirth = computed(() => Boolean(capabilities.value?.supports_rebirth))
 const activeLayer = computed(() => normalizeLayer(playerState.value?.active_layer || 1))
 const activePackLabel = computed(() => (activeLayer.value > 1 ? 'Booster Pack' : 'Base Pack'))
 
@@ -1089,6 +1091,7 @@ async function buyMissingCardGift() {
 }
 
 async function rebirthPlayer() {
+  if (!supportsRebirth.value) return
   if (!rebirthReady.value || actionLoading.value) return
   await store.dispatch('game/rebirth')
   await store.dispatch('leaderboard/fetch', { force: true, limit: 100 })

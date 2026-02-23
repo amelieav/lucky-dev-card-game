@@ -84,6 +84,14 @@ router.beforeEach(async (to) => {
   }
 
   if (
+    to.name === 'LifetimeCollection'
+    && isAuthenticated
+    && !store.state.game.capabilities?.supports_lifetime_collection
+  ) {
+    return { name: 'Game' }
+  }
+
+  if (
     isAuthenticated
     && requiresProfileNameSetup()
     && to.name !== 'Profile'

@@ -5,6 +5,7 @@ import {
   buyLocalMissingCardGift,
   buyLocalUpgrade,
   debugApplyLocal,
+  getLocalRuntimeCapabilities,
   getLocalLifetimeCollection,
   getLocalSeasonHistory,
   keepAliveLocalPlayer,
@@ -22,6 +23,15 @@ function user(id) {
     email: `${id}@example.com`,
   }
 }
+
+test('local runtime capabilities mark advanced server features unsupported', () => {
+  const caps = getLocalRuntimeCapabilities()
+  assert.equal(caps.supports_rebirth, false)
+  assert.equal(caps.supports_lifetime_collection, false)
+  assert.equal(caps.supports_season_history, false)
+  assert.equal(caps.economy_version, 'local-dev-fallback')
+  assert.deepEqual(caps.config, {})
+})
 
 test('bootstrap creates a local snapshot with pack defaults', () => {
   const snapshot = bootstrapLocalPlayer(user('pack-bootstrap'), { nowMs: 1_000 })

@@ -42,6 +42,27 @@ export async function bootstrapPlayer() {
   return unwrap(await withRpcTimeout(supabase.rpc('bootstrap_player'), 'bootstrap_player'))
 }
 
+export async function fetchRuntimeCapabilities() {
+  const primary = await withRpcTimeout(supabase.rpc('get_runtime_capabilities'), 'get_runtime_capabilities')
+
+  if (!primary.error) {
+    return primary.data
+  }
+
+  if (!isMissingRpcError(primary.error, 'get_runtime_capabilities')) {
+    throw primary.error
+  }
+
+  // Legacy backends may not expose capabilities yet.
+  return {
+    supports_rebirth: true,
+    supports_lifetime_collection: true,
+    supports_season_history: true,
+    economy_version: 'legacy-server',
+    config: {},
+  }
+}
+
 export async function keepAlive() {
   const primary = await withRpcTimeout(supabase.rpc('keep_alive'), 'keep_alive')
 
