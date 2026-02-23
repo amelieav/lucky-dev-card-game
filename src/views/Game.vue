@@ -134,8 +134,8 @@
           <template v-if="manualPackPhase === 'ready'">
             <div class="manual-pack__card" aria-hidden="true"></div>
             <p class="manual-pack__eyebrow">{{ autoUnlocked ? 'Auto roll paused' : 'Card pack ready' }}</p>
-            <p class="manual-pack__title">{{ autoUnlocked ? 'Tap to open manually' : 'Tap to open' }}</p>
-            <p class="manual-pack__hint">{{ autoUnlocked ? 'Resume auto anytime from the button above' : 'Tier is decided by probability' }}</p>
+            <p class="manual-pack__title">{{ manualOpenTitle }}</p>
+            <p class="manual-pack__hint">{{ manualOpenHint }}</p>
           </template>
 
           <template v-else-if="manualPackPhase === 'opening'">
@@ -776,6 +776,38 @@ const canOpenManual = computed(() => {
     && !actionLoading.value
     && manualPackPhase.value === 'ready'
 })
+const manualOpenTitle = computed(() => {
+  if (!playerState.value) return 'Reconnecting...'
+  if (actionLoading.value) return 'Syncing...'
+  return autoUnlocked.value ? 'Tap to open manually' : 'Tap to open'
+})
+const manualOpenHint = computed(() => {
+  if (!playerState.value) return 'Re-establishing session and player state'
+  if (actionLoading.value) return 'Please wait for the current action to finish'
+  return autoUnlocked.value ? 'Resume auto anytime from the button above' : 'Tier is decided by probability'
+})
+
+async function recoverGameIfStale() {
+  if (!viewActive) return
+  if (store.state.game.actionLoading || store.state.game.loading || store.state.auth.loading) return
+
+  await store.dispatch('auth/initAuth')
+  if (!viewActive) return
+  if (!store.state.auth.user) return
+
+  if (!store.state.game.snapshot) {
+    await store.dispatch('game/bootstrapPlayer')
+  }
+}
+
+function handleWindowFocus() {
+  void recoverGameIfStale()
+}
+
+function handleVisibilityChange() {
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+  void recoverGameIfStale()
+}
 
 onMounted(async () => {
   viewActive = true
@@ -794,6 +826,12 @@ onMounted(async () => {
   lastMouseActivityMs.value = Date.now()
   resetChickInactivityTarget()
   bindActivityListeners()
+  if (typeof window !== 'undefined') {
+    window.addEventListener('focus', handleWindowFocus)
+  }
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+  }
 
   metricsTickTimer = window.setInterval(() => {
     liveNowMs.value = Date.now()
@@ -833,6 +871,12 @@ onMounted(async () => {
 onUnmounted(() => {
   viewActive = false
   unbindActivityListeners()
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('focus', handleWindowFocus)
+  }
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
   if (autoRollTimer) {
     window.clearTimeout(autoRollTimer)
     autoRollTimer = null

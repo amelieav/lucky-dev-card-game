@@ -1,5 +1,26 @@
 import { supabase } from '../lib/supabase'
 
+const RPC_TIMEOUT_MS = 15000
+
+async function withRpcTimeout(promise, actionLabel = 'request') {
+  let timeoutId = null
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeoutId = globalThis.setTimeout(() => {
+          reject(new Error(`${actionLabel} timed out after ${RPC_TIMEOUT_MS / 1000}s. Please try again.`))
+        }, RPC_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timeoutId != null) {
+      globalThis.clearTimeout(timeoutId)
+    }
+  }
+}
+
 function unwrap(result) {
   if (result.error) {
     throw result.error
@@ -18,11 +39,11 @@ function isMissingRpcError(error, functionName) {
 }
 
 export async function bootstrapPlayer() {
-  return unwrap(await supabase.rpc('bootstrap_player'))
+  return unwrap(await withRpcTimeout(supabase.rpc('bootstrap_player'), 'bootstrap_player'))
 }
 
 export async function keepAlive() {
-  const primary = await supabase.rpc('keep_alive')
+  const primary = await withRpcTimeout(supabase.rpc('keep_alive'), 'keep_alive')
 
   if (!primary.error) {
     return primary.data
@@ -36,10 +57,10 @@ export async function keepAlive() {
 }
 
 export async function openPack({ source = 'manual', debugOverride = null } = {}) {
-  const primary = await supabase.rpc('open_pack', {
+  const primary = await withRpcTimeout(supabase.rpc('open_pack', {
     p_source: source,
     p_debug_override: debugOverride,
-  })
+  }), 'open_pack')
 
   if (!primary.error) {
     return primary.data
@@ -50,10 +71,10 @@ export async function openPack({ source = 'manual', debugOverride = null } = {})
   }
 
   const fallbackTier = Number(debugOverride?.tier || 1)
-  return unwrap(await supabase.rpc('open_egg', {
+  return unwrap(await withRpcTimeout(supabase.rpc('open_egg', {
     p_egg_tier: Math.max(1, Math.min(6, fallbackTier)),
     p_debug_override: debugOverride,
-  }))
+  }), 'open_egg'))
 }
 
 export async function loseCard(termKey) {
@@ -62,9 +83,9 @@ export async function loseCard(termKey) {
     throw new Error('Missing term key')
   }
 
-  const primary = await supabase.rpc('lose_card', {
+  const primary = await withRpcTimeout(supabase.rpc('lose_card', {
     p_term_key: normalized,
-  })
+  }), 'lose_card')
 
   if (!primary.error) {
     return primary.data
@@ -78,9 +99,9 @@ export async function loseCard(termKey) {
 }
 
 export async function buyUpgrade({ upgradeKey } = {}) {
-  const primary = await supabase.rpc('buy_upgrade', {
+  const primary = await withRpcTimeout(supabase.rpc('buy_upgrade', {
     p_upgrade_key: upgradeKey,
-  })
+  }), 'buy_upgrade')
 
   if (!primary.error) {
     return primary.data
@@ -91,14 +112,14 @@ export async function buyUpgrade({ upgradeKey } = {}) {
   }
 
   if (upgradeKey === 'luck_engine' || upgradeKey === 'value_upgrade') {
-    return unwrap(await supabase.rpc('upgrade_luck'))
+    return unwrap(await withRpcTimeout(supabase.rpc('upgrade_luck'), 'upgrade_luck'))
   }
 
   throw new Error('buy_upgrade RPC is not available on this backend yet')
 }
 
 export async function buyMissingCardGift() {
-  const primary = await supabase.rpc('buy_missing_card_gift')
+  const primary = await withRpcTimeout(supabase.rpc('buy_missing_card_gift'), 'buy_missing_card_gift')
 
   if (!primary.error) {
     return primary.data
@@ -130,20 +151,20 @@ export async function upgradeLuck() {
 }
 
 export async function updateNickname(parts) {
-  return unwrap(await supabase.rpc('update_nickname', {
+  return unwrap(await withRpcTimeout(supabase.rpc('update_nickname', {
     p_display_name: parts.displayName,
-  }))
+  }), 'update_nickname'))
 }
 
 export async function submitNameReport({ reportedName, details = '' } = {}) {
-  return unwrap(await supabase.rpc('submit_name_report', {
+  return unwrap(await withRpcTimeout(supabase.rpc('submit_name_report', {
     p_reported_name: reportedName,
     p_notes: details,
-  }))
+  }), 'submit_name_report'))
 }
 
 export async function resetAccount() {
-  const primary = await supabase.rpc('reset_account')
+  const primary = await withRpcTimeout(supabase.rpc('reset_account'), 'reset_account')
 
   if (!primary.error) {
     return primary.data
@@ -153,33 +174,33 @@ export async function resetAccount() {
     throw primary.error
   }
 
-  return unwrap(await supabase.rpc('debug_apply_action', {
+  return unwrap(await withRpcTimeout(supabase.rpc('debug_apply_action', {
     p_action: { type: 'reset_account' },
-  }))
+  }), 'debug_apply_action'))
 }
 
 export async function fetchLeaderboard(limit = 50) {
-  return unwrap(await supabase.rpc('get_leaderboard', {
+  return unwrap(await withRpcTimeout(supabase.rpc('get_leaderboard', {
     p_limit: limit,
-  }))
+  }), 'get_leaderboard'))
 }
 
 export async function rebirthPlayer() {
-  return unwrap(await supabase.rpc('rebirth_player'))
+  return unwrap(await withRpcTimeout(supabase.rpc('rebirth_player'), 'rebirth_player'))
 }
 
 export async function fetchLifetimeCollection() {
-  return unwrap(await supabase.rpc('get_lifetime_collection'))
+  return unwrap(await withRpcTimeout(supabase.rpc('get_lifetime_collection'), 'get_lifetime_collection'))
 }
 
 export async function fetchSeasonHistory(limit = 200) {
-  return unwrap(await supabase.rpc('get_season_history', {
+  return unwrap(await withRpcTimeout(supabase.rpc('get_season_history', {
     p_limit: limit,
-  }))
+  }), 'get_season_history'))
 }
 
 export async function debugApply(action) {
-  return unwrap(await supabase.rpc('debug_apply_action', {
+  return unwrap(await withRpcTimeout(supabase.rpc('debug_apply_action', {
     p_action: action,
-  }))
+  }), 'debug_apply_action'))
 }
