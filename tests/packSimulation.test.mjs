@@ -43,12 +43,15 @@ function pickTerm(tier, rarity, rng) {
   return TERMS[Math.floor(rng() * TERMS.length)]
 }
 
-function runTierSampling({ tierBoostLevel, draws, seed }) {
+function runTierSampling({ tierBoostLevel, packsOpened = 5_000, draws, seed }) {
   const rng = createSeededRng(seed)
   const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
 
   for (let i = 0; i < draws; i += 1) {
-    const tier = Number(pickFromWeightedMap(getEffectiveTierWeights({ tier_boost_level: tierBoostLevel }), rng) || 1)
+    const tier = Number(pickFromWeightedMap(getEffectiveTierWeights({
+      tier_boost_level: tierBoostLevel,
+      packs_opened: packsOpened,
+    }), rng) || 1)
     counts[tier] += 1
   }
 
@@ -71,11 +74,24 @@ test('drawn pack tier always yields a card from the same tier', () => {
   const rng = createSeededRng(777)
 
   for (let i = 0; i < 4_000; i += 1) {
-    const tier = Number(pickFromWeightedMap(getEffectiveTierWeights({ tier_boost_level: 20 }), rng) || 1)
+    const tier = Number(pickFromWeightedMap(getEffectiveTierWeights({
+      tier_boost_level: 20,
+      packs_opened: 5_000,
+    }), rng) || 1)
     const rarity = pickFromWeightedMap(getRarityWeightsForTier(tier, 8), rng) || 'common'
     const _mutation = pickFromWeightedMap(getMutationWeights(8), rng) || 'none'
     const term = pickTerm(tier, rarity, rng)
 
     assert.equal(term.tier, tier, `Expected tier ${tier} card, got tier ${term.tier}`)
   }
+})
+
+test('tier odds remain locked until both packs and boost thresholds are met', () => {
+  const levelOneWithoutPacks = getEffectiveTierWeights({ tier_boost_level: 1, packs_opened: 0 })
+  assert.equal(levelOneWithoutPacks[1], 100)
+  assert.equal(levelOneWithoutPacks[2], 0)
+
+  const levelOneWithUnlockPacks = getEffectiveTierWeights({ tier_boost_level: 1, packs_opened: 40 })
+  assert.ok(levelOneWithUnlockPacks[2] > 0)
+  assert.ok(levelOneWithUnlockPacks[1] < 100)
 })

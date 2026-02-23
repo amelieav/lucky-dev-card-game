@@ -100,7 +100,7 @@
           <tbody>
             <tr v-for="row in seasonHistory" :key="`season-history-${row.season_id}`" class="border-t border-soft">
               <td class="px-2 py-2">{{ row.season_id }}</td>
-              <td class="px-2 py-2">{{ row.rank }}/{{ row.total_players }}</td>
+              <td class="px-2 py-2">{{ seasonRankLabel(row) }}</td>
               <td class="px-2 py-2">{{ seasonPodiumLabel(row) }}</td>
               <td class="px-2 py-2">
                 <span v-if="row.best_term_key">
@@ -347,6 +347,15 @@ function seasonPodiumLabel(row) {
   const secondScore = Number(row?.second_place_score || 0)
   const thirdScore = Number(row?.third_place_score || 0)
   return `1st ${firstName} (${formatNumber(firstScore)}) · 2nd ${secondName} (${formatNumber(secondScore)}) · 3rd ${thirdName} (${formatNumber(thirdScore)})`
+}
+
+function seasonRankLabel(row) {
+  const rank = row?.rank == null ? null : Number(row.rank)
+  const totalPlayers = Math.max(0, Number(row?.total_players || 0))
+  if (rank == null || !Number.isFinite(rank) || rank <= 0) {
+    return totalPlayers > 0 ? `Unranked/${totalPlayers}` : 'Unranked'
+  }
+  return totalPlayers > 0 ? `${rank}/${totalPlayers}` : `${rank}`
 }
 
 function toOrdinal(value) {

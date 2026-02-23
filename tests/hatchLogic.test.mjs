@@ -27,7 +27,8 @@ function assertApproxHundred(value) {
 test('highest available tier follows non-zero pack odds', () => {
   assert.equal(getHighestUnlockedTier({ packs_opened: 0, tier_boost_level: 0 }), 1)
   assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 1 }), 2)
-  assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 10 }), 5)
+  assert.equal(getHighestUnlockedTier({ packs_opened: 50, tier_boost_level: 10 }), 2)
+  assert.equal(getHighestUnlockedTier({ packs_opened: 1_100, tier_boost_level: 10 }), 5)
   assert.equal(getHighestUnlockedTier({ packs_opened: 1900, tier_boost_level: 13 }), 6)
 })
 
@@ -37,12 +38,12 @@ test('effective tier weights sum to 100 and shift with tier boost', () => {
   assert.equal(start[1], 100)
   assert.equal(start[2], 0)
 
-  const mid = getEffectiveTierWeights({ packs_opened: 0, tier_boost_level: 10 })
+  const mid = getEffectiveTierWeights({ packs_opened: 5_000, tier_boost_level: 10 })
   assertApproxHundred(sum(Object.values(mid)))
   assert.ok(mid[5] > 0)
   assert.ok(mid[1] < start[1])
 
-  const late = getEffectiveTierWeights({ packs_opened: 0, tier_boost_level: 20 })
+  const late = getEffectiveTierWeights({ packs_opened: 5_000, tier_boost_level: 20 })
   assertApproxHundred(sum(Object.values(late)))
   assert.ok(late[6] > mid[6])
 })

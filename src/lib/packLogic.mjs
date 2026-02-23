@@ -11,6 +11,22 @@ export const MUTATION_RANK = {
   holo: 2,
 }
 export const PACK_NAMES_BY_TIER = BALANCE_CONFIG.packTierNames
+const TIER_UNLOCK_REQUIRED_PACKS = {
+  1: 0,
+  2: 40,
+  3: 200,
+  4: 550,
+  5: 1100,
+  6: 1900,
+}
+const TIER_UNLOCK_REQUIRED_BOOST = {
+  1: 0,
+  2: 1,
+  3: 4,
+  4: 7,
+  5: 10,
+  6: 13,
+}
 
 export function normalizeLayer(layer = 1) {
   return Math.max(1, Math.min(MAX_LAYERS, Number(layer || 1)))
@@ -143,20 +159,63 @@ function rarityWeightsEqual(a, b) {
 }
 
 export function getHighestUnlockedTier(stateLike) {
-  const weights = getEffectiveTierWeights(stateLike)
-  const available = TIERS.filter((tier) => Number(weights?.[tier] || 0) > 0)
-  const highestBaseTier = available.length ? available[available.length - 1] : 1
+  const highestBaseTier = getMaxUnlockedBaseTier({
+    packs_opened: stateLike?.packs_opened,
+    eggs_opened: stateLike?.eggs_opened,
+    tier_boost_level: stateLike?.tier_boost_level,
+  })
   return getEffectiveTierForLayer(highestBaseTier, normalizeLayer(stateLike?.active_layer || 1))
+}
+
+function getMaxUnlockedBaseTier(stateLike) {
+  const packsOpenedRaw = stateLike?.packs_opened
+  const legacyPacksRaw = stateLike?.eggs_opened
+  const packsOpened = Math.max(0, Number(packsOpenedRaw == null ? legacyPacksRaw || 0 : packsOpenedRaw))
+  const tierBoostLevel = Math.max(0, Number(stateLike?.tier_boost_level || 0))
+
+  for (let tier = 6; tier >= 1; tier -= 1) {
+    const requiredPacks = Math.max(0, Number(TIER_UNLOCK_REQUIRED_PACKS[tier] || 0))
+    const requiredBoost = Math.max(0, Number(TIER_UNLOCK_REQUIRED_BOOST[tier] || 0))
+    if (packsOpened >= requiredPacks && tierBoostLevel >= requiredBoost) {
+      return tier
+    }
+  }
+
+  return 1
 }
 
 export function getEffectiveTierWeights(stateLike) {
   const base = getBaseTierWeightsForBoostLevel(stateLike?.tier_boost_level || 0)
   const full = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
+
   for (const [tier, weight] of Object.entries(base)) {
     full[Number(tier)] = weight
   }
 
-  return normalizeWeightMap(full)
+  const highestUnlockedTier = getMaxUnlockedBaseTier(stateLike || {})
+  const unlockedTotal = TIERS
+    .filter((tier) => tier <= highestUnlockedTier)
+    .reduce((sum, tier) => sum + Number(full[tier] || 0), 0)
+
+  if (unlockedTotal <= 0) {
+    const fallback = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
+    fallback[highestUnlockedTier] = 100
+    return normalizeWeightMap(fallback)
+  }
+
+  const lockedTotal = 100 - unlockedTotal
+  const effective = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 }
+  for (const tier of TIERS) {
+    if (tier > highestUnlockedTier) {
+      effective[tier] = 0
+      continue
+    }
+
+    const baseWeight = Number(full[tier] || 0)
+    effective[tier] = baseWeight + (lockedTotal * (baseWeight / unlockedTotal))
+  }
+
+  return normalizeWeightMap(effective)
 }
 
 export function getNextTierOddsChangeLevel(currentTierBoostLevel) {

@@ -175,26 +175,35 @@ function normalizeRows(rows) {
 }
 
 function normalizeSeasonHistoryRows(rows) {
-  return (Array.isArray(rows) ? rows : []).map((row) => ({
-    season_id: row?.season_id || null,
-    starts_at: row?.starts_at || null,
-    ends_at: row?.ends_at || null,
-    rank: Math.max(1, Number(row?.rank || 1)),
-    total_players: Math.max(1, Number(row?.total_players || 1)),
-    score: Number(row?.score || 0),
-    best_term_key: row?.best_term_key || null,
-    best_term_name: row?.best_term_name || null,
-    best_term_tier: Math.max(0, Number(row?.best_term_tier || 0)),
-    best_term_rarity: normalizeRarity(row?.best_term_rarity),
-    best_term_mutation: normalizeMutation(row?.best_term_mutation),
-    best_term_copies: Math.max(0, Number(row?.best_term_copies || 0)),
-    first_place_name: row?.first_place_name || null,
-    first_place_score: Math.max(0, Number(row?.first_place_score || 0)),
-    second_place_name: row?.second_place_name || null,
-    second_place_score: Math.max(0, Number(row?.second_place_score || 0)),
-    third_place_name: row?.third_place_name || null,
-    third_place_score: Math.max(0, Number(row?.third_place_score || 0)),
-  }))
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const rawRank = row?.rank == null ? null : Number(row.rank)
+    const rawTotalPlayers = row?.total_players == null ? null : Number(row.total_players)
+    const normalizedRank = Number.isFinite(rawRank) && rawRank > 0 ? Math.floor(rawRank) : null
+    const normalizedTotalPlayers = Number.isFinite(rawTotalPlayers) && rawTotalPlayers > 0
+      ? Math.floor(rawTotalPlayers)
+      : 0
+
+    return {
+      season_id: row?.season_id || null,
+      starts_at: row?.starts_at || null,
+      ends_at: row?.ends_at || null,
+      rank: normalizedRank,
+      total_players: normalizedTotalPlayers,
+      score: Math.max(0, Number(row?.score || 0)),
+      best_term_key: row?.best_term_key || null,
+      best_term_name: row?.best_term_name || null,
+      best_term_tier: Math.max(0, Number(row?.best_term_tier || 0)),
+      best_term_rarity: normalizeRarity(row?.best_term_rarity),
+      best_term_mutation: normalizeMutation(row?.best_term_mutation),
+      best_term_copies: Math.max(0, Number(row?.best_term_copies || 0)),
+      first_place_name: row?.first_place_name || null,
+      first_place_score: Math.max(0, Number(row?.first_place_score || 0)),
+      second_place_name: row?.second_place_name || null,
+      second_place_score: Math.max(0, Number(row?.second_place_score || 0)),
+      third_place_name: row?.third_place_name || null,
+      third_place_score: Math.max(0, Number(row?.third_place_score || 0)),
+    }
+  })
 }
 
 export default {

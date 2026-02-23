@@ -2158,7 +2158,7 @@ best_card as (
     pt.term_key as best_term_key,
     tc.display_name as best_term_name,
     (tc.tier + ((least(2, greatest(1, coalesce(ps.active_layer, 1))) - 1) * 6)) as best_term_tier,
-    tc.rarity as best_term_rarity,
+    lower(coalesce(tc.rarity, 'common')) as best_term_rarity,
     public.mutation_rank(pt.best_mutation) as best_mutation_rank,
     pt.best_mutation as best_term_mutation,
     pt.copies as best_term_copies,
@@ -2166,7 +2166,7 @@ best_card as (
       partition by pt.user_id
       order by
         (tc.tier + ((least(2, greatest(1, coalesce(ps.active_layer, 1))) - 1) * 6)) desc,
-        case tc.rarity
+        case lower(coalesce(tc.rarity, 'common'))
           when 'legendary' then 3
           when 'rare' then 2
           else 1
@@ -2183,7 +2183,7 @@ select
   row_number() over (
     order by
       coalesce(bc.best_term_tier, 0) desc,
-      case coalesce(bc.best_term_rarity, 'common')
+      case lower(coalesce(bc.best_term_rarity, 'common'))
         when 'legendary' then 3
         when 'rare' then 2
         else 1
@@ -3793,11 +3793,19 @@ begin
   perform public.ensure_player_initialized(uid);
 
   return query
-  with viewer_history as (
+  with completed_seasons as (
     select
       h.season_id,
-      h.starts_at,
-      h.ends_at,
+      max(h.starts_at) as starts_at,
+      max(h.ends_at) as ends_at
+    from public.player_season_history h
+    where h.ends_at < now()
+    group by h.season_id
+    order by max(h.ends_at) desc
+    limit greatest(1, least(coalesce(p_limit, 200), 500))
+  ), viewer_history as (
+    select
+      h.season_id,
       h.rank,
       h.total_players,
       h.score,
@@ -3809,8 +3817,14 @@ begin
       h.best_term_copies
     from public.player_season_history h
     where h.user_id = uid
-    order by h.ends_at desc
-    limit greatest(1, least(coalesce(p_limit, 200), 500))
+      and h.season_id in (select cs.season_id from completed_seasons cs)
+  ), season_totals as (
+    select
+      h.season_id,
+      max(h.total_players)::int as total_players
+    from public.player_season_history h
+    where h.season_id in (select cs.season_id from completed_seasons cs)
+    group by h.season_id
   ), podium as (
     select
       h.season_id,
@@ -3822,16 +3836,16 @@ begin
       max(case when h.rank = 3 then h.score end)::bigint as third_place_score
     from public.player_season_history h
     left join public.player_profile pp on pp.user_id = h.user_id
-    where h.season_id in (select vh.season_id from viewer_history vh)
+    where h.season_id in (select cs.season_id from completed_seasons cs)
     group by h.season_id
   )
   select
-    vh.season_id,
-    vh.starts_at,
-    vh.ends_at,
+    cs.season_id,
+    cs.starts_at,
+    cs.ends_at,
     vh.rank,
-    vh.total_players,
-    vh.score,
+    coalesce(vh.total_players, st.total_players, 0)::int as total_players,
+    coalesce(vh.score, 0)::bigint as score,
     vh.best_term_key,
     vh.best_term_name,
     vh.best_term_tier,
@@ -3844,9 +3858,11 @@ begin
     coalesce(p.second_place_score, 0)::bigint as second_place_score,
     p.third_place_name,
     coalesce(p.third_place_score, 0)::bigint as third_place_score
-  from viewer_history vh
-  left join podium p on p.season_id = vh.season_id
-  order by vh.ends_at desc;
+  from completed_seasons cs
+  left join viewer_history vh on vh.season_id = cs.season_id
+  left join season_totals st on st.season_id = cs.season_id
+  left join podium p on p.season_id = cs.season_id
+  order by cs.ends_at desc;
 end;
 $$;
 

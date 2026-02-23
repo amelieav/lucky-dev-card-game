@@ -821,12 +821,35 @@ async function recoverGameIfStale({ force = false } = {}) {
   }
 }
 
+function ensureDuckRaidVisible() {
+  if (!chickRaid.value.active) return
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+
+  const stage = String(chickRaid.value.stage || '')
+  if (!['spawn', 'approach', 'drag', 'escaped', 'scared', 'flee'].includes(stage)) return
+
+  const rawX = Number(chickRaid.value.x || 50)
+  const rawY = Number(chickRaid.value.y || 50)
+  const nextX = Math.max(8, Math.min(92, Number.isFinite(rawX) ? rawX : 50))
+  const nextY = Math.max(8, Math.min(92, Number.isFinite(rawY) ? rawY : 50))
+
+  if (Math.abs(nextX - rawX) < 0.01 && Math.abs(nextY - rawY) < 0.01) return
+
+  updateChickRaid({
+    x: nextX,
+    y: nextY,
+    transitionMs: 160,
+  })
+}
+
 function handleWindowFocus() {
+  ensureDuckRaidVisible()
   void recoverGameIfStale({ force: true })
 }
 
 function handleVisibilityChange() {
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+  ensureDuckRaidVisible()
   void recoverGameIfStale({ force: true })
 }
 
@@ -1308,6 +1331,7 @@ async function completeChickTheft(targetCard) {
   if (!chickRaid.value.active) return
 
   clearChickRaidTimers()
+  let theftApplied = false
   try {
     await store.dispatch('game/loseCard', { termKey: targetCard.termKey })
     await store.dispatch('game/recordDuckTheft', {
@@ -1318,8 +1342,15 @@ async function completeChickTheft(targetCard) {
       rarity: normalizeRarity(targetCard.rarity),
       mutation: normalizeMutation(targetCard.bestMutation),
     })
+    theftApplied = true
   } catch (_) {
     // Ignore: UI already surfaces an error via game store.
+  }
+
+  if (theftApplied && viewActive && currentUserId.value) {
+    void store.dispatch('leaderboard/fetch', { force: true, limit: 100 }).catch(() => {
+      // Ignore transient fetch errors; leaderboard store handles its own error state.
+    })
   }
 
   updateChickRaid({
