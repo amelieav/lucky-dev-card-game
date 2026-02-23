@@ -9,6 +9,7 @@ import { getEffectiveTierForLayer, normalizeLayer } from '../../lib/packLogic.mj
 
 const CACHE_TTL_MS = 5 * 60 * 1000
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
+const LEADERBOARD_RETRY_DELAY_MS = 350
 const RARITY_RANK = {
   common: 1,
   rare: 2,
@@ -18,6 +19,30 @@ const MUTATION_RANK = {
   none: 1,
   foil: 2,
   holo: 3,
+}
+
+function isTransientTimeoutError(error) {
+  const message = String(error?.message || '').toLowerCase()
+  return message.includes('timed out') || message.includes('timeout')
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, Math.max(0, Number(ms || 0)))
+  })
+}
+
+async function fetchLeaderboardWithRetry(limit) {
+  try {
+    return await fetchLeaderboard(limit)
+  } catch (error) {
+    if (!isTransientTimeoutError(error)) {
+      throw error
+    }
+
+    await wait(LEADERBOARD_RETRY_DELAY_MS)
+    return fetchLeaderboard(limit)
+  }
 }
 
 function normalizeRarity(rarity) {
@@ -244,11 +269,17 @@ export default {
           const localRow = buildLocalBestCardRow(snapshot)
           rows = localRow ? [localRow] : []
         } else {
-          rows = await fetchLeaderboard(limit)
+          rows = await fetchLeaderboardWithRetry(limit)
         }
 
         commit('setRows', normalizeRows(rows))
       } catch (error) {
+        if (isTransientTimeoutError(error) && state.rows.length > 0) {
+          // Keep stale but valid rows and avoid flashing a transient fetch error.
+          commit('setError', null)
+          return
+        }
+
         commit('setError', error.message || 'Unable to load leaderboard.')
       } finally {
         commit('setLoading', false)
