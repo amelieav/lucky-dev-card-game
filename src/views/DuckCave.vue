@@ -21,7 +21,7 @@
     <template v-else>
       <div class="grid gap-3 sm:grid-cols-3">
         <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm">
-          <p class="text-xs text-muted">Cards currently stolen (all players)</p>
+          <p class="text-xs text-muted">Total cards stolen this season (all players)</p>
           <p class="font-semibold">{{ formatNumber(duckTheftCount) }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm sm:col-span-2">
