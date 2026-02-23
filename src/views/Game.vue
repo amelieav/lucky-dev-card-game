@@ -430,6 +430,7 @@ let chickMonitorTimer = null
 let chickFailTimer = null
 let chickPhaseTimer = null
 let duckFrameTimer = null
+let chickRaidSessionId = 0
 let recoveryInFlight = false
 let lastRecoveryAtMs = 0
 const cardBookItemRefs = new Map()
@@ -1183,6 +1184,7 @@ function getDuckActorViewportPoint() {
 }
 
 function resetChickRaid() {
+  chickRaidSessionId += 1
   clearChickRaidTimers()
   lastMouseActivityMs.value = Date.now()
   resetChickInactivityTarget()
@@ -1261,6 +1263,8 @@ async function maybeStartChickRaid() {
 async function launchChickRaid(targetCard, targetChoice = { source: 'completed', tier: Number(targetCard?.tier || 1) }) {
   if (!targetCard || chickRaid.value.active) return
 
+  const raidSessionId = chickRaidSessionId + 1
+  chickRaidSessionId = raidSessionId
   lastChickRaidMs.value = Date.now()
   updateChickRaid({
     active: true,
@@ -1275,7 +1279,7 @@ async function launchChickRaid(targetCard, targetChoice = { source: 'completed',
 
   await nextTick()
   await scrollToTargetCard(targetCard.termKey)
-  if (!chickRaid.value.active) return
+  if (!chickRaid.value.active || raidSessionId !== chickRaidSessionId) return
 
   const targetEl = cardBookItemRefs.get(targetCard.termKey)
   const targetPoint = getElementViewportPoint(targetEl) || { x: 55, y: 76 }
@@ -1292,7 +1296,7 @@ async function launchChickRaid(targetCard, targetChoice = { source: 'completed',
     transitionMs: 140,
   })
   await sleep(100)
-  if (!chickRaid.value.active) return
+  if (!chickRaid.value.active || raidSessionId !== chickRaidSessionId) return
 
   updateChickRaid({
     stage: 'approach',
@@ -1302,7 +1306,7 @@ async function launchChickRaid(targetCard, targetChoice = { source: 'completed',
     transitionMs: CHICK_APPROACH_MS,
   })
   await sleep(CHICK_APPROACH_MS)
-  if (!chickRaid.value.active) return
+  if (!chickRaid.value.active || raidSessionId !== chickRaidSessionId) return
 
   updateChickRaid({
     stage: 'drag',
@@ -1312,7 +1316,7 @@ async function launchChickRaid(targetCard, targetChoice = { source: 'completed',
     transitionMs: 120,
   })
   await sleep(30)
-  if (!chickRaid.value.active) return
+  if (!chickRaid.value.active || raidSessionId !== chickRaidSessionId) return
 
   updateChickRaid({
     stage: 'drag',
@@ -1323,12 +1327,14 @@ async function launchChickRaid(targetCard, targetChoice = { source: 'completed',
   })
 
   chickFailTimer = window.setTimeout(() => {
-    void completeChickTheft(targetCard)
+    void completeChickTheft(targetCard, raidSessionId)
   }, CHICK_DRAG_MS + 40)
 }
 
-async function completeChickTheft(targetCard) {
+async function completeChickTheft(targetCard, raidSessionId = chickRaidSessionId) {
   if (!chickRaid.value.active) return
+  if (raidSessionId !== chickRaidSessionId) return
+  if (chickRaid.value.stage !== 'drag') return
 
   clearChickRaidTimers()
   let theftApplied = false
@@ -1345,6 +1351,12 @@ async function completeChickTheft(targetCard) {
     theftApplied = true
   } catch (_) {
     // Ignore: UI already surfaces an error via game store.
+  }
+
+  if (raidSessionId !== chickRaidSessionId || !chickRaid.value.active) return
+  if (!theftApplied) {
+    resetChickRaid()
+    return
   }
 
   if (theftApplied && viewActive && currentUserId.value) {
@@ -1369,6 +1381,8 @@ async function completeChickTheft(targetCard) {
 function scareDuck() {
   if (!chickRaid.value.active) return
 
+  chickRaidSessionId += 1
+  const scareSessionId = chickRaidSessionId
   clearChickRaidTimers()
   const actorPoint = getDuckActorViewportPoint()
   const holdX = Number(actorPoint?.x ?? chickRaid.value.x ?? 50)
@@ -1382,6 +1396,7 @@ function scareDuck() {
   })
 
   chickPhaseTimer = window.setTimeout(() => {
+    if (scareSessionId !== chickRaidSessionId || !chickRaid.value.active) return
     updateChickRaid({
       stage: 'flee',
       message: 'Duck is waddling away.',
@@ -1390,6 +1405,7 @@ function scareDuck() {
       transitionMs: CHICK_FLEE_MS,
     })
     chickPhaseTimer = window.setTimeout(() => {
+      if (scareSessionId !== chickRaidSessionId || !chickRaid.value.active) return
       resetChickRaid()
     }, CHICK_FLEE_MS + 80)
   }, CHICK_SCARED_MS)

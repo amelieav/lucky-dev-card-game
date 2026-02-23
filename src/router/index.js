@@ -5,6 +5,7 @@ import AuthCallback from '../views/AuthCallback.vue'
 import Game from '../views/Game.vue'
 import Leaderboard from '../views/Leaderboard.vue'
 import LifetimeCollection from '../views/LifetimeCollection.vue'
+import DuckCave from '../views/DuckCave.vue'
 import Profile from '../views/Profile.vue'
 import NotFound from '../views/NotFound.vue'
 import { hasAuthParamsInUrl } from '../lib/auth'
@@ -48,6 +49,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/duck-cave',
+    name: 'DuckCave',
+    component: DuckCave,
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: Profile,
@@ -87,6 +94,15 @@ router.beforeEach(async (to) => {
     to.name === 'LifetimeCollection'
     && isAuthenticated
     && !store.state.game.capabilities?.supports_lifetime_collection
+  ) {
+    return { name: 'Game' }
+  }
+
+  if (
+    to.name === 'DuckCave'
+    && isAuthenticated
+    && store.state.game.snapshot
+    && Math.max(0, Number(store.state.game.snapshot?.state?.rebirth_count || 0)) < 2
   ) {
     return { name: 'Game' }
   }

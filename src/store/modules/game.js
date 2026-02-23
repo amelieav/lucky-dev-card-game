@@ -31,6 +31,7 @@ import {
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 const RECENT_DRAWS_LIMIT = 5
 const DUCK_THEFT_STORAGE_PREFIX = 'lucky_agent_duck_theft_v1'
+const DUCK_THEFT_ENTRIES_LIMIT = 180
 const DUCK_RARITY_RANK = {
   common: 1,
   rare: 2,
@@ -88,6 +89,7 @@ function defaultDuckTheftStats() {
   return {
     count: 0,
     highest: null,
+    entries: [],
   }
 }
 
@@ -126,15 +128,27 @@ function isDuckTheftEntryStronger(candidate, incumbent) {
 function normalizeDuckTheftEntry(entry) {
   if (!entry || typeof entry !== 'object') return null
   const value = Math.max(0, Number(entry.value || 0))
+  const termKey = entry.termKey || null
+  const at = entry.at || new Date().toISOString()
+  const id = String(entry.id || `${termKey || 'unknown'}:${at}:${Math.max(0, Number(entry.tier || 0))}:${value}`)
   return {
-    termKey: entry.termKey || null,
+    id,
+    termKey,
     name: entry.name || 'Unknown Card',
     value,
     tier: Math.max(0, Number(entry.tier || 0)),
     rarity: normalizeDuckTheftRarity(entry.rarity),
     mutation: normalizeDuckTheftMutation(entry.mutation || entry.effect),
-    at: entry.at || new Date().toISOString(),
+    at,
   }
+}
+
+function normalizeDuckTheftEntries(entries) {
+  return (Array.isArray(entries) ? entries : [])
+    .map((entry) => normalizeDuckTheftEntry(entry))
+    .filter(Boolean)
+    .sort((a, b) => parseDuckTheftTimestamp(b) - parseDuckTheftTimestamp(a))
+    .slice(0, DUCK_THEFT_ENTRIES_LIMIT)
 }
 
 function normalizeDuckTheftStats(stats) {
@@ -142,7 +156,13 @@ function normalizeDuckTheftStats(stats) {
   if (!stats || typeof stats !== 'object') return safe
 
   safe.count = Math.max(0, Number(stats.count || 0))
+  safe.entries = normalizeDuckTheftEntries(stats.entries)
   safe.highest = normalizeDuckTheftEntry(stats.highest)
+  if (!safe.highest && safe.entries.length > 0) {
+    safe.highest = safe.entries.reduce((best, candidate) => (
+      isDuckTheftEntryStronger(candidate, best) ? candidate : best
+    ), null)
+  }
   return safe
 }
 
@@ -267,6 +287,7 @@ export default {
       const next = {
         count: current.count + 1,
         highest: current.highest,
+        entries: [nextEntry, ...current.entries].slice(0, DUCK_THEFT_ENTRIES_LIMIT),
       }
 
       if (isDuckTheftEntryStronger(nextEntry, current.highest)) {

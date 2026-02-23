@@ -15,6 +15,7 @@
         <router-link class="nav-link" to="/game">Game</router-link>
         <router-link class="nav-link" to="/leaderboard">Leaderboard</router-link>
         <router-link v-if="supportsLifetimeCollection" class="nav-link" to="/lifetime">Lifetime Collection</router-link>
+        <router-link v-if="duckCaveUnlocked" class="nav-link" to="/duck-cave">Duck Cave</router-link>
         <router-link class="nav-link" to="/profile">Profile</router-link>
       </nav>
 
@@ -70,6 +71,7 @@ const KEEP_ALIVE_MS = 5_000
 const isAuthed = computed(() => !!store.state.auth.user)
 const userEmail = computed(() => store.state.auth.user?.email || '')
 const supportsLifetimeCollection = computed(() => Boolean(store.state.game.capabilities?.supports_lifetime_collection))
+const duckCaveUnlocked = computed(() => Math.max(0, Number(store.state.game.snapshot?.state?.rebirth_count || 0)) >= 2)
 const duckCardsStolen = computed(() => Math.max(0, Number(store.state.game.duckTheftStats?.count || 0)))
 const duckInfoOpen = ref(false)
 const duckInfoPinned = ref(false)
