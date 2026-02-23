@@ -356,6 +356,15 @@ function formatNumber(value) {
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28));
 }
 
+.duck-cave-card :deep(.term-card) {
+  --term-card-mutation-size: clamp(0.34rem, 0.62vw, 0.44rem);
+  --term-card-icon-size: clamp(0.74rem, 1.1vw, 0.9rem);
+  --term-card-name-size: clamp(0.5rem, 0.7vw, 0.62rem);
+  --term-card-rarity-size: clamp(0.34rem, 0.5vw, 0.4rem);
+  --term-card-coins-value-size: clamp(0.46rem, 0.62vw, 0.58rem);
+  --term-card-coins-label-size: clamp(0.3rem, 0.42vw, 0.36rem);
+}
+
 .duck-cave-duck {
   position: absolute;
   width: clamp(7rem, 15vw, 10.2rem);

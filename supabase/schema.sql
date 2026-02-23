@@ -4106,30 +4106,33 @@ as $$
     where singleton = true
   )
   select
-    pte.user_id,
+    pst.user_id,
     coalesce(pp.display_name, 'Unknown Player') as display_name,
-    pte.term_key,
+    pst.term_key,
     tc.display_name as term_name,
     tc.tier,
     tc.rarity,
-    public.normalize_mutation(pte.mutation) as mutation,
+    public.normalize_mutation(coalesce(plt.best_mutation, 'none')) as mutation,
     public.card_reward(
       tc.term_key,
       tc.rarity,
-      public.normalize_mutation(pte.mutation),
+      public.normalize_mutation(coalesce(plt.best_mutation, 'none')),
       0
     )::bigint as value,
-    pte.stolen_at,
-    pte.layer,
+    pst.stolen_at,
+    pst.layer,
     runtime.season_id
-  from public.player_duck_theft_events pte
+  from public.player_stolen_terms pst
   join public.term_catalog tc
-    on tc.term_key = pte.term_key
+    on tc.term_key = pst.term_key
+  left join public.player_lifetime_terms plt
+    on plt.user_id = pst.user_id
+   and plt.layer = pst.layer
+   and plt.term_key = pst.term_key
   left join public.player_profile pp
-    on pp.user_id = pte.user_id
+    on pp.user_id = pst.user_id
   cross join runtime
-  where pte.season_id = runtime.season_id
-  order by pte.stolen_at desc, pte.id desc;
+  order by pst.stolen_at desc, pst.user_id asc, pst.term_key asc;
 $$;
 
 grant execute on function public.get_runtime_capabilities() to authenticated;
