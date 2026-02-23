@@ -273,7 +273,7 @@ export default {
       writeDuckTheftStats(rootState.auth.user?.id, seasonId, state.duckTheftStats)
     },
 
-    async bootstrapPlayer({ commit, rootState }) {
+    async bootstrapPlayer({ commit, rootState, state }) {
       commit('setLoading', true)
       commit('setError', null)
 
@@ -286,7 +286,13 @@ export default {
         commit('applySnapshot', snapshot)
         commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
-        commit('setError', error.message || 'Unable to load player state.')
+        const message = error?.message || 'Unable to load player state.'
+        const isTimeout = /timed out/i.test(message)
+
+        // Avoid flashing transient timeout errors during auto-recovery flows.
+        if (!(isTimeout && state.snapshot)) {
+          commit('setError', message)
+        }
       } finally {
         commit('setLoading', false)
       }
