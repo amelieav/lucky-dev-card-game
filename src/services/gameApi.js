@@ -232,6 +232,17 @@ export async function fetchDuckCaveStash() {
     throw primary.error
   }
 
+  const fallback = await withRpcTimeout(supabase.rpc('get_duck_cave_stash', {
+    p_limit: 5000,
+  }), 'get_duck_cave_stash')
+  if (!fallback.error) {
+    return fallback.data || []
+  }
+
+  if (!isMissingRpcError(fallback.error, 'get_duck_cave_stash')) {
+    throw fallback.error
+  }
+
   return []
 }
 
