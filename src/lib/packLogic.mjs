@@ -66,7 +66,7 @@ export const SHOP_UPGRADES = [
     description: 'Shift rarity odds away from common into rare and legendary.',
   },
 ]
-export const MISSING_CARD_GIFT_COST = 50000
+export const MISSING_CARD_GIFT_COST = 25000
 
 const LEGACY_UPGRADE_KEY_MAP = {
   luck_engine: 'value_upgrade',

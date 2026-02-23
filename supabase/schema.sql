@@ -3478,7 +3478,7 @@ declare
   chosen_term_name text;
   chosen_tier int;
   chosen_rarity text;
-  gift_cost bigint := 50000;
+  gift_cost bigint := 25000;
 begin
   uid := auth.uid();
   if uid is null then

@@ -208,10 +208,10 @@ test('shop upgrade purchase spends coins and increments level', () => {
   assert.ok(result.snapshot.state.coins < 5_000)
 })
 
-test('missing card gift spends 50,000 coins and grants a missing card', () => {
+test('missing card gift spends 25,000 coins and grants a missing card', () => {
   const account = user('pack-missing-gift')
   bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
-  debugApplyLocal(account, { type: 'set_coins', amount: 60_000 }, { debugAllowed: true, nowMs: 0 })
+  debugApplyLocal(account, { type: 'set_coins', amount: 35_000 }, { debugAllowed: true, nowMs: 0 })
 
   const result = buyLocalMissingCardGift(account, {
     debugAllowed: true,

@@ -1,8 +1,9 @@
 import { supabase } from '../lib/supabase'
 
 const RPC_TIMEOUT_MS = 15000
+const OPEN_PACK_TIMEOUT_MS = 6000
 
-async function withRpcTimeout(promise, actionLabel = 'request') {
+async function withRpcTimeout(promise, actionLabel = 'request', timeoutMs = RPC_TIMEOUT_MS) {
   let timeoutId = null
 
   try {
@@ -10,8 +11,8 @@ async function withRpcTimeout(promise, actionLabel = 'request') {
       promise,
       new Promise((_, reject) => {
         timeoutId = globalThis.setTimeout(() => {
-          reject(new Error(`${actionLabel} timed out after ${RPC_TIMEOUT_MS / 1000}s. Please try again.`))
-        }, RPC_TIMEOUT_MS)
+          reject(new Error(`${actionLabel} timed out after ${timeoutMs / 1000}s. Please try again.`))
+        }, timeoutMs)
       }),
     ])
   } finally {
@@ -81,7 +82,7 @@ export async function openPack({ source = 'manual', debugOverride = null } = {})
   const primary = await withRpcTimeout(supabase.rpc('open_pack', {
     p_source: source,
     p_debug_override: debugOverride,
-  }), 'open_pack')
+  }), 'open_pack', OPEN_PACK_TIMEOUT_MS)
 
   if (!primary.error) {
     return primary.data
@@ -95,7 +96,7 @@ export async function openPack({ source = 'manual', debugOverride = null } = {})
   return unwrap(await withRpcTimeout(supabase.rpc('open_egg', {
     p_egg_tier: Math.max(1, Math.min(6, fallbackTier)),
     p_debug_override: debugOverride,
-  }), 'open_egg'))
+  }), 'open_egg', OPEN_PACK_TIMEOUT_MS))
 }
 
 export async function loseCard(termKey) {
