@@ -419,6 +419,8 @@ const CHICK_ESCAPE_MS = 7000
 const CHICK_FLEE_MS = 5000
 const CHICK_SCARED_MS = 2000
 const CHICK_ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'wheel']
+const AUTO_LOOP_RETRY_MS = 180
+const AUTO_LOOP_TIMEOUT_RETRY_MS = 1200
 
 let autoRollTimer = null
 let syncTimer = null
@@ -816,7 +818,7 @@ async function recoverGameIfStale({ force = false } = {}) {
     if (!viewActive) return
 
     if (autoUnlocked.value && autoRollEnabled.value && manualPackPhase.value === 'ready') {
-      scheduleAutoRoll(120)
+      scheduleAutoRoll(0)
     }
   } finally {
     lastRecoveryAtMs = Date.now()
@@ -886,7 +888,7 @@ onMounted(async () => {
   }, LEADERBOARD_REFRESH_MS)
 
   if (autoUnlocked.value && autoRollEnabled.value) {
-    scheduleAutoRoll(120)
+    scheduleAutoRoll(0)
   }
 
   if (LOCAL_ECONOMY_ENABLED) {
@@ -968,14 +970,14 @@ watch(autoUnlocked, (enabled) => {
   }
 
   if (manualPackPhase.value === 'ready' && autoRollEnabled.value) {
-    scheduleAutoRoll(120)
+    scheduleAutoRoll(0)
   }
 })
 
 watch(autoLoopDelayMs, () => {
   if (!autoUnlocked.value || !autoRollEnabled.value) return
   if (manualPackPhase.value === 'ready') {
-    scheduleAutoRoll(120)
+    scheduleAutoRoll(0)
   }
 })
 
@@ -989,7 +991,7 @@ watch(autoRollEnabled, (enabled) => {
   }
 
   if (autoUnlocked.value && manualPackPhase.value === 'ready') {
-    scheduleAutoRoll(120)
+    scheduleAutoRoll(0)
   }
 })
 
@@ -997,7 +999,7 @@ watch(duckStealMaxTierCoverage, () => {
   resetChickInactivityTarget()
 })
 
-function scheduleAutoRoll(delayMs = 120) {
+function scheduleAutoRoll(delayMs = 0) {
   if (!viewActive) return
 
   if (autoRollTimer) {
@@ -1015,7 +1017,7 @@ async function runAutoRollTick() {
   if (!viewActive) return
 
   if (!canRunAutoRoll.value) {
-    scheduleAutoRoll(180)
+    scheduleAutoRoll(AUTO_LOOP_RETRY_MS)
     return
   }
 
@@ -1023,9 +1025,8 @@ async function runAutoRollTick() {
     await runAutoRollCycle()
   } catch (_) {
     manualPackPhase.value = 'ready'
-  } finally {
     if (viewActive && autoUnlocked.value && autoRollEnabled.value) {
-      scheduleAutoRoll(80)
+      scheduleAutoRoll(AUTO_LOOP_RETRY_MS)
     }
   }
 }
@@ -1054,7 +1055,7 @@ async function runAutoRollCycle() {
     manualPackPhase.value = 'ready'
     if (autoUnlocked.value && autoRollEnabled.value) {
       const message = String(store.state.game.error || '')
-      const retryDelayMs = /timed out/i.test(message) ? 1200 : 120
+      const retryDelayMs = /timed out/i.test(message) ? AUTO_LOOP_TIMEOUT_RETRY_MS : 0
       scheduleAutoRoll(retryDelayMs)
     }
     return
@@ -1070,7 +1071,7 @@ async function runAutoRollCycle() {
   manualPackPhase.value = 'ready'
   appendRecentDraw(draw)
   if (autoUnlocked.value && autoRollEnabled.value) {
-    scheduleAutoRoll(120)
+    scheduleAutoRoll(0)
   }
 }
 
@@ -1091,7 +1092,7 @@ async function openManualPack() {
   if (!hasFreshDraw) {
     manualPackPhase.value = 'ready'
     if (autoUnlocked.value && autoRollEnabled.value) {
-      scheduleAutoRoll(120)
+      scheduleAutoRoll(0)
     }
     return
   }
@@ -1105,7 +1106,7 @@ async function openManualPack() {
   manualPackPhase.value = 'ready'
   appendRecentDraw(draw)
   if (autoUnlocked.value && autoRollEnabled.value) {
-    scheduleAutoRoll(120)
+    scheduleAutoRoll(0)
   }
 }
 

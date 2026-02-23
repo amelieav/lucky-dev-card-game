@@ -61,9 +61,9 @@ export const BALANCE_CONFIG = {
   },
   mutationShift: {
     cap: 25,
-    none: -0.296,
+    none: -0.376,
     foil: 0.24,
-    holo: 0.056,
+    holo: 0.136,
   },
   mutationPassiveIncomePerSecond: {
     foil: 1,
@@ -102,7 +102,7 @@ export const BALANCE_CONFIG = {
   upgradeCostCurves: {
     auto_speed: { base: 120, growth: 1.45 },
     tier_boost: { base: 25, growth: 1.42 },
-    mutation_upgrade: { base: 35, growth: 1.38 },
+    mutation_upgrade: { base: 32, growth: 1.38 },
     value_upgrade: { base: 40, growth: 1.4 },
   },
 }

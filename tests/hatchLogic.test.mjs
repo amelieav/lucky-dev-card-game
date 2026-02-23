@@ -92,7 +92,7 @@ test('mutation weights stay normalized and improve with mutation level', () => {
   assert.ok(upgraded.holo > base.holo)
   assert.ok(upgraded.foil > base.foil)
   assert.ok(Math.abs(upgraded.foil - 10) < 0.0005, `Expected foil cap at 10%, got ${upgraded.foil}`)
-  assert.ok(Math.abs(upgraded.holo - 2) < 0.0005, `Expected holo cap at 2%, got ${upgraded.holo}`)
+  assert.ok(Math.abs(upgraded.holo - 4) < 0.0005, `Expected holo cap at 4%, got ${upgraded.holo}`)
 })
 
 test('reward formula combines rarity and card tier value', () => {

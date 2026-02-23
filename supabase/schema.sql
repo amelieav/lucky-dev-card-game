@@ -938,10 +938,10 @@ declare
 begin
   m := least(25, greatest(0, coalesce(p_mutation_level, 0)));
 
-  -- Base odds are lower and scale to a max of Foil 10% / Holo 2% at cap level.
-  none_w := greatest(0, 95.4 - (0.296 * m));
+  -- Base odds are lower and scale to a max of Foil 10% / Holo 4% at cap level.
+  none_w := greatest(0, 95.4 - (0.376 * m));
   foil_w := greatest(0, 4 + (0.24 * m));
-  holo_w := greatest(0, 0.6 + (0.056 * m));
+  holo_w := greatest(0, 0.6 + (0.136 * m));
 
   sum_total := none_w + foil_w + holo_w;
   if sum_total <= 0 then
@@ -1037,10 +1037,10 @@ as $$
     when 'auto_unlock' then case when p_auto_unlocked then null else 225::bigint end
     when 'auto_speed' then floor(120 * power(1.45, greatest(0, coalesce(p_level, 0))))::bigint
     when 'tier_boost' then floor(25 * power(1.42, greatest(0, coalesce(p_level, 0))))::bigint
-    when 'mutation_upgrade' then floor(35 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'mutation_upgrade' then floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
     when 'value_upgrade' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
     when 'luck_engine' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
-    when 'mutation_lab' then floor(35 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'mutation_lab' then floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
     when 'value_engine' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
     else null
   end;
