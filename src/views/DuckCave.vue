@@ -53,6 +53,7 @@
             :tier="entry.baseTier"
             :rarity="entry.rarity"
             :mutation="entry.mutation"
+            :animate-mutation="entry.animateMutation"
             :icon="entry.icon"
             :coins="entry.value"
           />
@@ -82,6 +83,8 @@ const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
 const DUCK_CAVE_COLUMNS = 11
 const DUCK_CAVE_CARD_ROW_REM = 3.85
 const DUCK_CAVE_CARD_START_REM = 4.1
+const DUCK_CAVE_ALWAYS_ANIMATED_COUNT = 12
+const DUCK_CAVE_ANIMATED_SAMPLE_PERCENT = 5
 const DUCK_CAVE_FRAMES = {
   walk: [duckAsset('walk1.png'), duckAsset('walk2.png'), duckAsset('walk3.png'), duckAsset('walk4.png')],
   cry: [duckAsset('cry1.png'), duckAsset('cry2.png')],
@@ -184,11 +187,31 @@ const duckCaveSceneStyle = computed(() => {
   }
 })
 
+const animatedEntryIds = computed(() => {
+  const newestFirst = stolenEntries.value
+  const ids = new Set()
+
+  newestFirst.forEach((entry, index) => {
+    if (index < DUCK_CAVE_ALWAYS_ANIMATED_COUNT) {
+      ids.add(entry.id)
+      return
+    }
+
+    const sampleHash = hashString(`duck-cave-animate:${entry.id}`) % 100
+    if (sampleHash < DUCK_CAVE_ANIMATED_SAMPLE_PERCENT) {
+      ids.add(entry.id)
+    }
+  })
+
+  return ids
+})
+
 const laidOutEntries = computed(() => {
   return stackedEntries.value.map((entry, index) => {
     const layout = layoutForEntry(entry, index, stackedEntries.value.length)
     return {
       ...entry,
+      animateMutation: animatedEntryIds.value.has(entry.id),
       style: {
         left: `${layout.left}%`,
         top: `${layout.top}`,

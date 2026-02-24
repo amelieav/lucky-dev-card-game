@@ -5,6 +5,7 @@
       `term-card--tier-${safeTier}`,
       `term-card--mutation-${safeMutation}`,
       `term-card--size-${safeSize}`,
+      { 'term-card--mutation-static': !animateMutation },
       { 'term-card--stolen': stolen },
       { 'term-card--unknown': unknown },
     ]"
@@ -50,6 +51,7 @@ const props = defineProps({
   stolen: { type: Boolean, default: false },
   unknown: { type: Boolean, default: false },
   size: { type: String, default: 'medium' },
+  animateMutation: { type: Boolean, default: true },
 })
 
 const safeTier = computed(() => {
@@ -475,6 +477,16 @@ const formattedCoins = computed(() => {
 
 .term-card--stolen .term-card__rarity-pill {
   background: #cf4d4d;
+}
+
+.term-card--mutation-static.term-card--mutation-foil::before,
+.term-card--mutation-static.term-card--mutation-foil::after,
+.term-card--mutation-static.term-card--mutation-holo::before,
+.term-card--mutation-static.term-card--mutation-holo::after {
+  animation: none;
+  opacity: 0;
+  background: none;
+  filter: none;
 }
 
 @keyframes foil-spectrum {
