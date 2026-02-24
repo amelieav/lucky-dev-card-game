@@ -925,9 +925,49 @@ end;
 $$;
 
 drop function if exists public.roll_mutation(int);
+drop function if exists public.roll_mutation(int, boolean);
 drop function if exists public.mutation_weights(int);
+drop function if exists public.mutation_weights(int, boolean);
 
-create or replace function public.mutation_weights(p_mutation_level int)
+create or replace function public.has_layer_completion_mutation_bonus(
+  p_user_id uuid,
+  p_layer int,
+  p_rebirth_count int
+)
+returns boolean
+language plpgsql
+stable
+as $$
+declare
+  total_terms int := 0;
+  layer_collected int := 0;
+begin
+  if greatest(0, coalesce(p_rebirth_count, 0)) > 0 then
+    return false;
+  end if;
+
+  select count(*)::int
+  into total_terms
+  from public.term_catalog;
+
+  if total_terms <= 0 then
+    return false;
+  end if;
+
+  select count(*)::int
+  into layer_collected
+  from public.player_lifetime_terms plt
+  where plt.user_id = p_user_id
+    and plt.layer = least(2, greatest(1, coalesce(p_layer, 1)));
+
+  return layer_collected >= total_terms;
+end;
+$$;
+
+create or replace function public.mutation_weights(
+  p_mutation_level int,
+  p_layer_completion_bonus boolean default false
+)
 returns table (none_w numeric, foil_w numeric, holo_w numeric)
 language plpgsql
 immutable
@@ -938,10 +978,16 @@ declare
 begin
   m := least(25, greatest(0, coalesce(p_mutation_level, 0)));
 
-  -- Base odds are lower and scale to a max of Foil 10% / Holo 4% at cap level.
-  none_w := greatest(0, 95.4 - (0.376 * m));
-  foil_w := greatest(0, 4 + (0.24 * m));
-  holo_w := greatest(0, 0.6 + (0.136 * m));
+  if coalesce(p_layer_completion_bonus, false) then
+    none_w := 30;
+    foil_w := 50;
+    holo_w := 20;
+  else
+    -- Base odds are lower and scale to a max of Foil 10% / Holo 4% at cap level.
+    none_w := greatest(0, 95.4 - (0.376 * m));
+    foil_w := greatest(0, 4 + (0.24 * m));
+    holo_w := greatest(0, 0.6 + (0.136 * m));
+  end if;
 
   sum_total := none_w + foil_w + holo_w;
   if sum_total <= 0 then
@@ -957,7 +1003,10 @@ begin
 end;
 $$;
 
-create or replace function public.roll_mutation(p_mutation_level int)
+create or replace function public.roll_mutation(
+  p_mutation_level int,
+  p_layer_completion_bonus boolean default false
+)
 returns text
 language plpgsql
 volatile
@@ -970,7 +1019,7 @@ declare
 begin
   select mw.none_w, mw.foil_w, mw.holo_w
   into none_w, foil_w, holo_w
-  from public.mutation_weights(p_mutation_level) mw;
+  from public.mutation_weights(p_mutation_level, p_layer_completion_bonus) mw;
 
   roll := random() * 100;
 
@@ -1176,6 +1225,7 @@ declare
   draw_reward bigint;
   max_tier int := 0;
   last_draw jsonb := null;
+  mutation_bonus_active boolean := false;
   i int;
 begin
   select * into state_row
@@ -1186,6 +1236,12 @@ begin
   if not found then
     return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
   end if;
+
+  mutation_bonus_active := public.has_layer_completion_mutation_bonus(
+    p_user_id,
+    state_row.active_layer,
+    state_row.rebirth_count
+  );
 
   effective_now := least(now(), coalesce(state_row.active_until_at, now()));
   elapsed_seconds := greatest(0, extract(epoch from effective_now - state_row.last_tick_at)::int);
@@ -1220,7 +1276,7 @@ begin
   for i in 1..whole_opens loop
     draw_tier := public.pick_effective_tier(state_row.packs_opened, state_row.tier_boost_level);
     draw_rarity := public.roll_rarity(draw_tier, state_row.value_level);
-    draw_mutation := public.roll_mutation(state_row.mutation_level);
+    draw_mutation := public.roll_mutation(state_row.mutation_level, mutation_bonus_active);
     draw_term_key := public.random_term_by_pool(draw_tier, draw_rarity);
 
     if draw_term_key is null then
@@ -1469,6 +1525,7 @@ declare
   draw_mutation text;
   chosen_term text;
   draw_reward bigint;
+  mutation_bonus_active boolean := false;
   debug_override_allowed boolean;
   debug_applied boolean := false;
   debug_next_reward jsonb;
@@ -1496,6 +1553,12 @@ begin
   from public.player_state
   where user_id = uid
   for update;
+
+  mutation_bonus_active := public.has_layer_completion_mutation_bonus(
+    uid,
+    state_row.active_layer,
+    state_row.rebirth_count
+  );
 
   debug_override_allowed := public.is_debug_allowed();
 
@@ -1553,7 +1616,10 @@ begin
     raise exception 'Invalid rarity: %', draw_rarity;
   end if;
 
-  draw_mutation := coalesce(draw_mutation, public.roll_mutation(state_row.mutation_level));
+  draw_mutation := coalesce(
+    draw_mutation,
+    public.roll_mutation(state_row.mutation_level, mutation_bonus_active)
+  );
   draw_mutation := public.normalize_mutation(draw_mutation);
 
   if chosen_term is null then
@@ -2961,6 +3027,7 @@ declare
   draw_reward bigint;
   max_tier int := 0;
   last_draw jsonb := null;
+  mutation_bonus_active boolean := false;
   i int;
 begin
   select * into state_row
@@ -2971,6 +3038,12 @@ begin
   if not found then
     return jsonb_build_object('draws_applied', 0, 'draw', null, 'draw_max_tier', 0);
   end if;
+
+  mutation_bonus_active := public.has_layer_completion_mutation_bonus(
+    p_user_id,
+    state_row.active_layer,
+    state_row.rebirth_count
+  );
 
   effective_now := least(now(), coalesce(state_row.active_until_at, now()));
   elapsed_seconds := greatest(0, extract(epoch from effective_now - state_row.last_tick_at)::int);
@@ -3005,7 +3078,7 @@ begin
   for i in 1..whole_opens loop
     draw_tier := public.pick_effective_tier(state_row.packs_opened, state_row.tier_boost_level);
     draw_rarity := public.roll_rarity(draw_tier, state_row.value_level);
-    draw_mutation := public.roll_mutation(state_row.mutation_level);
+    draw_mutation := public.roll_mutation(state_row.mutation_level, mutation_bonus_active);
     draw_term_key := public.random_term_by_pool(draw_tier, draw_rarity);
 
     if draw_term_key is null then
@@ -3100,6 +3173,7 @@ declare
   draw_mutation text;
   chosen_term text;
   draw_reward bigint;
+  mutation_bonus_active boolean := false;
   debug_override_allowed boolean;
   debug_applied boolean := false;
   debug_next_reward jsonb;
@@ -3128,6 +3202,12 @@ begin
   from public.player_state
   where user_id = uid
   for update;
+
+  mutation_bonus_active := public.has_layer_completion_mutation_bonus(
+    uid,
+    state_row.active_layer,
+    state_row.rebirth_count
+  );
 
   debug_override_allowed := public.is_debug_allowed();
 
@@ -3185,7 +3265,10 @@ begin
     raise exception 'Invalid rarity: %', draw_rarity;
   end if;
 
-  draw_mutation := coalesce(draw_mutation, public.roll_mutation(state_row.mutation_level));
+  draw_mutation := coalesce(
+    draw_mutation,
+    public.roll_mutation(state_row.mutation_level, mutation_bonus_active)
+  );
   draw_mutation := public.normalize_mutation(draw_mutation);
 
   if chosen_term is null then
