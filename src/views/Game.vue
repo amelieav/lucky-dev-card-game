@@ -1364,7 +1364,7 @@ async function completeChickTheft(targetCard, raidSessionId = chickRaidSessionId
       termKey: targetCard.termKey,
       name: targetCard.name,
       value: Number(targetCard.value || 0),
-      tier: Number(targetCard.tier || 0),
+      tier: Number(targetCard.displayTier || targetCard.tier || 0),
       rarity: normalizeRarity(targetCard.rarity),
       mutation: normalizeMutation(targetCard.bestMutation),
     })

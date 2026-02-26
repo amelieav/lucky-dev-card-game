@@ -5205,7 +5205,7 @@ as $$
     coalesce(pp.display_name, 'Unknown Player') as display_name,
     pte.term_key,
     tc.display_name as term_name,
-    tc.tier,
+    (tc.tier + ((least(2, greatest(1, coalesce(pte.layer, 1))) - 1) * 6))::int as tier,
     tc.rarity,
     public.normalize_mutation(pte.mutation) as mutation,
     public.card_reward(
