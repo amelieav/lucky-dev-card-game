@@ -4,11 +4,21 @@
       <div
         v-for="card in decoCards"
         :key="card.id"
-        class="signin-bg-card"
+        :class="['signin-bg-card', { 'signin-bg-card--foil': card.isFoil }]"
         :style="{
           top: card.top,
           left: card.left,
-          transform: `rotate(${card.rotate}deg)`,
+          '--card-color-a': card.colorA,
+          '--card-color-b': card.colorB,
+          '--card-highlight': card.highlight,
+          '--card-rotation': `${card.rotate}deg`,
+          '--card-spin-z': `${card.spinZ}deg`,
+          '--card-flip-y': `${card.flipY}deg`,
+          '--card-flip-x': `${card.flipX}deg`,
+          '--card-drift-x': `${card.driftX}px`,
+          '--card-start-y': `${card.startY}vh`,
+          '--card-end-y': `${card.endY}vh`,
+          animationDuration: card.duration,
           animationDelay: card.delay,
         }"
       >
@@ -58,13 +68,52 @@ const email = ref('')
 const loading = computed(() => store.state.auth.loading)
 const magicLinkSent = computed(() => store.state.auth.magicLinkSent)
 const error = computed(() => store.state.auth.error)
-const decoCards = [
-  { id: 'a', tier: 2, name: 'Null Pointer', top: '8%', left: '-2%', rotate: -18, delay: '0s' },
-  { id: 'b', tier: 4, name: 'Cache Ghost', top: '12%', left: '78%', rotate: 14, delay: '0.8s' },
-  { id: 'c', tier: 3, name: 'Loop Mage', top: '54%', left: '-4%', rotate: -10, delay: '1.3s' },
-  { id: 'd', tier: 5, name: 'Merge Warden', top: '62%', left: '82%', rotate: 16, delay: '1.9s' },
-  { id: 'e', tier: 6, name: 'Ship Titan', top: '76%', left: '18%', rotate: -8, delay: '2.4s' },
+const decoNames = [
+  'Null Pointer', 'Cache Ghost', 'Loop Mage', 'Merge Warden', 'Ship Titan', 'Lint Sprite',
+  'Test Oracle', 'Hook Runner', 'State Smith', 'Deploy Archon', 'Branch Whisper', 'Heap Ranger',
 ]
+const TOTAL_DECO_CARDS = 24
+const cardPalettes = [
+  { a: 'rgba(133, 71, 40, 0.74)', b: 'rgba(44, 20, 66, 0.74)', h: 'rgba(255, 236, 204, 0.34)' },
+  { a: 'rgba(48, 91, 156, 0.74)', b: 'rgba(32, 49, 109, 0.74)', h: 'rgba(224, 238, 255, 0.3)' },
+  { a: 'rgba(46, 128, 104, 0.74)', b: 'rgba(22, 70, 69, 0.74)', h: 'rgba(214, 255, 243, 0.3)' },
+  { a: 'rgba(122, 62, 146, 0.74)', b: 'rgba(56, 23, 88, 0.74)', h: 'rgba(241, 223, 255, 0.32)' },
+  { a: 'rgba(152, 54, 74, 0.74)', b: 'rgba(73, 24, 45, 0.74)', h: 'rgba(255, 220, 230, 0.3)' },
+]
+
+function seededUnit(index, salt = 0) {
+  const x = Math.sin((index + 1) * 12.9898 + (salt * 78.233)) * 43758.5453
+  return x - Math.floor(x)
+}
+
+const decoCards = Array.from({ length: TOTAL_DECO_CARDS }, (_, i) => {
+  const duration = 42 + ((i * 7) % 18) // 42s..59s (slower)
+  const phase = (((i * 11) % TOTAL_DECO_CARDS) / TOTAL_DECO_CARDS) * duration // spread across full cycle
+  const laneBase = ((i + 0.5) / TOTAL_DECO_CARDS) * 96 // even lanes across width
+  const laneJitter = (seededUnit(i, 1) - 0.5) * 3.6 // +/-1.8%
+  const left = Math.max(2, Math.min(98, 2 + laneBase + laneJitter))
+  const palette = cardPalettes[i % cardPalettes.length]
+  return {
+    id: `card-${i + 1}`,
+    tier: (i % 6) + 1,
+    name: decoNames[i % decoNames.length],
+    top: `${-14 - ((i * 5) % 12)}%`,
+    left: `${left.toFixed(2)}%`,
+    rotate: -18 + ((i * 13) % 36),
+    spinZ: (i % 2 === 0 ? 1 : -1) * (260 + ((i * 17) % 180)),
+    flipY: (i % 2 === 0 ? 1 : -1) * (420 + ((i * 23) % 420)),
+    flipX: (i % 2 === 0 ? 1 : -1) * (45 + ((i * 19) % 70)),
+    driftX: -14 + (seededUnit(i, 2) * 28),
+    startY: -96 - ((i * 3) % 28),
+    endY: 188 + ((i * 5) % 26),
+    duration: `${duration}s`,
+    delay: `-${phase.toFixed(2)}s`,
+    colorA: palette.a,
+    colorB: palette.b,
+    highlight: palette.h,
+    isFoil: i === 7,
+  }
+})
 
 onMounted(async () => {
   await store.dispatch('debug/hydrate')
@@ -83,17 +132,20 @@ async function handleSubmit() {
 <style scoped>
 .signin-wrap {
   position: relative;
-  overflow: clip;
+  overflow: visible;
   isolation: isolate;
-  min-height: 460px;
+  min-height: calc(100vh - 9rem);
   padding-top: 18px;
 }
 
 .signin-bg {
-  position: absolute;
+  position: fixed;
   inset: 0;
+  width: 100vw;
   pointer-events: none;
   z-index: 0;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, black 12%, black 88%, transparent 100%);
 }
 
 .signin-bg-card {
@@ -107,12 +159,38 @@ async function handleSubmit() {
   justify-content: space-between;
   color: rgba(255, 255, 255, 0.9);
   background:
-    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.28), transparent 40%),
-    linear-gradient(155deg, rgba(153, 62, 31, 0.72), rgba(43, 16, 60, 0.72));
+    radial-gradient(circle at 18% 20%, var(--card-highlight), transparent 40%),
+    linear-gradient(155deg, var(--card-color-a), var(--card-color-b));
   border: 1px solid rgba(255, 255, 255, 0.16);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.36);
   opacity: 0.28;
-  animation: float-card 7s ease-in-out infinite alternate;
+  transform: translate3d(0, var(--card-start-y), 0) rotateZ(var(--card-rotation)) rotateY(0deg) rotateX(0deg);
+  transform-style: preserve-3d;
+  will-change: transform;
+  animation-name: card-fall-spin;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+.signin-bg-card--foil {
+  background:
+    linear-gradient(115deg, rgba(250, 208, 110, 0.74), rgba(182, 120, 40, 0.76), rgba(242, 210, 146, 0.72)),
+    radial-gradient(circle at 24% 22%, rgba(255, 250, 214, 0.56), transparent 42%);
+  border-color: rgba(255, 230, 160, 0.5);
+  box-shadow:
+    0 14px 36px rgba(133, 90, 21, 0.34),
+    inset 0 0 0 1px rgba(255, 242, 201, 0.38);
+}
+
+.signin-bg-card--foil::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(130deg, transparent 18%, rgba(255, 252, 220, 0.66) 48%, transparent 72%);
+  mix-blend-mode: screen;
+  opacity: 0.5;
+  animation: foil-shimmer 3.6s ease-in-out infinite;
 }
 
 .signin-panel {
@@ -134,12 +212,28 @@ async function handleSubmit() {
   .signin-bg-card {
     width: 88px;
     height: 116px;
-    opacity: 0.2;
+    opacity: 0.17;
   }
 }
 
-@keyframes float-card {
-  0% { translate: 0 0; }
-  100% { translate: 0 -10px; }
+@keyframes card-fall-spin {
+  0% {
+    transform: translate3d(0, var(--card-start-y), 0)
+      rotateZ(var(--card-rotation))
+      rotateY(0deg)
+      rotateX(0deg);
+  }
+  100% {
+    transform: translate3d(var(--card-drift-x), var(--card-end-y), 0)
+      rotateZ(calc(var(--card-rotation) + var(--card-spin-z)))
+      rotateY(var(--card-flip-y))
+      rotateX(var(--card-flip-x));
+  }
+}
+
+@keyframes foil-shimmer {
+  0% { transform: translateX(-16%) translateY(-2%) rotate(0deg); opacity: 0.35; }
+  50% { transform: translateX(12%) translateY(2%) rotate(2deg); opacity: 0.62; }
+  100% { transform: translateX(-16%) translateY(-2%) rotate(0deg); opacity: 0.35; }
 }
 </style>
