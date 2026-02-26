@@ -1,6 +1,6 @@
-# Lucky Agent
+# Lucky Dev Card Game
 
-Lucky Agent is a Vue 3 + Supabase card opening game with progression, collection tracking, passive income, and a global leaderboard.
+Lucky Dev Card Game is a Vue 3 + Supabase card opening game with progression, collection tracking, passive income, and a global leaderboard.
 
 ## Core features
 - Single-pack opening loop with manual and unlockable auto opening.
@@ -62,7 +62,7 @@ npm run dev
 ## Supabase auth setup
 Configure redirect/allowlist URLs in Supabase Auth:
 - Local: `http://localhost:5173/`
-- Production (GitHub Pages): `https://<user>.github.io/<repo>/`
+- Production (GitHub Pages): `https://<user>.github.io/lucky-dev-card-game/`
 
 ## Debug mode
 Append query params in URL:
