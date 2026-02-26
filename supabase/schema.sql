@@ -15,7 +15,7 @@ $$;
 
 create table if not exists public.player_state (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  coins bigint not null default 100,
+  coins bigint not null default 0,
   luck_level int not null default 0,
   passive_rate_bp int not null default 0,
   highest_tier_unlocked int not null default 1,
@@ -107,83 +107,217 @@ create table if not exists public.player_debug_state (
 );
 
 create table if not exists public.term_catalog (
+  card_slot_id text unique,
   term_key text primary key,
   display_name text not null,
   tier int not null check (tier between 1 and 6),
   rarity text not null check (rarity in ('common', 'rare', 'legendary')),
   base_bp int not null check (base_bp >= 0)
 );
+alter table public.player_state alter column coins set default 0;
+
+alter table public.term_catalog add column if not exists card_slot_id text;
+update public.term_catalog
+set card_slot_id = term_key
+where card_slot_id is null or btrim(card_slot_id) = '';
+alter table public.term_catalog alter column card_slot_id set not null;
+create unique index if not exists idx_term_catalog_card_slot_id
+  on public.term_catalog (card_slot_id);
+
+alter table public.player_terms add column if not exists card_slot_id text;
+update public.player_terms pt
+set card_slot_id = tc.card_slot_id
+from public.term_catalog tc
+where tc.term_key = pt.term_key
+  and (pt.card_slot_id is null or pt.card_slot_id <> tc.card_slot_id);
+create index if not exists idx_player_terms_card_slot_id
+  on public.player_terms (card_slot_id);
+create unique index if not exists idx_player_terms_user_slot_unique
+  on public.player_terms (user_id, card_slot_id)
+  where card_slot_id is not null;
+
+do $$
+begin
+  if to_regclass('public.player_lifetime_terms') is not null then
+    alter table public.player_lifetime_terms
+      drop constraint if exists player_lifetime_terms_term_key_fkey;
+    alter table public.player_lifetime_terms
+      add constraint player_lifetime_terms_term_key_fkey
+      foreign key (term_key) references public.term_catalog(term_key) on update cascade on delete cascade;
+  end if;
+
+  if to_regclass('public.player_stolen_terms') is not null then
+    alter table public.player_stolen_terms
+      drop constraint if exists player_stolen_terms_term_key_fkey;
+    alter table public.player_stolen_terms
+      add constraint player_stolen_terms_term_key_fkey
+      foreign key (term_key) references public.term_catalog(term_key) on update cascade on delete cascade;
+  end if;
+
+  if to_regclass('public.player_duck_theft_events') is not null then
+    alter table public.player_duck_theft_events
+      drop constraint if exists player_duck_theft_events_term_key_fkey;
+    alter table public.player_duck_theft_events
+      add constraint player_duck_theft_events_term_key_fkey
+      foreign key (term_key) references public.term_catalog(term_key) on update cascade on delete cascade;
+  end if;
+end;
+$$;
 
 -- GENERATED: term_catalog:start
-insert into public.term_catalog (term_key, display_name, tier, rarity, base_bp)
+with canonical(card_slot_id, term_key) as (
+  values
+    ('base_t1_s01', 'hello_world'),
+    ('base_t1_s02', 'stack_overflow'),
+    ('base_t1_s03', 'console_log'),
+    ('base_t1_s04', 'todo_comment'),
+    ('base_t1_s05', 'off_by_one_error'),
+    ('base_t1_s06', 'infinite_loop'),
+    ('base_t1_s07', 'rubber_duck'),
+    ('base_t1_s08', 'missing_semicolon'),
+    ('base_t1_s09', 'copy_paste_dev'),
+    ('base_t1_s10', 'git_commit'),
+    ('base_t2_s01', 'merge_conflict'),
+    ('base_t2_s02', 'npm_install'),
+    ('base_t2_s03', '404_not_found'),
+    ('base_t2_s04', 'debugger_breakpoint'),
+    ('base_t2_s05', 'json_parse_error'),
+    ('base_t2_s06', 'api_timeout'),
+    ('base_t2_s07', 'version_mismatch'),
+    ('base_t2_s08', 'environment_variable'),
+    ('base_t2_s09', 'hotfix_friday'),
+    ('base_t2_s10', 'regex_attempt'),
+    ('base_t3_s01', 'async_await'),
+    ('base_t3_s02', 'rest_api'),
+    ('base_t3_s03', 'unit_test'),
+    ('base_t3_s04', 'docker_container'),
+    ('base_t3_s05', 'ci_pipeline'),
+    ('base_t3_s06', 'code_review'),
+    ('base_t3_s07', 'refactor'),
+    ('base_t3_s08', 'memory_leak'),
+    ('base_t3_s09', 'sql_injection'),
+    ('base_t3_s10', 'cache_miss'),
+    ('base_t4_s01', 'microservices'),
+    ('base_t4_s02', 'distributed_system'),
+    ('base_t4_s03', 'event_loop'),
+    ('base_t4_s04', 'race_condition'),
+    ('base_t4_s05', 'load_balancer'),
+    ('base_t4_s06', 'tech_debt'),
+    ('base_t4_s07', 'deadlock'),
+    ('base_t4_s08', 'observability'),
+    ('base_t4_s09', 'feature_flag'),
+    ('base_t4_s10', 'blue_green_deploy'),
+    ('base_t5_s01', 'compiler'),
+    ('base_t5_s02', 'kernel'),
+    ('base_t5_s03', 'zero_day'),
+    ('base_t5_s04', 'concurrency_wizard'),
+    ('base_t5_s05', 'performance_tuning'),
+    ('base_t5_s06', 'ai_model'),
+    ('base_t5_s07', 'bare_metal'),
+    ('base_t5_s08', 'scalability'),
+    ('base_t5_s09', 'production_hotfix'),
+    ('base_t5_s10', 'immutable_infrastructure'),
+    ('base_t6_s01', 'the_clean_code'),
+    ('base_t6_s02', 'infinite_uptime'),
+    ('base_t6_s03', 'no_merge_conflicts'),
+    ('base_t6_s04', 'self_healing_system'),
+    ('base_t6_s05', 'the_senior_who_knows_everything'),
+    ('base_t6_s06', 'the_one_who_uses_vim'),
+    ('base_t6_s07', 'linus_mode'),
+    ('base_t6_s08', 'the_bug_that_was_documentation'),
+    ('base_t6_s09', '100_test_coverage'),
+    ('base_t6_s10', 'it_works_on_first_try')
+)
+update public.term_catalog tc
+set card_slot_id = canonical.card_slot_id
+from canonical
+where tc.term_key = canonical.term_key
+  and tc.card_slot_id <> canonical.card_slot_id;
+
+insert into public.term_catalog (card_slot_id, term_key, display_name, tier, rarity, base_bp)
 values
-  ('hello_world', 'Hello World', 1, 'common', 60),
-  ('stack_overflow', 'Stack Overflow', 1, 'common', 69),
-  ('console_log', 'Console Log', 1, 'common', 78),
-  ('todo_comment', 'TODO Comment', 1, 'common', 87),
-  ('off_by_one_error', 'Off-by-One Error', 1, 'common', 96),
-  ('infinite_loop', 'Infinite Loop', 1, 'rare', 105),
-  ('rubber_duck', 'Rubber Duck', 1, 'rare', 114),
-  ('missing_semicolon', 'Missing Semicolon', 1, 'rare', 123),
-  ('copy_paste_dev', 'Copy-Paste Dev', 1, 'rare', 132),
-  ('git_commit', 'Git Commit', 1, 'legendary', 141),
-  ('merge_conflict', 'Merge Conflict', 2, 'common', 110),
-  ('npm_install', 'npm Install', 2, 'common', 119),
-  ('404_not_found', '404 Not Found', 2, 'common', 128),
-  ('debugger_breakpoint', 'Debugger Breakpoint', 2, 'common', 137),
-  ('json_parse_error', 'JSON Parse Error', 2, 'common', 146),
-  ('api_timeout', 'API Timeout', 2, 'rare', 155),
-  ('version_mismatch', 'Version Mismatch', 2, 'rare', 164),
-  ('environment_variable', 'Environment Variable', 2, 'rare', 173),
-  ('hotfix_friday', 'Hotfix Friday', 2, 'rare', 182),
-  ('regex_attempt', 'Regex Attempt', 2, 'legendary', 191),
-  ('async_await', 'Async Await', 3, 'common', 170),
-  ('rest_api', 'REST API', 3, 'common', 179),
-  ('unit_test', 'Unit Test', 3, 'common', 188),
-  ('docker_container', 'Docker Container', 3, 'common', 197),
-  ('ci_pipeline', 'CI Pipeline', 3, 'common', 206),
-  ('code_review', 'Code Review', 3, 'rare', 215),
-  ('refactor', 'Refactor', 3, 'rare', 224),
-  ('memory_leak', 'Memory Leak', 3, 'rare', 233),
-  ('sql_injection', 'SQL Injection', 3, 'rare', 242),
-  ('cache_miss', 'Cache Miss', 3, 'legendary', 251),
-  ('microservices', 'Microservices', 4, 'common', 240),
-  ('distributed_system', 'Distributed System', 4, 'common', 249),
-  ('event_loop', 'Event Loop', 4, 'common', 258),
-  ('race_condition', 'Race Condition', 4, 'common', 267),
-  ('load_balancer', 'Load Balancer', 4, 'common', 276),
-  ('tech_debt', 'Tech Debt', 4, 'rare', 285),
-  ('deadlock', 'Deadlock', 4, 'rare', 294),
-  ('observability', 'Observability', 4, 'rare', 303),
-  ('feature_flag', 'Feature Flag', 4, 'rare', 312),
-  ('blue_green_deploy', 'Blue-Green Deploy', 4, 'legendary', 321),
-  ('compiler', 'Compiler', 5, 'common', 320),
-  ('kernel', 'Kernel', 5, 'common', 329),
-  ('zero_day', 'Zero-Day', 5, 'common', 338),
-  ('concurrency_wizard', 'Concurrency Wizard', 5, 'common', 347),
-  ('performance_tuning', 'Performance Tuning', 5, 'common', 356),
-  ('ai_model', 'AI Model', 5, 'rare', 365),
-  ('bare_metal', 'Bare Metal', 5, 'rare', 374),
-  ('scalability', 'Scalability', 5, 'rare', 383),
-  ('production_hotfix', 'Production Hotfix', 5, 'rare', 392),
-  ('immutable_infrastructure', 'Immutable Infrastructure', 5, 'legendary', 401),
-  ('the_clean_code', 'The Clean Code', 6, 'common', 410),
-  ('infinite_uptime', 'Infinite Uptime', 6, 'common', 419),
-  ('no_merge_conflicts', 'No Merge Conflicts', 6, 'common', 428),
-  ('self_healing_system', 'Self-Healing System', 6, 'common', 437),
-  ('the_senior_who_knows_everything', 'The Senior Who Knows Everything', 6, 'common', 446),
-  ('the_one_who_uses_vim', 'The One Who Uses Vim', 6, 'rare', 455),
-  ('linus_mode', 'Linus Mode', 6, 'rare', 464),
-  ('the_bug_that_was_documentation', 'The Bug That Was Documentation', 6, 'rare', 473),
-  ('100_test_coverage', '100% Test Coverage', 6, 'rare', 482),
-  ('it_works_on_first_try', 'It Works On First Try', 6, 'legendary', 491)
-on conflict (term_key) do update
+  ('base_t1_s01', 'hello_world', 'Hello World', 1, 'common', 60),
+  ('base_t1_s02', 'stack_overflow', 'Stack Overflow', 1, 'common', 69),
+  ('base_t1_s03', 'console_log', 'Console Log', 1, 'common', 78),
+  ('base_t1_s04', 'todo_comment', 'TODO Comment', 1, 'common', 87),
+  ('base_t1_s05', 'off_by_one_error', 'Off-by-One Error', 1, 'common', 96),
+  ('base_t1_s06', 'infinite_loop', 'Infinite Loop', 1, 'rare', 105),
+  ('base_t1_s07', 'rubber_duck', 'Rubber Duck', 1, 'rare', 114),
+  ('base_t1_s08', 'missing_semicolon', 'Missing Semicolon', 1, 'rare', 123),
+  ('base_t1_s09', 'copy_paste_dev', 'Copy-Paste Dev', 1, 'rare', 132),
+  ('base_t1_s10', 'git_commit', 'Git Commit', 1, 'legendary', 141),
+  ('base_t2_s01', 'merge_conflict', 'Merge Conflict', 2, 'common', 110),
+  ('base_t2_s02', 'npm_install', 'npm Install', 2, 'common', 119),
+  ('base_t2_s03', '404_not_found', '404 Not Found', 2, 'common', 128),
+  ('base_t2_s04', 'debugger_breakpoint', 'Debugger Breakpoint', 2, 'common', 137),
+  ('base_t2_s05', 'json_parse_error', 'JSON Parse Error', 2, 'common', 146),
+  ('base_t2_s06', 'api_timeout', 'API Timeout', 2, 'rare', 155),
+  ('base_t2_s07', 'version_mismatch', 'Version Mismatch', 2, 'rare', 164),
+  ('base_t2_s08', 'environment_variable', 'Environment Variable', 2, 'rare', 173),
+  ('base_t2_s09', 'hotfix_friday', 'Hotfix Friday', 2, 'rare', 182),
+  ('base_t2_s10', 'regex_attempt', 'Regex Attempt', 2, 'legendary', 191),
+  ('base_t3_s01', 'async_await', 'Async Await', 3, 'common', 170),
+  ('base_t3_s02', 'rest_api', 'REST API', 3, 'common', 179),
+  ('base_t3_s03', 'unit_test', 'Unit Test', 3, 'common', 188),
+  ('base_t3_s04', 'docker_container', 'Docker Container', 3, 'common', 197),
+  ('base_t3_s05', 'ci_pipeline', 'CI Pipeline', 3, 'common', 206),
+  ('base_t3_s06', 'code_review', 'Code Review', 3, 'rare', 215),
+  ('base_t3_s07', 'refactor', 'Refactor', 3, 'rare', 224),
+  ('base_t3_s08', 'memory_leak', 'Memory Leak', 3, 'rare', 233),
+  ('base_t3_s09', 'sql_injection', 'SQL Injection', 3, 'rare', 242),
+  ('base_t3_s10', 'cache_miss', 'Cache Miss', 3, 'legendary', 251),
+  ('base_t4_s01', 'microservices', 'Microservices', 4, 'common', 240),
+  ('base_t4_s02', 'distributed_system', 'Distributed System', 4, 'common', 249),
+  ('base_t4_s03', 'event_loop', 'Event Loop', 4, 'common', 258),
+  ('base_t4_s04', 'race_condition', 'Race Condition', 4, 'common', 267),
+  ('base_t4_s05', 'load_balancer', 'Load Balancer', 4, 'common', 276),
+  ('base_t4_s06', 'tech_debt', 'Tech Debt', 4, 'rare', 285),
+  ('base_t4_s07', 'deadlock', 'Deadlock', 4, 'rare', 294),
+  ('base_t4_s08', 'observability', 'Observability', 4, 'rare', 303),
+  ('base_t4_s09', 'feature_flag', 'Feature Flag', 4, 'rare', 312),
+  ('base_t4_s10', 'blue_green_deploy', 'Blue-Green Deploy', 4, 'legendary', 321),
+  ('base_t5_s01', 'compiler', 'Compiler', 5, 'common', 320),
+  ('base_t5_s02', 'kernel', 'Kernel', 5, 'common', 329),
+  ('base_t5_s03', 'zero_day', 'Zero-Day', 5, 'common', 338),
+  ('base_t5_s04', 'concurrency_wizard', 'Concurrency Wizard', 5, 'common', 347),
+  ('base_t5_s05', 'performance_tuning', 'Performance Tuning', 5, 'common', 356),
+  ('base_t5_s06', 'ai_model', 'AI Model', 5, 'rare', 365),
+  ('base_t5_s07', 'bare_metal', 'Bare Metal', 5, 'rare', 374),
+  ('base_t5_s08', 'scalability', 'Scalability', 5, 'rare', 383),
+  ('base_t5_s09', 'production_hotfix', 'Production Hotfix', 5, 'rare', 392),
+  ('base_t5_s10', 'immutable_infrastructure', 'Immutable Infrastructure', 5, 'legendary', 401),
+  ('base_t6_s01', 'the_clean_code', 'The Clean Code', 6, 'common', 410),
+  ('base_t6_s02', 'infinite_uptime', 'Infinite Uptime', 6, 'common', 419),
+  ('base_t6_s03', 'no_merge_conflicts', 'No Merge Conflicts', 6, 'common', 428),
+  ('base_t6_s04', 'self_healing_system', 'Self-Healing System', 6, 'common', 437),
+  ('base_t6_s05', 'the_senior_who_knows_everything', 'The Senior Who Knows Everything', 6, 'common', 446),
+  ('base_t6_s06', 'the_one_who_uses_vim', 'The One Who Uses Vim', 6, 'rare', 455),
+  ('base_t6_s07', 'linus_mode', 'Linus Mode', 6, 'rare', 464),
+  ('base_t6_s08', 'the_bug_that_was_documentation', 'The Bug That Was Documentation', 6, 'rare', 473),
+  ('base_t6_s09', '100_test_coverage', '100% Test Coverage', 6, 'rare', 482),
+  ('base_t6_s10', 'it_works_on_first_try', 'It Works On First Try', 6, 'legendary', 491)
+on conflict (card_slot_id) do update
 set
+  term_key = excluded.term_key,
   display_name = excluded.display_name,
   tier = excluded.tier,
   rarity = excluded.rarity,
   base_bp = excluded.base_bp;
 -- GENERATED: term_catalog:end
+
+-- Keep inventory rows pinned to immutable slot IDs when term keys are renamed.
+update public.player_terms pt
+set term_key = tc.term_key
+from public.term_catalog tc
+where pt.card_slot_id is not null
+  and tc.card_slot_id = pt.card_slot_id
+  and pt.term_key <> tc.term_key;
+
+update public.player_terms pt
+set card_slot_id = tc.card_slot_id
+from public.term_catalog tc
+where tc.term_key = pt.term_key
+  and (pt.card_slot_id is null or pt.card_slot_id <> tc.card_slot_id);
 
 -- Remove any legacy terms that are no longer part of the active catalog.
 delete from public.term_catalog tc
@@ -262,6 +396,664 @@ where not exists (
   where tc.term_key = pt.term_key
 );
 
+-- v2 content model foundation (non-breaking): configurable sets/tiers/cards/economy metadata.
+create table if not exists public.content_sets (
+  set_key text primary key,
+  display_name text not null,
+  layer int not null unique check (layer >= 1),
+  rebirth_unlock int not null default 0 check (rebirth_unlock >= 0),
+  tiers_count int not null check (tiers_count >= 1),
+  cards_per_tier int not null check (cards_per_tier >= 1),
+  sort_order int not null default 0,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.content_set_tiers (
+  set_key text not null references public.content_sets(set_key) on delete cascade,
+  tier int not null check (tier >= 1),
+  tier_label text not null,
+  rarity_weights jsonb not null default '{}'::jsonb,
+  unlock_rule jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (set_key, tier)
+);
+
+create table if not exists public.content_cards (
+  set_key text not null references public.content_sets(set_key) on delete cascade,
+  card_slot_id text not null references public.term_catalog(card_slot_id) on update cascade on delete cascade,
+  tier int not null check (tier >= 1),
+  sort_in_tier int not null check (sort_in_tier >= 1),
+  display_name text not null,
+  rarity text not null check (rarity in ('common', 'rare', 'legendary')),
+  base_bp int not null check (base_bp >= 0),
+  icon text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (set_key, card_slot_id)
+);
+
+create table if not exists public.content_upgrade_defs (
+  upgrade_key text primary key,
+  display_name text not null,
+  max_level int not null check (max_level >= 0),
+  first_cost bigint,
+  last_cost bigint,
+  cost_multiplier numeric,
+  percent_first_to_last numeric,
+  pricing_meta jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.content_set_upgrade_overrides (
+  set_key text not null references public.content_sets(set_key) on delete cascade,
+  upgrade_key text not null references public.content_upgrade_defs(upgrade_key) on delete cascade,
+  max_level_override int,
+  first_cost_override bigint,
+  last_cost_override bigint,
+  cost_multiplier_override numeric,
+  percent_first_to_last_override numeric,
+  pricing_meta_override jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (set_key, upgrade_key)
+);
+
+create table if not exists public.content_difficulty_profiles (
+  profile_key text primary key,
+  display_name text not null,
+  is_default boolean not null default false,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists idx_content_difficulty_profiles_default
+  on public.content_difficulty_profiles (is_default)
+  where is_default = true;
+
+create table if not exists public.content_rebirth_difficulty (
+  profile_key text not null references public.content_difficulty_profiles(profile_key) on delete cascade,
+  rebirth_level int not null check (rebirth_level >= 0),
+  economy_multiplier numeric not null default 1 check (economy_multiplier > 0),
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (profile_key, rebirth_level)
+);
+
+insert into public.content_difficulty_profiles (profile_key, display_name, is_default, notes)
+values
+  ('baseline', 'Baseline Difficulty', true, 'Default baseline matching current live progression.')
+on conflict (profile_key) do update
+set
+  display_name = excluded.display_name,
+  notes = excluded.notes,
+  updated_at = now();
+
+insert into public.content_rebirth_difficulty (profile_key, rebirth_level, economy_multiplier, notes)
+values
+  ('baseline', 0, 1, 'Base set baseline economy'),
+  ('baseline', 1, 1, 'Booster set baseline economy')
+on conflict (profile_key, rebirth_level) do update
+set
+  economy_multiplier = excluded.economy_multiplier,
+  notes = excluded.notes,
+  updated_at = now();
+
+insert into public.content_sets (set_key, display_name, layer, rebirth_unlock, tiers_count, cards_per_tier, sort_order, is_active)
+values
+  ('base', 'Base Pack', 1, 0, 6, 10, 1, true),
+  ('booster', 'Booster Pack', 2, 1, 6, 10, 2, true)
+on conflict (set_key) do update
+set
+  display_name = excluded.display_name,
+  layer = excluded.layer,
+  rebirth_unlock = excluded.rebirth_unlock,
+  tiers_count = excluded.tiers_count,
+  cards_per_tier = excluded.cards_per_tier,
+  sort_order = excluded.sort_order,
+  is_active = excluded.is_active,
+  updated_at = now();
+
+insert into public.content_set_tiers (set_key, tier, tier_label, rarity_weights, unlock_rule)
+select
+  'base',
+  gs.tier,
+  format('Tier %s', gs.tier),
+  case gs.tier
+    when 1 then '{"common":77,"rare":20,"legendary":3}'::jsonb
+    when 2 then '{"common":79.5,"rare":18.5,"legendary":2}'::jsonb
+    when 3 then '{"common":82,"rare":16.5,"legendary":1.5}'::jsonb
+    when 4 then '{"common":84.5,"rare":14.5,"legendary":1}'::jsonb
+    when 5 then '{"common":87,"rare":12.2,"legendary":0.8}'::jsonb
+    else '{"common":89.5,"rare":9.9,"legendary":0.6}'::jsonb
+  end,
+  jsonb_build_object('tier_boost_required', case gs.tier when 1 then 0 when 2 then 1 when 3 then 4 when 4 then 7 when 5 then 10 else 13 end)
+from generate_series(1, 6) as gs(tier)
+on conflict (set_key, tier) do update
+set
+  tier_label = excluded.tier_label,
+  rarity_weights = excluded.rarity_weights,
+  unlock_rule = excluded.unlock_rule,
+  updated_at = now();
+
+insert into public.content_set_tiers (set_key, tier, tier_label, rarity_weights, unlock_rule)
+select
+  'booster',
+  gs.tier,
+  format('Tier %s', gs.tier),
+  case gs.tier
+    when 1 then '{"common":77,"rare":20,"legendary":3}'::jsonb
+    when 2 then '{"common":79.5,"rare":18.5,"legendary":2}'::jsonb
+    when 3 then '{"common":82,"rare":16.5,"legendary":1.5}'::jsonb
+    when 4 then '{"common":84.5,"rare":14.5,"legendary":1}'::jsonb
+    when 5 then '{"common":87,"rare":12.2,"legendary":0.8}'::jsonb
+    else '{"common":89.5,"rare":9.9,"legendary":0.6}'::jsonb
+  end,
+  jsonb_build_object('tier_boost_required', case gs.tier when 1 then 0 when 2 then 1 when 3 then 4 when 4 then 7 when 5 then 10 else 13 end)
+from generate_series(1, 6) as gs(tier)
+on conflict (set_key, tier) do update
+set
+  tier_label = excluded.tier_label,
+  rarity_weights = excluded.rarity_weights,
+  unlock_rule = excluded.unlock_rule,
+  updated_at = now();
+
+insert into public.content_cards (set_key, card_slot_id, tier, sort_in_tier, display_name, rarity, base_bp, icon, is_active)
+select
+  'base',
+  tc.card_slot_id,
+  tc.tier,
+  row_number() over (partition by tc.tier order by tc.card_slot_id),
+  tc.display_name,
+  tc.rarity,
+  tc.base_bp,
+  null,
+  true
+from public.term_catalog tc
+on conflict (set_key, card_slot_id) do update
+set
+  tier = excluded.tier,
+  sort_in_tier = excluded.sort_in_tier,
+  display_name = excluded.display_name,
+  rarity = excluded.rarity,
+  base_bp = excluded.base_bp,
+  icon = excluded.icon,
+  is_active = excluded.is_active,
+  updated_at = now();
+
+insert into public.content_cards (set_key, card_slot_id, tier, sort_in_tier, display_name, rarity, base_bp, icon, is_active)
+select
+  'booster',
+  tc.card_slot_id,
+  tc.tier,
+  row_number() over (partition by tc.tier order by tc.card_slot_id),
+  tc.display_name,
+  tc.rarity,
+  tc.base_bp,
+  null,
+  true
+from public.term_catalog tc
+on conflict (set_key, card_slot_id) do update
+set
+  tier = excluded.tier,
+  sort_in_tier = excluded.sort_in_tier,
+  display_name = excluded.display_name,
+  rarity = excluded.rarity,
+  base_bp = excluded.base_bp,
+  icon = excluded.icon,
+  is_active = excluded.is_active,
+  updated_at = now();
+
+insert into public.content_upgrade_defs (
+  upgrade_key,
+  display_name,
+  max_level,
+  first_cost,
+  last_cost,
+  cost_multiplier,
+  percent_first_to_last,
+  pricing_meta
+)
+values
+  (
+    'auto_unlock',
+    'Auto Roll',
+    1,
+    100,
+    100,
+    null,
+    0,
+    '{}'::jsonb
+  ),
+  (
+    'auto_speed',
+    'Opening Speed',
+    4,
+    250,
+    floor(250 * power(1.45, 3))::bigint,
+    1.45,
+    ((power(1.45, 3) - 1) * 100)::numeric,
+    jsonb_build_object('min_interval_seconds', 0.5, 'interval_reduction_per_level_seconds', 0.5)
+  ),
+  (
+    'tier_boost',
+    'Tier Upgrade',
+    20,
+    25,
+    floor(25 * power(1.42, 19))::bigint,
+    1.42,
+    ((power(1.42, 19) - 1) * 100)::numeric,
+    jsonb_build_object('unlock_boost_thresholds', jsonb_build_object('1', 0, '2', 1, '3', 4, '4', 7, '5', 10, '6', 13))
+  ),
+  (
+    'mutation_upgrade',
+    'Mutation Upgrade',
+    25,
+    32,
+    greatest(
+      floor(32 * power(1.38, 24))::bigint,
+      case
+        when (0.6 + (0.576 * least(25, greatest(0, 25)))) > 4
+          then (8000 + ceil((((0.6 + (0.576 * least(25, greatest(0, 25)))) - 4) / 2) * 8000))::bigint
+        else 0::bigint
+      end
+    ),
+    1.38,
+    ((power(1.38, 24) - 1) * 100)::numeric,
+    jsonb_build_object(
+      'holo_floor_threshold_percent', 4,
+      'holo_floor_step_percent', 2,
+      'holo_floor_min_cost_per_step', 8000,
+      'foil_cap_percent', 40,
+      'holo_cap_percent', 15
+    )
+  ),
+  (
+    'value_upgrade',
+    'Value Upgrade',
+    25,
+    40,
+    floor(40 * power(1.40, 24))::bigint,
+    1.40,
+    ((power(1.40, 24) - 1) * 100)::numeric,
+    jsonb_build_object('target_distribution', jsonb_build_object('common', 33.3333, 'rare', 33.3333, 'legendary', 33.3333))
+  )
+on conflict (upgrade_key) do update
+set
+  display_name = excluded.display_name,
+  max_level = excluded.max_level,
+  first_cost = excluded.first_cost,
+  last_cost = excluded.last_cost,
+  cost_multiplier = excluded.cost_multiplier,
+  percent_first_to_last = excluded.percent_first_to_last,
+  pricing_meta = excluded.pricing_meta,
+  updated_at = now();
+
+create or replace function public.sync_term_identity()
+returns trigger
+language plpgsql
+as $$
+declare
+  resolved_slot_id text;
+  resolved_term_key text;
+begin
+  if new.card_slot_id is not null then
+    select tc.card_slot_id, tc.term_key
+    into resolved_slot_id, resolved_term_key
+    from public.term_catalog tc
+    where tc.card_slot_id = new.card_slot_id
+    limit 1;
+  elsif new.term_key is not null then
+    select tc.card_slot_id, tc.term_key
+    into resolved_slot_id, resolved_term_key
+    from public.term_catalog tc
+    where tc.term_key = new.term_key
+    limit 1;
+  end if;
+
+  if resolved_slot_id is not null then
+    new.card_slot_id = resolved_slot_id;
+  end if;
+
+  if resolved_term_key is not null then
+    new.term_key = resolved_term_key;
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.get_content_manifest()
+returns jsonb
+language sql
+stable
+as $$
+  with sets as (
+    select
+      cs.set_key,
+      cs.display_name,
+      cs.layer,
+      cs.rebirth_unlock,
+      cs.tiers_count,
+      cs.cards_per_tier,
+      cs.sort_order
+    from public.content_sets cs
+    where cs.is_active
+  ),
+  tiers as (
+    select
+      cst.set_key,
+      cst.tier,
+      cst.tier_label,
+      cst.rarity_weights,
+      cst.unlock_rule
+    from public.content_set_tiers cst
+  ),
+  cards as (
+    select
+      cc.set_key,
+      cc.card_slot_id,
+      tc.term_key,
+      cc.display_name,
+      cc.tier,
+      cc.sort_in_tier,
+      cc.rarity,
+      cc.base_bp,
+      cc.icon
+    from public.content_cards cc
+    join public.term_catalog tc on tc.card_slot_id = cc.card_slot_id
+    where cc.is_active
+  )
+  select jsonb_build_object(
+    'sets',
+    (
+      select coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'set_key', s.set_key,
+            'display_name', s.display_name,
+            'layer', s.layer,
+            'rebirth_unlock', s.rebirth_unlock,
+            'tiers_count', s.tiers_count,
+            'cards_per_tier', s.cards_per_tier,
+            'tiers', (
+              select coalesce(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'tier', t.tier,
+                    'tier_label', t.tier_label,
+                    'rarity_weights', t.rarity_weights,
+                    'unlock_rule', t.unlock_rule
+                  )
+                  order by t.tier asc
+                ),
+                '[]'::jsonb
+              )
+              from tiers t
+              where t.set_key = s.set_key
+            ),
+            'cards', (
+              select coalesce(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'card_slot_id', c.card_slot_id,
+                    'term_key', c.term_key,
+                    'display_name', c.display_name,
+                    'tier', c.tier,
+                    'sort_in_tier', c.sort_in_tier,
+                    'rarity', c.rarity,
+                    'base_bp', c.base_bp,
+                    'icon', c.icon
+                  )
+                  order by c.tier asc, c.sort_in_tier asc
+                ),
+                '[]'::jsonb
+              )
+              from cards c
+              where c.set_key = s.set_key
+            )
+          )
+          order by s.sort_order asc, s.layer asc
+        ),
+        '[]'::jsonb
+      )
+      from sets s
+    ),
+    'upgrades',
+    (
+      select coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'upgrade_key', cud.upgrade_key,
+            'display_name', cud.display_name,
+            'max_level', cud.max_level,
+            'first_cost', cud.first_cost,
+            'last_cost', cud.last_cost,
+            'cost_multiplier', cud.cost_multiplier,
+            'percent_first_to_last', cud.percent_first_to_last,
+            'pricing_meta', cud.pricing_meta
+          )
+          order by cud.upgrade_key asc
+        ),
+        '[]'::jsonb
+      )
+      from public.content_upgrade_defs cud
+    )
+  );
+$$;
+
+create or replace function public.set_default_difficulty_profile(p_profile_key text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_key text := nullif(trim(coalesce(p_profile_key, '')), '');
+begin
+  if normalized_key is null then
+    raise exception 'Profile key is required';
+  end if;
+
+  if not exists (
+    select 1
+    from public.content_difficulty_profiles cdp
+    where cdp.profile_key = normalized_key
+  ) then
+    raise exception 'Unknown difficulty profile: %', normalized_key;
+  end if;
+
+  update public.content_difficulty_profiles
+  set is_default = (profile_key = normalized_key),
+      updated_at = now();
+
+  return jsonb_build_object(
+    'ok', true,
+    'default_profile_key', normalized_key
+  );
+end;
+$$;
+
+create or replace function public.get_rebirth_difficulty_report(p_profile_key text default null)
+returns jsonb
+language plpgsql
+stable
+set search_path = public
+as $$
+declare
+  resolved_profile text;
+  payload jsonb;
+begin
+  resolved_profile := nullif(trim(coalesce(p_profile_key, '')), '');
+  if resolved_profile is null then
+    select cdp.profile_key
+    into resolved_profile
+    from public.content_difficulty_profiles cdp
+    where cdp.is_default
+    order by cdp.updated_at desc
+    limit 1;
+  end if;
+
+  if resolved_profile is null then
+    raise exception 'No default difficulty profile configured';
+  end if;
+
+  if not exists (
+    select 1
+    from public.content_difficulty_profiles cdp
+    where cdp.profile_key = resolved_profile
+  ) then
+    raise exception 'Unknown difficulty profile: %', resolved_profile;
+  end if;
+
+  with profile_meta as (
+    select cdp.profile_key, cdp.display_name, cdp.is_default, cdp.notes
+    from public.content_difficulty_profiles cdp
+    where cdp.profile_key = resolved_profile
+  ), rebirth_rows as (
+    select
+      crd.rebirth_level,
+      crd.economy_multiplier,
+      crd.notes as rebirth_notes,
+      cs.set_key,
+      cs.display_name as set_display_name,
+      cs.layer,
+      cs.tiers_count,
+      cs.cards_per_tier
+    from public.content_rebirth_difficulty crd
+    left join public.content_sets cs
+      on cs.rebirth_unlock = crd.rebirth_level
+     and cs.is_active
+    where crd.profile_key = resolved_profile
+    order by crd.rebirth_level asc
+  ), upgrades as (
+    select
+      rr.rebirth_level,
+      rr.economy_multiplier,
+      cud.upgrade_key,
+      cud.display_name,
+      cud.max_level,
+      costs.first_cost,
+      costs.last_cost,
+      costs.percent_first_to_last,
+      costs.steps_json
+    from rebirth_rows rr
+    cross join public.content_upgrade_defs cud
+    cross join lateral (
+      with level_costs as (
+        select
+          gs.level_idx,
+          floor(
+            public.upgrade_cost(
+              cud.upgrade_key,
+              gs.level_idx,
+              false,
+              rr.rebirth_level
+            ) * rr.economy_multiplier
+          )::bigint as cost
+        from generate_series(0, greatest(cud.max_level - 1, 0)) as gs(level_idx)
+      ), steps as (
+        select
+          lc.level_idx,
+          lc.cost,
+          lag(lc.cost) over (order by lc.level_idx) as prev_cost
+        from level_costs lc
+      ), summary as (
+        select
+          min(lc.cost)::bigint as first_cost,
+          max(lc.cost)::bigint as last_cost,
+          case
+            when min(lc.cost) > 0
+              then round((((max(lc.cost)::numeric - min(lc.cost)::numeric) / min(lc.cost)::numeric) * 100), 2)
+            else null
+          end as percent_first_to_last
+        from level_costs lc
+      )
+      select
+        s.first_cost,
+        s.last_cost,
+        s.percent_first_to_last,
+        (
+          select coalesce(
+            jsonb_agg(
+              jsonb_build_object(
+                'purchase_number', st.level_idx + 1,
+                'cost', st.cost,
+                'percent_increase_from_previous_purchase',
+                case
+                  when st.prev_cost is null or st.prev_cost <= 0 then null
+                  else round((((st.cost::numeric - st.prev_cost::numeric) / st.prev_cost::numeric) * 100), 2)
+                end
+              )
+              order by st.level_idx asc
+            ),
+            '[]'::jsonb
+          )
+          from steps st
+        ) as steps_json
+      from summary s
+    ) costs
+  )
+  select jsonb_build_object(
+    'profile', (
+      select jsonb_build_object(
+        'profile_key', pm.profile_key,
+        'display_name', pm.display_name,
+        'is_default', pm.is_default,
+        'notes', pm.notes
+      )
+      from profile_meta pm
+    ),
+    'rebirths', (
+      select coalesce(
+        jsonb_agg(
+          jsonb_build_object(
+            'rebirth_level', rr.rebirth_level,
+            'set_key', rr.set_key,
+            'set_display_name', rr.set_display_name,
+            'layer', rr.layer,
+            'tiers_count', rr.tiers_count,
+            'cards_per_tier', rr.cards_per_tier,
+            'economy_multiplier', rr.economy_multiplier,
+            'notes', rr.rebirth_notes,
+            'upgrades', (
+              select coalesce(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'upgrade_key', u.upgrade_key,
+                    'display_name', u.display_name,
+                    'max_level', u.max_level,
+                    'first_purchase_cost', u.first_cost,
+                    'last_purchase_cost', u.last_cost,
+                    'percent_increase_first_to_last', u.percent_first_to_last,
+                    'purchase_steps', u.steps_json
+                  )
+                  order by u.upgrade_key asc
+                ),
+                '[]'::jsonb
+              )
+              from upgrades u
+              where u.rebirth_level = rr.rebirth_level
+            )
+          )
+          order by rr.rebirth_level asc
+        ),
+        '[]'::jsonb
+      )
+      from rebirth_rows rr
+    )
+  ) into payload;
+
+  return coalesce(payload, jsonb_build_object('profile', null, 'rebirths', '[]'::jsonb));
+end;
+$$;
+
 drop trigger if exists player_state_updated_at on public.player_state;
 create trigger player_state_updated_at
 before update on public.player_state
@@ -271,6 +1063,11 @@ drop trigger if exists player_terms_updated_at on public.player_terms;
 create trigger player_terms_updated_at
 before update on public.player_terms
 for each row execute function public.set_updated_at();
+
+drop trigger if exists player_terms_sync_term_identity on public.player_terms;
+create trigger player_terms_sync_term_identity
+before insert or update on public.player_terms
+for each row execute function public.sync_term_identity();
 
 drop trigger if exists player_profile_updated_at on public.player_profile;
 create trigger player_profile_updated_at
@@ -610,11 +1407,14 @@ as $$
   select 1.0;
 $$;
 
+drop function if exists public.card_reward(text, text, text, integer, integer) cascade;
+drop function if exists public.card_reward(text, text, text, integer) cascade;
 create or replace function public.card_reward(
   p_term_key text,
   p_rarity text,
   p_mutation text,
-  p_value_level int
+  p_value_level int,
+  p_rebirth_count int default 0
 )
 returns bigint
 language sql
@@ -629,6 +1429,7 @@ as $$
       * public.rarity_multiplier(p_rarity)
       * public.mutation_multiplier(p_mutation)
       * public.value_multiplier(p_value_level)
+      * power(1.25, greatest(0, coalesce(p_rebirth_count, 0)))
   ))::bigint;
 $$;
 
@@ -1083,8 +1884,8 @@ language sql
 immutable
 as $$
   select case lower(coalesce(p_upgrade_key, ''))
-    when 'auto_unlock' then case when p_auto_unlocked then null else 225::bigint end
-    when 'auto_speed' then floor(120 * power(1.45, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'auto_unlock' then case when p_auto_unlocked then null else 100::bigint end
+    when 'auto_speed' then floor(250 * power(1.45, greatest(0, coalesce(p_level, 0))))::bigint
     when 'tier_boost' then floor(25 * power(1.42, greatest(0, coalesce(p_level, 0))))::bigint
     when 'mutation_upgrade' then greatest(
       floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint,
@@ -1297,7 +2098,7 @@ begin
       raise exception 'Unable to resolve draw term';
     end if;
 
-    draw_reward := public.card_reward(draw_term_key, draw_rarity, draw_mutation, state_row.value_level);
+    draw_reward := public.card_reward(draw_term_key, draw_rarity, draw_mutation, state_row.value_level, state_row.rebirth_count);
 
     update public.player_state
     set coins = coins + draw_reward,
@@ -1644,7 +2445,7 @@ begin
     raise exception 'Unable to resolve draw term';
   end if;
 
-  draw_reward := public.card_reward(chosen_term, draw_rarity, draw_mutation, state_row.value_level);
+  draw_reward := public.card_reward(chosen_term, draw_rarity, draw_mutation, state_row.value_level, state_row.rebirth_count);
 
   update public.player_state
   set coins = coins + draw_reward,
@@ -1989,7 +2790,7 @@ begin
   delete from public.player_terms where user_id = uid;
 
   update public.player_state
-  set coins = 100,
+  set coins = 0,
       luck_level = 0,
       passive_rate_bp = 0,
       highest_tier_unlocked = 1,
@@ -2369,6 +3170,8 @@ grant execute on function public.update_nickname(text, text, text) to authentica
 grant execute on function public.reset_account() to authenticated;
 grant execute on function public.get_leaderboard(int) to authenticated;
 grant execute on function public.debug_apply_action(jsonb) to authenticated;
+grant execute on function public.get_content_manifest() to authenticated;
+grant execute on function public.get_rebirth_difficulty_report(text) to authenticated;
 
 -- v2: rebirth, lifetime collection, stolen markers, and seasonal leaderboard support.
 alter table public.player_state add column if not exists rebirth_count int not null default 0;
@@ -2378,7 +3181,8 @@ alter table public.player_profile add column if not exists name_customized boole
 create table if not exists public.player_lifetime_terms (
   user_id uuid not null references auth.users(id) on delete cascade,
   layer int not null check (layer >= 1),
-  term_key text not null references public.term_catalog(term_key) on delete cascade,
+  card_slot_id text,
+  term_key text not null references public.term_catalog(term_key) on update cascade on delete cascade,
   copies int not null default 1,
   best_mutation text not null default 'none',
   first_collected_at timestamptz not null default now(),
@@ -2391,6 +3195,8 @@ create table if not exists public.player_lifetime_terms (
 alter table public.player_lifetime_terms add column if not exists copies int not null default 1;
 alter table public.player_lifetime_terms add column if not exists best_mutation text not null default 'none';
 alter table public.player_lifetime_terms add column if not exists last_collected_at timestamptz not null default now();
+alter table public.player_lifetime_terms add column if not exists first_holo_at timestamptz;
+alter table public.player_lifetime_terms add column if not exists card_slot_id text;
 
 do $$
 begin
@@ -2409,26 +3215,69 @@ $$;
 create table if not exists public.player_stolen_terms (
   user_id uuid not null references auth.users(id) on delete cascade,
   layer int not null check (layer >= 1),
-  term_key text not null references public.term_catalog(term_key) on delete cascade,
+  card_slot_id text,
+  term_key text not null references public.term_catalog(term_key) on update cascade on delete cascade,
   stolen_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (user_id, layer, term_key)
 );
+alter table public.player_stolen_terms add column if not exists card_slot_id text;
 
 create table if not exists public.player_duck_theft_events (
   id bigint generated always as identity primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
   season_id text not null,
   layer int not null check (layer >= 1),
-  term_key text not null references public.term_catalog(term_key) on delete cascade,
+  card_slot_id text,
+  term_key text not null references public.term_catalog(term_key) on update cascade on delete cascade,
   mutation text not null default 'none' check (mutation in ('none', 'foil', 'holo')),
   stolen_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
+alter table public.player_duck_theft_events add column if not exists card_slot_id text;
 
 create index if not exists idx_player_duck_theft_events_season_time
   on public.player_duck_theft_events (season_id, stolen_at desc);
+
+update public.player_lifetime_terms plt
+set card_slot_id = tc.card_slot_id,
+    term_key = tc.term_key
+from public.term_catalog tc
+where (plt.card_slot_id is not null and tc.card_slot_id = plt.card_slot_id)
+   or (plt.card_slot_id is null and tc.term_key = plt.term_key);
+
+update public.player_stolen_terms pst
+set card_slot_id = tc.card_slot_id,
+    term_key = tc.term_key
+from public.term_catalog tc
+where (pst.card_slot_id is not null and tc.card_slot_id = pst.card_slot_id)
+   or (pst.card_slot_id is null and tc.term_key = pst.term_key);
+
+update public.player_duck_theft_events pdte
+set card_slot_id = tc.card_slot_id,
+    term_key = tc.term_key
+from public.term_catalog tc
+where (pdte.card_slot_id is not null and tc.card_slot_id = pdte.card_slot_id)
+   or (pdte.card_slot_id is null and tc.term_key = pdte.term_key);
+
+update public.player_lifetime_terms plt
+set first_holo_at = coalesce(plt.first_holo_at, plt.last_collected_at, plt.first_collected_at)
+where public.normalize_mutation(plt.best_mutation) = 'holo'
+  and plt.first_holo_at is null;
+
+create index if not exists idx_player_lifetime_terms_card_slot
+  on public.player_lifetime_terms (card_slot_id);
+create unique index if not exists idx_player_lifetime_terms_user_layer_slot_unique
+  on public.player_lifetime_terms (user_id, layer, card_slot_id)
+  where card_slot_id is not null;
+create index if not exists idx_player_stolen_terms_card_slot
+  on public.player_stolen_terms (card_slot_id);
+create unique index if not exists idx_player_stolen_terms_user_layer_slot_unique
+  on public.player_stolen_terms (user_id, layer, card_slot_id)
+  where card_slot_id is not null;
+create index if not exists idx_player_duck_theft_events_card_slot
+  on public.player_duck_theft_events (card_slot_id);
 
 create table if not exists public.player_season_history (
   user_id uuid not null references auth.users(id) on delete cascade,
@@ -2471,11 +3320,24 @@ drop trigger if exists player_lifetime_terms_updated_at on public.player_lifetim
 create trigger player_lifetime_terms_updated_at
 before update on public.player_lifetime_terms
 for each row execute function public.set_updated_at();
+drop trigger if exists player_lifetime_terms_sync_term_identity on public.player_lifetime_terms;
+create trigger player_lifetime_terms_sync_term_identity
+before insert or update on public.player_lifetime_terms
+for each row execute function public.sync_term_identity();
 
 drop trigger if exists player_stolen_terms_updated_at on public.player_stolen_terms;
 create trigger player_stolen_terms_updated_at
 before update on public.player_stolen_terms
 for each row execute function public.set_updated_at();
+drop trigger if exists player_stolen_terms_sync_term_identity on public.player_stolen_terms;
+create trigger player_stolen_terms_sync_term_identity
+before insert or update on public.player_stolen_terms
+for each row execute function public.sync_term_identity();
+
+drop trigger if exists player_duck_theft_events_sync_term_identity on public.player_duck_theft_events;
+create trigger player_duck_theft_events_sync_term_identity
+before insert or update on public.player_duck_theft_events
+for each row execute function public.sync_term_identity();
 
 drop trigger if exists player_season_history_updated_at on public.player_season_history;
 create trigger player_season_history_updated_at
@@ -2597,7 +3459,8 @@ begin
     copies,
     best_mutation,
     first_collected_at,
-    last_collected_at
+    last_collected_at,
+    first_holo_at
   )
   values (
     p_user_id,
@@ -2606,7 +3469,11 @@ begin
     greatest(1, coalesce(p_copies_to_add, 1)),
     public.normalize_mutation(p_mutation),
     now(),
-    now()
+    now(),
+    case
+      when public.normalize_mutation(p_mutation) = 'holo' then now()
+      else null
+    end
   )
   on conflict (user_id, layer, term_key)
   do update set
@@ -2615,6 +3482,11 @@ begin
       when public.mutation_rank(public.normalize_mutation(p_mutation)) > public.mutation_rank(public.player_lifetime_terms.best_mutation)
         then public.normalize_mutation(p_mutation)
       else public.player_lifetime_terms.best_mutation
+    end,
+    first_holo_at = case
+      when public.normalize_mutation(p_mutation) = 'holo'
+        then coalesce(public.player_lifetime_terms.first_holo_at, now())
+      else public.player_lifetime_terms.first_holo_at
     end,
     last_collected_at = now(),
     updated_at = now();
@@ -2634,7 +3506,7 @@ begin
   where true;
 
   update public.player_state
-  set coins = 100,
+  set coins = 0,
       luck_level = 0,
       passive_rate_bp = 0,
       highest_tier_unlocked = 1,
@@ -3099,7 +3971,7 @@ begin
       raise exception 'Unable to resolve draw term';
     end if;
 
-    draw_reward := public.card_reward(draw_term_key, draw_rarity, draw_mutation, state_row.value_level);
+    draw_reward := public.card_reward(draw_term_key, draw_rarity, draw_mutation, state_row.value_level, state_row.rebirth_count);
 
     update public.player_state
     set coins = coins + draw_reward,
@@ -3293,7 +4165,7 @@ begin
     raise exception 'Unable to resolve draw term';
   end if;
 
-  draw_reward := public.card_reward(chosen_term, draw_rarity, draw_mutation, state_row.value_level);
+  draw_reward := public.card_reward(chosen_term, draw_rarity, draw_mutation, state_row.value_level, state_row.rebirth_count);
 
   update public.player_state
   set coins = coins + draw_reward,
@@ -3751,7 +4623,7 @@ begin
   delete from public.player_stolen_terms where user_id = uid;
 
   update public.player_state
-  set coins = 100,
+  set coins = 0,
       luck_level = 0,
       passive_rate_bp = 0,
       highest_tier_unlocked = 1,
@@ -3814,7 +4686,7 @@ begin
   delete from public.player_season_history where user_id = uid;
 
   update public.player_state
-  set coins = 100,
+  set coins = 0,
       luck_level = 0,
       passive_rate_bp = 0,
       highest_tier_unlocked = 1,
@@ -3889,6 +4761,96 @@ begin
 end;
 $$;
 
+create or replace function public.get_lifetime_completion_board(p_limit int default 100)
+returns table (
+  layer int,
+  user_id uuid,
+  display_name text,
+  all_cards_completed_at timestamptz,
+  all_holo_completed_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  capped_limit int;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+
+  capped_limit := greatest(1, least(coalesce(p_limit, 100), 500));
+
+  return query
+  with required as (
+    select count(*)::int as total_slots
+    from public.term_catalog tc
+  ), per_player_layer as (
+    select
+      least(2, greatest(1, coalesce(plt.layer, 1)))::int as layer,
+      plt.user_id,
+      count(distinct coalesce(plt.card_slot_id, plt.term_key))::int as collected_slots,
+      max(plt.first_collected_at) as all_cards_completed_at,
+      count(distinct coalesce(plt.card_slot_id, plt.term_key))
+        filter (where public.normalize_mutation(plt.best_mutation) = 'holo')::int as holo_slots,
+      max(
+        coalesce(
+          plt.first_holo_at,
+          case
+            when public.normalize_mutation(plt.best_mutation) = 'holo'
+              then plt.last_collected_at
+            else null
+          end
+        )
+      ) as all_holo_completed_at
+    from public.player_lifetime_terms plt
+    group by
+      least(2, greatest(1, coalesce(plt.layer, 1)))::int,
+      plt.user_id
+  ), completed as (
+    select
+      ppl.layer,
+      ppl.user_id,
+      coalesce(nullif(trim(pp.display_name), ''), 'Unknown Agent') as display_name,
+      ppl.all_cards_completed_at,
+      ppl.all_holo_completed_at as all_holo_completed_at
+    from per_player_layer ppl
+    cross join required req
+    left join public.player_profile pp on pp.user_id = ppl.user_id
+    where ppl.collected_slots >= req.total_slots
+      and ppl.holo_slots >= req.total_slots
+  ), ranked as (
+    select
+      c.*,
+      row_number() over (
+        partition by c.layer
+        order by
+          c.all_holo_completed_at asc nulls last,
+          c.all_cards_completed_at asc nulls last,
+          c.display_name asc
+      ) as rank_in_layer
+    from completed c
+  )
+  select
+    r.layer,
+    r.user_id,
+    r.display_name,
+    r.all_cards_completed_at,
+    r.all_holo_completed_at
+  from ranked r
+  where r.rank_in_layer <= capped_limit
+  order by
+    r.layer asc,
+    r.rank_in_layer asc;
+end;
+$$;
+
 drop function if exists public.get_season_history(int);
 
 create or replace function public.get_season_history(p_limit int default 200)
@@ -3907,10 +4869,22 @@ returns table (
   best_term_copies int,
   first_place_name text,
   first_place_score bigint,
+  first_place_best_term_name text,
+  first_place_best_term_tier int,
+  first_place_best_term_rarity text,
+  first_place_best_term_mutation text,
   second_place_name text,
   second_place_score bigint,
+  second_place_best_term_name text,
+  second_place_best_term_tier int,
+  second_place_best_term_rarity text,
+  second_place_best_term_mutation text,
   third_place_name text,
-  third_place_score bigint
+  third_place_score bigint,
+  third_place_best_term_name text,
+  third_place_best_term_tier int,
+  third_place_best_term_rarity text,
+  third_place_best_term_mutation text
 )
 language plpgsql
 security definer
@@ -3965,10 +4939,22 @@ begin
       h.season_id,
       max(case when h.rank = 1 then pp.display_name end) as first_place_name,
       max(case when h.rank = 1 then h.score end)::bigint as first_place_score,
+      max(case when h.rank = 1 then h.best_term_name end) as first_place_best_term_name,
+      max(case when h.rank = 1 then h.best_term_tier end)::int as first_place_best_term_tier,
+      max(case when h.rank = 1 then h.best_term_rarity end) as first_place_best_term_rarity,
+      max(case when h.rank = 1 then h.best_term_mutation end) as first_place_best_term_mutation,
       max(case when h.rank = 2 then pp.display_name end) as second_place_name,
       max(case when h.rank = 2 then h.score end)::bigint as second_place_score,
+      max(case when h.rank = 2 then h.best_term_name end) as second_place_best_term_name,
+      max(case when h.rank = 2 then h.best_term_tier end)::int as second_place_best_term_tier,
+      max(case when h.rank = 2 then h.best_term_rarity end) as second_place_best_term_rarity,
+      max(case when h.rank = 2 then h.best_term_mutation end) as second_place_best_term_mutation,
       max(case when h.rank = 3 then pp.display_name end) as third_place_name,
-      max(case when h.rank = 3 then h.score end)::bigint as third_place_score
+      max(case when h.rank = 3 then h.score end)::bigint as third_place_score,
+      max(case when h.rank = 3 then h.best_term_name end) as third_place_best_term_name,
+      max(case when h.rank = 3 then h.best_term_tier end)::int as third_place_best_term_tier,
+      max(case when h.rank = 3 then h.best_term_rarity end) as third_place_best_term_rarity,
+      max(case when h.rank = 3 then h.best_term_mutation end) as third_place_best_term_mutation
     from public.player_season_history h
     left join public.player_profile pp on pp.user_id = h.user_id
     where h.season_id in (select cs.season_id from completed_seasons cs)
@@ -3989,10 +4975,22 @@ begin
     vh.best_term_copies,
     p.first_place_name,
     coalesce(p.first_place_score, 0)::bigint as first_place_score,
+    p.first_place_best_term_name,
+    coalesce(p.first_place_best_term_tier, 0)::int as first_place_best_term_tier,
+    coalesce(p.first_place_best_term_rarity, 'common')::text as first_place_best_term_rarity,
+    coalesce(p.first_place_best_term_mutation, 'none')::text as first_place_best_term_mutation,
     p.second_place_name,
     coalesce(p.second_place_score, 0)::bigint as second_place_score,
+    p.second_place_best_term_name,
+    coalesce(p.second_place_best_term_tier, 0)::int as second_place_best_term_tier,
+    coalesce(p.second_place_best_term_rarity, 'common')::text as second_place_best_term_rarity,
+    coalesce(p.second_place_best_term_mutation, 'none')::text as second_place_best_term_mutation,
     p.third_place_name,
-    coalesce(p.third_place_score, 0)::bigint as third_place_score
+    coalesce(p.third_place_score, 0)::bigint as third_place_score,
+    p.third_place_best_term_name,
+    coalesce(p.third_place_best_term_tier, 0)::int as third_place_best_term_tier,
+    coalesce(p.third_place_best_term_rarity, 'common')::text as third_place_best_term_rarity,
+    coalesce(p.third_place_best_term_mutation, 'none')::text as third_place_best_term_mutation
   from completed_seasons cs
   left join viewer_history vh on vh.season_id = cs.season_id
   left join season_totals st on st.season_id = cs.season_id
@@ -4214,6 +5212,7 @@ as $$
       tc.term_key,
       tc.rarity,
       public.normalize_mutation(pte.mutation),
+      0,
       0
     )::bigint as value,
     pte.stolen_at,
@@ -4232,3 +5231,4 @@ $$;
 
 grant execute on function public.get_runtime_capabilities() to authenticated;
 grant execute on function public.get_duck_cave_stash() to authenticated;
+grant execute on function public.get_lifetime_completion_board(int) to authenticated;

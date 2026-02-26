@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="card p-5">
     <div class="mb-4 flex items-center justify-between">
       <div>
@@ -11,11 +11,7 @@
       </div>
     </div>
 
-    <div class="mb-4 grid gap-3 sm:grid-cols-3">
-      <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm">
-        <p class="text-xs text-muted">Current Season</p>
-        <p class="font-semibold">{{ seasonLabel }}</p>
-      </article>
+    <div class="mb-4 grid gap-3 sm:grid-cols-2">
       <article class="rounded-xl border border-soft bg-panel-soft p-3 text-sm">
         <p class="text-xs text-muted">Season Window</p>
         <p class="font-semibold">{{ seasonWindowLabel }}</p>
@@ -86,33 +82,51 @@
       <p v-if="historyError" class="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ historyError }}</p>
       <p v-if="historyLoading" class="text-sm text-muted">Loading season history...</p>
       <p v-else-if="seasonHistory.length === 0" class="text-sm text-muted">No completed seasons yet.</p>
-      <div v-else class="overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead>
-            <tr class="text-left text-muted">
-              <th class="px-2 py-2">Season</th>
-              <th class="px-2 py-2">Your Rank</th>
-              <th class="px-2 py-2">1st / 2nd / 3rd</th>
-              <th class="px-2 py-2">Best Card</th>
-              <th class="px-2 py-2">Coins</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in seasonHistory" :key="`season-history-${row.season_id}`" class="border-t border-soft">
-              <td class="px-2 py-2">{{ row.season_id }}</td>
-              <td class="px-2 py-2">{{ seasonRankLabel(row) }}</td>
-              <td class="px-2 py-2">{{ seasonPodiumLabel(row) }}</td>
-              <td class="px-2 py-2">
-                <span v-if="row.best_term_key">
-                  {{ row.best_term_name || row.best_term_key }}
-                  · T{{ row.best_term_tier }} · {{ row.best_term_rarity }} · {{ mutationLabel(row.best_term_mutation) }}
-                </span>
-                <span v-else class="text-muted">No cards</span>
-              </td>
-              <td class="px-2 py-2">{{ formatNumber(row.score) }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div v-else class="grid gap-3">
+        <article
+          v-for="row in seasonHistory"
+          :key="`season-history-${row.season_id}`"
+          class="rounded-xl border border-soft bg-white/80 p-3"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm font-semibold text-main">{{ formatSeasonLabel(row.season_id) }}</p>
+          </div>
+
+          <div class="mt-2 grid gap-2 md:grid-cols-3">
+            <div class="podium-tile podium-tile--gold">
+              <p class="text-[11px] uppercase tracking-wide text-amber-900">1st</p>
+              <p class="mt-1 text-xs font-semibold text-amber-900">{{ podiumName(row, 1) }}</p>
+              <p class="mt-1 text-[11px] text-amber-900">{{ podiumBestCardLabel(row, 1) }}</p>
+            </div>
+            <div class="podium-tile podium-tile--silver">
+              <p class="text-[11px] uppercase tracking-wide text-slate-800">2nd</p>
+              <p class="mt-1 text-xs font-semibold text-slate-800">{{ podiumName(row, 2) }}</p>
+              <p class="mt-1 text-[11px] text-slate-700">{{ podiumBestCardLabel(row, 2) }}</p>
+            </div>
+            <div class="podium-tile podium-tile--bronze">
+              <p class="text-[11px] uppercase tracking-wide text-orange-900">3rd</p>
+              <p class="mt-1 text-xs font-semibold text-orange-900">{{ podiumName(row, 3) }}</p>
+              <p class="mt-1 text-[11px] text-orange-900">{{ podiumBestCardLabel(row, 3) }}</p>
+            </div>
+          </div>
+
+          <div class="mt-2 grid gap-2 md:grid-cols-2">
+            <div class="podium-tile podium-tile--gold">
+              <p class="text-[11px] uppercase tracking-wide text-amber-900">First Full Holo · Base Pack</p>
+              <p class="mt-1 text-xs font-semibold text-amber-900">{{ firstFullHoloLabel(1) }}</p>
+            </div>
+            <div class="podium-tile podium-tile--gold">
+              <p class="text-[11px] uppercase tracking-wide text-amber-900">First Full Holo · Booster Pack</p>
+              <p class="mt-1 text-xs font-semibold text-amber-900">{{ firstFullHoloLabel(2) }}</p>
+            </div>
+          </div>
+
+          <div class="mt-2 rounded-lg border border-soft bg-panel-soft p-2 text-center">
+            <p class="text-[11px] uppercase tracking-wide text-muted">Personal Ranking</p>
+            <p class="mt-1 text-xs text-main">Rank: {{ seasonRankLabel(row) }}</p>
+            <p class="mt-1 text-xs text-main">{{ personalBestCardLabel(row) }}</p>
+          </div>
+        </article>
       </div>
     </section>
 
@@ -173,6 +187,7 @@ const reportDetailsInput = ref('')
 const reportSubmitting = ref(false)
 const reportSuccessMessage = ref('')
 const reportErrorMessage = ref('')
+const completionBoardRows = ref([])
 
 const rows = computed(() => store.state.leaderboard.rows)
 const supportsSeasonHistory = computed(() => Boolean(store.state.game.capabilities?.supports_season_history))
@@ -192,7 +207,6 @@ const duckHighestCardLabel = computed(() => {
   const effect = mutationLabel(entry.mutation)
   return `${entry.name} · T${tier || '?'} · ${rarity} · ${effect}`
 })
-const seasonLabel = computed(() => seasonInfo.value?.id || 'Unknown')
 const seasonWindowLabel = computed(() => {
   const startsAt = seasonInfo.value?.startsAt
   const endsAt = seasonInfo.value?.endsAt
@@ -222,6 +236,14 @@ onMounted(async () => {
   await refreshLeaderboard(true)
   if (supportsSeasonHistory.value) {
     await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
+  }
+  if (store.state.game.capabilities?.supports_lifetime_collection) {
+    try {
+      const rows = await store.dispatch('game/fetchLifetimeCompletionBoard', { limit: 100 })
+      completionBoardRows.value = Array.isArray(rows) ? rows : []
+    } catch (_) {
+      completionBoardRows.value = []
+    }
   }
   startAutoRefresh()
 })
@@ -339,14 +361,25 @@ function mutationLabel(mutation) {
   return 'None'
 }
 
-function seasonPodiumLabel(row) {
-  const firstName = String(row?.first_place_name || '').trim() || '-'
-  const secondName = String(row?.second_place_name || '').trim() || '-'
-  const thirdName = String(row?.third_place_name || '').trim() || '-'
-  const firstScore = Number(row?.first_place_score || 0)
-  const secondScore = Number(row?.second_place_score || 0)
-  const thirdScore = Number(row?.third_place_score || 0)
-  return `1st ${firstName} (${formatNumber(firstScore)}) · 2nd ${secondName} (${formatNumber(secondScore)}) · 3rd ${thirdName} (${formatNumber(thirdScore)})`
+function podiumName(row, place) {
+  if (place === 1) return String(row?.first_place_name || '').trim() || '-'
+  if (place === 2) return String(row?.second_place_name || '').trim() || '-'
+  return String(row?.third_place_name || '').trim() || '-'
+}
+
+function podiumBestCardLabel(row, place) {
+  const prefix = place === 1
+    ? 'first_place'
+    : place === 2
+      ? 'second_place'
+      : 'third_place'
+  const name = String(row?.[`${prefix}_best_term_name`] || '').trim()
+  const tier = Number(row?.[`${prefix}_best_term_tier`] || 0)
+  const rarity = String(row?.[`${prefix}_best_term_rarity`] || '').trim()
+  const mutation = row?.[`${prefix}_best_term_mutation`]
+
+  if (!name) return 'No card'
+  return `${name} · T${tier || '?'} · ${rarity || 'common'} · ${mutationLabel(mutation)}`
 }
 
 function seasonRankLabel(row) {
@@ -356,6 +389,45 @@ function seasonRankLabel(row) {
     return totalPlayers > 0 ? `Unranked/${totalPlayers}` : 'Unranked'
   }
   return totalPlayers > 0 ? `${rank}/${totalPlayers}` : `${rank}`
+}
+
+function personalBestCardLabel(row) {
+  if (!row?.best_term_key) return 'Best card: None'
+  return `Best card: ${row.best_term_name || row.best_term_key} · T${row.best_term_tier} · ${row.best_term_rarity} · ${mutationLabel(row.best_term_mutation)}`
+}
+
+function firstFullHoloLabel(layerNumber) {
+  const layer = Math.max(1, Math.min(2, Number(layerNumber || 1)))
+  const first = (completionBoardRows.value || [])
+    .filter((row) => Number(row?.layer || 1) === layer && row?.all_holo_completed_at)
+    .sort((a, b) => {
+      const aMs = Date.parse(String(a?.all_holo_completed_at || '')) || Number.MAX_SAFE_INTEGER
+      const bMs = Date.parse(String(b?.all_holo_completed_at || '')) || Number.MAX_SAFE_INTEGER
+      return aMs - bMs
+    })[0]
+  if (!first) return 'No full holo completion yet'
+  return `${first.display_name || 'Unknown'} (${formatDateTime(first.all_holo_completed_at)})`
+}
+
+function formatDateTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return 'Unknown'
+  return date.toLocaleString()
+}
+
+function formatSeasonLabel(value) {
+  const raw = String(value || '').trim()
+  const match = /^week-(\d{4})-(\d{2})-(\d{2})$/i.exec(raw)
+  if (!match) return raw || 'Unknown Season'
+
+  const date = new Date(`${match[1]}-${match[2]}-${match[3]}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return raw
+
+  return date.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 function toOrdinal(value) {
@@ -369,3 +441,30 @@ function toOrdinal(value) {
   return `${n}th`
 }
 </script>
+
+<style scoped>
+.podium-tile {
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  padding: 0.5rem;
+  text-align: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.podium-tile--gold {
+  border-color: #f2c14e;
+  background: linear-gradient(145deg, #ffe7a3 0%, #ffd86b 52%, #fff4d1 100%);
+}
+
+.podium-tile--silver {
+  border-color: #b7bdc9;
+  background: linear-gradient(145deg, #edf0f5 0%, #d7dce5 52%, #f7f8fb 100%);
+}
+
+.podium-tile--bronze {
+  border-color: #d08a54;
+  background: linear-gradient(145deg, #f7c59e 0%, #e7a06c 52%, #fde2cc 100%);
+}
+</style>
+
+

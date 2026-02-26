@@ -478,6 +478,67 @@ function buildLifetimeSummary(record) {
   }
 }
 
+function buildLocalLifetimeCompletionBoard(record, limit = 100) {
+  const safeLimit = Math.max(1, Math.min(500, Number(limit || 100)))
+  const lifetime = uniqueLifetimeEntries(record.lifetime_terms || [])
+  const byLayer = new Map()
+
+  for (const entry of lifetime) {
+    const layer = normalizeActiveLayer(entry.layer)
+    if (layer > MAX_ACTIVE_LAYER) continue
+    if (!byLayer.has(layer)) byLayer.set(layer, new Map())
+    byLayer.get(layer).set(entry.term_key, entry)
+  }
+
+  const displayName = String(record?.profile?.display_name || '').trim() || 'Local Player'
+  const rows = []
+  for (const [layer, entryMap] of byLayer.entries()) {
+    if (entryMap.size < TERMS_TOTAL) continue
+
+    let allCardsCompletedAtMs = 0
+    let allHoloCompletedAtMs = 0
+    let holoCount = 0
+
+    for (const entry of entryMap.values()) {
+      const firstCollectedMs = Date.parse(entry.first_collected_at || '')
+      if (Number.isFinite(firstCollectedMs)) {
+        allCardsCompletedAtMs = Math.max(allCardsCompletedAtMs, firstCollectedMs)
+      }
+
+      if (normalizeMutation(entry.best_mutation) === 'holo') {
+        holoCount += 1
+        const firstHoloMs = Date.parse(entry.first_holo_at || entry.last_collected_at || entry.first_collected_at || '')
+        if (Number.isFinite(firstHoloMs)) {
+          allHoloCompletedAtMs = Math.max(allHoloCompletedAtMs, firstHoloMs)
+        }
+      }
+    }
+
+    if (holoCount >= TERMS_TOTAL && allHoloCompletedAtMs > 0) {
+      rows.push({
+        layer,
+        user_id: record.user_id,
+        display_name: displayName,
+        all_cards_completed_at: allCardsCompletedAtMs > 0 ? nowIso(allCardsCompletedAtMs) : null,
+        all_holo_completed_at: nowIso(allHoloCompletedAtMs),
+      })
+    }
+  }
+
+  rows.sort((a, b) => {
+    if (a.layer !== b.layer) return a.layer - b.layer
+    const aHoloMs = Date.parse(a.all_holo_completed_at || '') || Number.MAX_SAFE_INTEGER
+    const bHoloMs = Date.parse(b.all_holo_completed_at || '') || Number.MAX_SAFE_INTEGER
+    if (aHoloMs !== bHoloMs) return aHoloMs - bHoloMs
+    const aMs = Date.parse(a.all_cards_completed_at || '') || Number.MAX_SAFE_INTEGER
+    const bMs = Date.parse(b.all_cards_completed_at || '') || Number.MAX_SAFE_INTEGER
+    if (aMs !== bMs) return aMs - bMs
+    return String(a.display_name || '').localeCompare(String(b.display_name || ''))
+  })
+
+  return rows.slice(0, safeLimit)
+}
+
 function currentLayerStolenTermKeys(record) {
   const activeLayer = normalizeActiveLayer(record.active_layer)
   return uniqueStolenEntries(record.stolen_terms || [])
@@ -1026,6 +1087,7 @@ function applySinglePackOpen(
     rarity: chosenRarity,
     mutation: chosenMutation,
     valueLevel: record.value_level,
+    rebirthCount: record.rebirth_count,
   })
 
   record.coins += reward
@@ -1332,6 +1394,17 @@ export function getLocalLifetimeCollection(user, { rng = Math.random, nowMs = Da
   ensureSeasonState(record, nowMs)
   writeRecord(user, record)
   return buildLifetimeSummary(record)
+}
+
+export function getLocalLifetimeCompletionBoard(
+  user,
+  { limit = 100, rng = Math.random, nowMs = Date.now() } = {},
+) {
+  assertAuthenticatedUser(user)
+  const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
+  writeRecord(user, record)
+  return buildLocalLifetimeCompletionBoard(record, limit)
 }
 
 export function getLocalSeasonHistory(user, { limit = 200, rng = Math.random, nowMs = Date.now() } = {}) {

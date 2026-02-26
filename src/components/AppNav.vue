@@ -42,6 +42,13 @@
             escapes.
           </div>
         </div>
+        <router-link class="btn-secondary profile-btn" to="/profile">Profile</router-link>
+        <span
+          v-if="showOpenPackBugDot"
+          class="open-pack-bug-dot"
+          title="Recovered from a pack-open timeout in the last 10 seconds."
+          aria-label="Pack-open timeout recovered"
+        ></span>
         <span
           class="afk-debug"
           :class="isAfk ? 'afk-debug--afk' : 'afk-debug--active'"
@@ -49,7 +56,6 @@
         >
           {{ isAfk ? 'AFK' : 'Active' }}
         </span>
-        <router-link class="btn-secondary profile-btn" to="/profile">Profile</router-link>
       </div>
     </div>
   </header>
@@ -65,6 +71,7 @@ const route = useRoute()
 const AFK_TIMEOUT_MS = 10_000
 const AFK_TICK_MS = 1_000
 const KEEP_ALIVE_MS = 5_000
+const OPEN_PACK_BUG_DOT_MS = 10_000
 const NAV_KEEP_ALIVE_SUSPENDED_ROUTES = new Set(['Game', 'Leaderboard', 'LifetimeCollection', 'DuckCave'])
 
 const isAuthed = computed(() => !!store.state.auth.user)
@@ -87,6 +94,12 @@ const lastMouseMoveMs = ref(Date.now())
 const isAfk = computed(() => {
   if (!isAuthed.value) return false
   return (nowMs.value - lastMouseMoveMs.value) >= AFK_TIMEOUT_MS
+})
+const showOpenPackBugDot = computed(() => {
+  if (!isAuthed.value) return false
+  const happenedAt = Number(store.state.game.lastOpenPackTimeoutAt || 0)
+  if (happenedAt <= 0) return false
+  return (nowMs.value - happenedAt) <= OPEN_PACK_BUG_DOT_MS
 })
 
 let afkTimer = null
@@ -240,6 +253,15 @@ watch([isAuthed, () => route.name], ([authed]) => {
 
 .profile-btn {
   text-decoration: none;
+}
+
+.open-pack-bug-dot {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 9999px;
+  background: #e12f2f;
+  box-shadow: 0 0 0 2px rgba(225, 47, 47, 0.2);
+  display: inline-block;
 }
 
 .afk-debug {

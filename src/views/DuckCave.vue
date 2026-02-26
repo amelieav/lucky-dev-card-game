@@ -7,6 +7,9 @@
           Welcome to the duck cave. All the cards the duck has stolen get stashed in his duck cave.
           These cards are from all players across the leaderboard.
         </p>
+        <p class="mt-1 text-xs text-muted">
+          Maybe one day you'll be able to tame him...
+        </p>
         <p v-if="localEconomyEnabled" class="mt-1 text-xs text-muted">
           Local mode note: only your local player data exists in this runtime.
         </p>
@@ -80,8 +83,8 @@ import { getBaseTierFromEffectiveTier, normalizeLayer } from '../lib/packLogic.m
 
 const store = useStore()
 const LOCAL_ECONOMY_ENABLED = import.meta.env.VITE_LOCAL_ECONOMY === '1'
-const DUCK_CAVE_COLUMNS = 11
-const DUCK_CAVE_CARD_ROW_REM = 3.85
+const DUCK_CAVE_COLUMNS = 25
+const DUCK_CAVE_CARD_ROW_REM = 1.05
 const DUCK_CAVE_CARD_START_REM = 4.1
 const DUCK_CAVE_ALWAYS_ANIMATED_COUNT = 12
 const DUCK_CAVE_ANIMATED_SAMPLE_PERCENT = 5
@@ -311,10 +314,10 @@ function layoutForEntry(entry, index, totalCount) {
   const valueVisibilityRank = index + 1
 
   return {
-    left: clamp(leftBase + jitterX, 5, 95),
+    left: clamp(leftBase + jitterX, 3, 97),
     top: `${(DUCK_CAVE_CARD_START_REM + (row * DUCK_CAVE_CARD_ROW_REM) + jitterY).toFixed(2)}rem`,
     rotate: clamp(rotate, -16, 16),
-    scale: clamp(scale, 0.76, 0.98),
+    scale: clamp(scale, 0.7, 0.9),
     zIndex: 20 + valueVisibilityRank,
   }
 }
@@ -359,6 +362,8 @@ function formatNumber(value) {
 <style scoped>
 .duck-cave-scene {
   position: relative;
+  width: min(100%, 56rem);
+  margin: 0 auto;
   min-height: var(--duck-cave-min-height-rem, 26rem);
   border-radius: 1rem;
   border: 1px solid rgba(120, 143, 194, 0.4);
@@ -398,7 +403,7 @@ function formatNumber(value) {
 
 .duck-cave-card {
   position: absolute;
-  width: clamp(3.4rem, 8.2vw, 5.2rem);
+  width: clamp(3.8rem, 8.6vw, 5.4rem);
   max-width: 13vw;
   pointer-events: none;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28));
@@ -414,11 +419,13 @@ function formatNumber(value) {
 }
 
 .duck-cave-duck {
+  --duck-cave-duck-base-bottom: -0.65rem;
+  --duck-cave-duck-bob-rise: 0.7rem;
   position: absolute;
   width: clamp(7rem, 15vw, 10.2rem);
   height: auto;
   left: 50%;
-  bottom: 8%;
+  bottom: var(--duck-cave-duck-base-bottom);
   transform: translateX(-50%);
   z-index: 120;
   will-change: left, transform, bottom;
@@ -455,8 +462,8 @@ function formatNumber(value) {
 }
 
 @keyframes duck-cave-bob {
-  0%, 100% { bottom: 8%; }
-  50% { bottom: 9.4%; }
+  0%, 100% { bottom: var(--duck-cave-duck-base-bottom); }
+  50% { bottom: calc(var(--duck-cave-duck-base-bottom) + var(--duck-cave-duck-bob-rise)); }
 }
 
 @media (max-width: 900px) {

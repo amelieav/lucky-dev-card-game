@@ -1,8 +1,8 @@
 import { supabase } from '../lib/supabase'
 
 const RPC_TIMEOUT_MS = 15000
-const OPEN_PACK_TIMEOUT_MS = 6000
-const OPEN_PACK_RETRY_TIMEOUT_MS = 6000
+const OPEN_PACK_TIMEOUT_MS = 3500
+const OPEN_PACK_RETRY_TIMEOUT_MS = 3500
 const OPEN_PACK_RETRY_DELAY_MS = 180
 const READ_RPC_RETRY_TIMEOUT_MS = 22000
 const READ_RPC_RETRY_DELAY_MS = 240
@@ -270,6 +270,13 @@ export async function fetchLifetimeCollection() {
   return unwrap(await callReadRpcWithRecovery(
     () => supabase.rpc('get_lifetime_collection'),
     'get_lifetime_collection',
+  ))
+}
+
+export async function fetchLifetimeCompletionBoard(limit = 100) {
+  return unwrap(await callReadRpcWithRecovery(
+    () => supabase.rpc('get_lifetime_completion_board', { p_limit: limit }),
+    'get_lifetime_completion_board',
   ))
 }
 

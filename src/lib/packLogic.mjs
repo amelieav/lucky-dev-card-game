@@ -374,13 +374,17 @@ export function getBaseCardValue(baseBp) {
   return Math.floor(Math.max(0, Number(baseBp || 0)) * BALANCE_CONFIG.cardBaseValueFactor)
 }
 
-export function computeCardReward({ baseBp, rarity, mutation, valueLevel }) {
+export function computeCardReward({ baseBp, rarity, mutation, valueLevel, rebirthCount = 0 }) {
   const baseValue = getBaseCardValue(baseBp)
   const rarityMult = BALANCE_CONFIG.rarityRewardMultipliers[rarity] || 1
   const mutationMult = BALANCE_CONFIG.mutationRewardMultipliers[normalizeMutation(mutation)] || 1
   const valueMult = getValueMultiplier(valueLevel)
+  const rebirthMult = Math.pow(
+    Number(BALANCE_CONFIG.rebirthRewardMultiplierPerRebirth || 1),
+    Math.max(0, Number(rebirthCount || 0)),
+  )
 
-  return Math.floor(Math.max(1, baseValue * rarityMult * mutationMult * valueMult))
+  return Math.floor(Math.max(1, baseValue * rarityMult * mutationMult * valueMult * rebirthMult))
 }
 
 export function getUpgradeLevel(stateLike, upgradeKey) {

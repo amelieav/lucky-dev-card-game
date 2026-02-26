@@ -173,12 +173,19 @@ function keyFromName(name) {
     .replace(/^_+|_+$/g, '')
 }
 
+function slotIdFor(tier, index) {
+  const tierNo = Math.max(1, Number(tier || 1))
+  const slotNo = Math.max(1, Number(index || 0) + 1)
+  return `base_t${tierNo}_s${String(slotNo).padStart(2, '0')}`
+}
+
 export const TERMS = [1, 2, 3, 4, 5, 6].flatMap((tier) => {
   const names = TIER_NAMES[tier] || []
   const icons = TIER_ICON_SET[tier] || []
   const tierBaseBp = Number(TIER_BASE_BP[tier] || 50)
 
   return names.map((name, index) => ({
+    slotId: slotIdFor(tier, index),
     key: keyFromName(name),
     name,
     tier,

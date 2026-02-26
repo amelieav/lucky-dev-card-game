@@ -57,39 +57,51 @@
         </div>
       </div>
 
-      <div class="grid gap-2 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8">
-        <div
-          v-for="item in layer.items"
-          :key="`lifetime-card-${layer.layer}-${item.termKey}`"
-          class="lifetime-mini-slot space-y-1"
-        >
-          <term-card
-            class="lifetime-mini-card"
-            size="mini"
-            :name="item.name"
-            :tier="item.tier"
-            :rarity="item.rarity"
-            :mutation="item.bestMutation"
-            :icon="item.icon"
-            :coins="item.value"
-            :unknown="!item.owned"
-          />
-          <div class="lifetime-mini-meta">
-            <template v-if="item.owned">
-              <p class="lifetime-mini-metric">
-                <span class="lifetime-mini-metric__label">Copies</span>
-                <span class="lifetime-mini-metric__value">{{ item.copies }}</span>
-              </p>
-              <p class="lifetime-mini-metric">
-                <span class="lifetime-mini-metric__label">Best</span>
-                <span class="lifetime-mini-metric__value">{{ mutationLabel(item.bestMutation) }}</span>
-              </p>
-            </template>
-            <template v-else>
-              <p class="lifetime-mini-meta__empty">Not collected</p>
-            </template>
+      <div class="lifetime-layer-layout">
+        <div>
+          <div class="grid gap-0 grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
+            <div
+              v-for="item in layer.items"
+              :key="`lifetime-card-${layer.layer}-${item.termKey}`"
+              class="lifetime-mini-slot"
+            >
+              <term-card
+                class="lifetime-mini-card"
+                size="mini"
+                :name="item.name"
+                :tier="item.tier"
+                :rarity="item.rarity"
+                :mutation="item.bestMutation"
+                :icon="item.icon"
+                :coins="item.copies"
+                stat-label="copies"
+                stat-prefix=""
+                :unknown="!item.owned"
+              />
+            </div>
           </div>
         </div>
+
+        <aside class="lifetime-layer-sidebar rounded-xl border border-soft bg-white/70 p-3">
+          <div class="mb-2 flex items-center justify-between gap-2">
+            <h3 class="text-sm font-semibold">Full Holo</h3>
+            <span class="text-[11px] uppercase tracking-wide text-muted">{{ completionRowsForLayer(layer.layer).length }}</span>
+          </div>
+          <p v-if="!completionRowsForLayer(layer.layer).length" class="text-xs text-muted">No full holo collections yet.</p>
+          <ul v-else class="completion-board__grid">
+            <li
+              v-for="(row, index) in completionRowsForLayer(layer.layer)"
+              :key="`completion-board-row-${layer.layer}-${row.user_id}-${index}`"
+              class="completion-board__tile"
+            >
+              <p class="completion-board__name">#{{ index + 1 }} {{ row.display_name }}</p>
+              <p class="completion-board__meta">
+                Completed: <span class="completion-board__time">{{ formatCompletionTime(row.all_holo_completed_at) }}</span>
+              </p>
+            </li>
+          </ul>
+          <p v-if="completionBoardError" class="mt-2 text-xs text-red-600">{{ completionBoardError }}</p>
+        </aside>
       </div>
     </section>
     </template>
@@ -113,6 +125,8 @@ const lifetimePayload = ref({
   cards: [],
   highest_per_layer: [],
 })
+const completionBoardRows = ref([])
+const completionBoardError = ref(null)
 
 const snapshot = computed(() => store.state.game.snapshot || null)
 const supportsLifetimeCollection = computed(() => Boolean(store.state.game.capabilities?.supports_lifetime_collection))
@@ -124,6 +138,37 @@ const lifetimeTotal = computed(() => Number(lifetimePayload.value.total_unique |
 const activeLayer = computed(() => normalizeLayer(stateRow.value?.active_layer || 1))
 const rebirthCount = computed(() => Math.max(0, Number(stateRow.value?.rebirth_count || 0)))
 const boosterUnlocked = computed(() => rebirthCount.value > 0 || activeLayer.value > 1)
+const completionBoardByLayer = computed(() => {
+  const rows = Array.isArray(completionBoardRows.value) ? completionBoardRows.value : []
+  const grouped = rows.reduce((acc, row) => {
+    const layer = normalizeLayer(row.layer || 1)
+    if (!row.all_holo_completed_at) return acc
+    if (!acc[layer]) acc[layer] = []
+    acc[layer].push({
+      layer,
+      user_id: row.user_id || 'unknown',
+      display_name: String(row.display_name || 'Unknown Agent'),
+      all_cards_completed_at: row.all_cards_completed_at || null,
+      all_holo_completed_at: row.all_holo_completed_at || null,
+    })
+    return acc
+  }, {})
+
+  const layers = [1]
+  if (boosterUnlocked.value) layers.push(2)
+
+  return layers.map((layer) => ({
+    layer,
+    label: packLabel(layer),
+    rows: (grouped[layer] || []).slice(0, 25),
+  }))
+})
+
+function completionRowsForLayer(layerNumber) {
+  const layer = normalizeLayer(layerNumber || 1)
+  const row = completionBoardByLayer.value.find((entry) => entry.layer === layer)
+  return row?.rows || []
+}
 
 const lifetimeLayers = computed(() => {
   const perLayer = Array.isArray(lifetimePayload.value.per_layer) ? lifetimePayload.value.per_layer : []
@@ -213,12 +258,24 @@ onMounted(async () => {
 async function refreshLifetime() {
   loading.value = true
   error.value = null
+  completionBoardError.value = null
   try {
-    const payload = await store.dispatch('game/fetchLifetimeCollection')
+    const [payload, boardRows] = await Promise.all([
+      store.dispatch('game/fetchLifetimeCollection'),
+      store.dispatch('game/fetchLifetimeCompletionBoard', { limit: 100 }),
+    ])
     lifetimePayload.value = normalizeLifetimePayload(payload || snapshot.value?.lifetime)
+    completionBoardRows.value = Array.isArray(boardRows) ? boardRows : []
   } catch (err) {
     error.value = err?.message || 'Unable to load lifetime collection.'
     lifetimePayload.value = normalizeLifetimePayload(snapshot.value?.lifetime)
+    try {
+      const boardRows = await store.dispatch('game/fetchLifetimeCompletionBoard', { limit: 100 })
+      completionBoardRows.value = Array.isArray(boardRows) ? boardRows : []
+    } catch (boardErr) {
+      completionBoardRows.value = []
+      completionBoardError.value = boardErr?.message || 'Unable to load completion board.'
+    }
   } finally {
     loading.value = false
   }
@@ -264,58 +321,98 @@ function packLabel(layerNumber) {
   if (layer === 1) return 'Base Pack'
   return 'Booster Pack'
 }
+
+function formatCompletionTime(value, fallback = 'Not yet') {
+  const parsed = Date.parse(String(value || ''))
+  if (!Number.isFinite(parsed)) return fallback
+  return new Date(parsed).toLocaleString()
+}
 </script>
 
 <style scoped>
+.lifetime-layer-layout {
+  display: grid;
+  gap: 0.65rem;
+}
+
+@media (min-width: 1024px) {
+  .lifetime-layer-layout {
+    grid-template-columns: minmax(0, 1fr) 10rem;
+  }
+}
+
+.lifetime-layer-sidebar {
+  align-self: start;
+}
+
+.completion-board__list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: 14rem;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.completion-board__row {
+  border: 1px solid rgba(123, 146, 186, 0.28);
+  border-radius: 0.65rem;
+  background: rgba(240, 246, 255, 0.7);
+  padding: 0.42rem 0.5rem;
+}
+
+.completion-board__name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1a2f57;
+}
+
+.completion-board__meta {
+  font-size: 0.66rem;
+  color: #4c618b;
+  margin-top: 0.08rem;
+}
+
+.completion-board__time {
+  font-weight: 700;
+  color: #243d68;
+}
+
+.completion-board__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.35rem;
+  max-height: 14rem;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.completion-board__tile {
+  border: 1px solid rgba(123, 146, 186, 0.28);
+  border-radius: 0.5rem;
+  background: rgba(240, 246, 255, 0.7);
+  padding: 0.35rem 0.42rem;
+  min-height: 4rem;
+}
+
 .lifetime-mini-card {
-  max-width: 108px;
-  margin: 0 auto;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+}
+
+.lifetime-mini-card :deep(.term-card) {
+  --term-card-mutation-size: clamp(0.34rem, 0.58vw, 0.44rem);
+  --term-card-name-size: clamp(0.52rem, 0.72vw, 0.62rem);
+  --term-card-name-line: 1.02;
+  --term-card-rarity-size: 0.34rem;
+  --term-card-rarity-pad-y: 0.08rem;
+  --term-card-rarity-pad-x: 0.24rem;
+  --term-card-coins-value-size: 0.5rem;
+  --term-card-coins-label-size: 0.32rem;
 }
 
 .lifetime-mini-slot {
   min-width: 0;
 }
 
-.lifetime-mini-meta {
-  display: flex;
-  gap: 0.28rem;
-  flex-wrap: wrap;
-  justify-content: center;
-  border-radius: 0.38rem;
-  border: 1px solid rgba(120, 143, 194, 0.25);
-  background: rgba(255, 255, 255, 0.78);
-  padding: 0.22rem;
-  min-height: 1.78rem;
-}
-
-.lifetime-mini-metric {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.24rem;
-  margin: 0;
-  border-radius: 999px;
-  border: 1px solid rgba(120, 143, 194, 0.35);
-  background: rgba(235, 243, 255, 0.95);
-  padding: 0.08rem 0.32rem;
-  font-size: 0.52rem;
-  line-height: 1.1;
-}
-
-.lifetime-mini-metric__label {
-  color: #60759d;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.lifetime-mini-metric__value {
-  color: #1f3b67;
-  font-weight: 700;
-}
-
-.lifetime-mini-meta__empty {
-  margin: 0;
-  align-self: center;
-  font-size: 0.56rem;
-  color: #5f739a;
-}
 </style>

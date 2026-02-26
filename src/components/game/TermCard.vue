@@ -32,8 +32,12 @@
     </div>
 
     <div class="term-card__section term-card__coins">
-      <span class="term-card__coins-value">{{ stolen || unknown ? '--' : `+${formattedCoins}` }}</span>
-      <span class="term-card__coins-label">coins</span>
+      <span class="term-card__coins-value">{{ stolen || unknown ? '--' : `${safeStatPrefix}${formattedCoins}` }}</span>
+      <span class="term-card__coins-label">{{ safeStatLabel }}</span>
+      <template v-if="showSecondaryStat">
+        <span class="term-card__coins-secondary-value">{{ safeSecondaryStatPrefix }}{{ formattedSecondaryStatValue }}</span>
+        <span class="term-card__coins-secondary-label">{{ safeSecondaryStatLabel }}</span>
+      </template>
     </div>
   </article>
 </template>
@@ -49,6 +53,11 @@ const props = defineProps({
   mutation: { type: String, default: 'none' },
   icon: { type: String, default: 'help-circle' },
   coins: { type: Number, default: 0 },
+  statLabel: { type: String, default: 'coins' },
+  statPrefix: { type: String, default: '+' },
+  secondaryStatValue: { type: Number, default: null },
+  secondaryStatLabel: { type: String, default: '' },
+  secondaryStatPrefix: { type: String, default: '' },
   stolen: { type: Boolean, default: false },
   unknown: { type: Boolean, default: false },
   size: { type: String, default: 'medium' },
@@ -136,6 +145,7 @@ const cardCssVars = computed(() => {
     '--term-card-holo-a-rgb': rgbVar(holoA),
     '--term-card-holo-b-rgb': rgbVar(holoB),
     '--term-card-holo-c-rgb': rgbVar(holoC),
+    '--term-card-name-fit-scale': String(nameFitScale.value),
   }
 })
 
@@ -170,8 +180,49 @@ const nameScaleClass = computed(() => {
   return 'normal'
 })
 
+const nameFitScale = computed(() => {
+  const value = String(displayName.value || '').trim()
+  if (!value) return 1
+
+  const length = value.length
+  const longestWord = value.split(/\s+/).reduce((max, word) => Math.max(max, word.length), 0)
+  const sizeKey = safeSize.value
+  const lengthPressure = Math.max(0, length - (sizeKey === 'opening' ? 18 : sizeKey === 'mini' ? 11 : 14))
+  const wordPressure = Math.max(0, longestWord - (sizeKey === 'opening' ? 10 : sizeKey === 'mini' ? 7 : 8)) * 1.35
+  const pressure = lengthPressure + wordPressure
+  const minScale = sizeKey === 'opening' ? 0.72 : sizeKey === 'mini' ? 0.68 : 0.74
+  const scaled = 1 - (pressure * 0.022)
+  return Math.max(minScale, Math.min(1, Number(scaled.toFixed(3))))
+})
+
 const formattedCoins = computed(() => {
   return Number(props.coins || 0).toLocaleString()
+})
+
+const safeStatLabel = computed(() => {
+  const value = String(props.statLabel || '').trim()
+  return value || 'coins'
+})
+
+const safeStatPrefix = computed(() => {
+  return String(props.statPrefix ?? '+')
+})
+
+const safeSecondaryStatLabel = computed(() => {
+  return String(props.secondaryStatLabel || '').trim()
+})
+
+const safeSecondaryStatPrefix = computed(() => {
+  return String(props.secondaryStatPrefix ?? '')
+})
+
+const formattedSecondaryStatValue = computed(() => {
+  return Number(props.secondaryStatValue || 0).toLocaleString()
+})
+
+const showSecondaryStat = computed(() => {
+  if (props.stolen || props.unknown) return false
+  return safeSecondaryStatLabel.value.length > 0
 })
 </script>
 
@@ -231,13 +282,13 @@ const formattedCoins = computed(() => {
 }
 
 .term-card--size-mini {
-  --term-card-grid-rows: 0.62fr 1.38fr 1.26fr 0.68fr 0.74fr;
+  --term-card-grid-rows: 0.6fr 1.28fr 1.16fr 0.64fr 1.02fr;
   --term-card-section-pad-y: 0.14rem;
   --term-card-section-pad-x: 0.32rem;
   --term-card-section-offset-y: 0;
   --term-card-mutation-size: clamp(0.48rem, 0.9vw, 0.58rem);
   --term-card-icon-size: 1.04rem;
-  --term-card-name-size: clamp(0.76rem, 0.96vw, 0.9rem);
+  --term-card-name-size: clamp(0.8rem, 1vw, 0.94rem);
   --term-card-name-line: 1.08;
   --term-card-rarity-size: 0.46rem;
   --term-card-rarity-pad-y: 0.11rem;
@@ -426,7 +477,7 @@ const formattedCoins = computed(() => {
 
 .term-card__name {
   grid-row: 3;
-  font-size: var(--term-card-name-size);
+  font-size: calc(var(--term-card-name-size) * var(--term-card-name-fit-scale, 1));
   font-weight: 900;
   line-height: var(--term-card-name-line);
   color: #19233d;
@@ -473,10 +524,11 @@ const formattedCoins = computed(() => {
 .term-card__coins {
   grid-row: 5;
   flex-direction: column;
-  gap: 0.04rem;
+  gap: 0.02rem;
   opacity: 0.82;
   align-self: center;
   padding-top: 0;
+  line-height: 1.05;
 }
 
 .term-card__coins-value {
@@ -490,6 +542,20 @@ const formattedCoins = computed(() => {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #32466f;
+}
+
+.term-card__coins-secondary-value {
+  font-size: calc(var(--term-card-coins-value-size) * 0.88);
+  font-weight: 700;
+  color: #213e66;
+  margin-top: 0.02rem;
+}
+
+.term-card__coins-secondary-label {
+  font-size: calc(var(--term-card-coins-label-size) * 0.9);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #3a557f;
 }
 
 .term-card--unknown {

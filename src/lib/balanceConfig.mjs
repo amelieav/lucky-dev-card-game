@@ -1,5 +1,5 @@
 export const BALANCE_CONFIG = {
-  initialCoins: 100,
+  initialCoins: 0,
   idleIncomeCapSeconds: 12 * 60 * 60,
   manualOpenCooldownMs: 1500,
 
@@ -83,9 +83,10 @@ export const BALANCE_CONFIG = {
   cardBaseValueFactor: 0.06,
   valueMultiplierPerLevel: 0,
   rebirthCostMultiplierPerRebirth: 1.5,
+  rebirthRewardMultiplierPerRebirth: 1.25,
 
   autoOpen: {
-    unlockCost: 225,
+    unlockCost: 100,
     baseIntervalSeconds: 2.5,
     intervalReductionPerLevelSeconds: 0.5,
     minIntervalSeconds: 0.5,
@@ -100,7 +101,7 @@ export const BALANCE_CONFIG = {
   },
 
   upgradeCostCurves: {
-    auto_speed: { base: 120, growth: 1.45 },
+    auto_speed: { base: 250, growth: 1.45 },
     tier_boost: { base: 25, growth: 1.42 },
     mutation_upgrade: { base: 32, growth: 1.38 },
     value_upgrade: { base: 40, growth: 1.4 },

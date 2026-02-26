@@ -4,6 +4,7 @@ import {
   buyUpgrade as apiBuyUpgrade,
   debugApply as apiDebugApply,
   fetchDuckCaveStash as apiFetchDuckCaveStash,
+  fetchLifetimeCompletionBoard as apiFetchLifetimeCompletionBoard,
   fetchRuntimeCapabilities as apiFetchRuntimeCapabilities,
   fetchLifetimeCollection as apiFetchLifetimeCollection,
   rebirthPlayer as apiRebirthPlayer,
@@ -20,6 +21,7 @@ import {
   debugApplyLocal,
   getLocalRuntimeCapabilities,
   getLocalLifetimeCollection,
+  getLocalLifetimeCompletionBoard,
   keepAliveLocalPlayer,
   rebirthLocalPlayer,
   loseLocalCard,
@@ -217,6 +219,7 @@ export default {
     debugAllowed: false,
     economyMode: LOCAL_ECONOMY_ENABLED ? 'local' : 'server',
     capabilities: defaultCapabilities(),
+    lastOpenPackTimeoutAt: 0,
   }),
   getters: {
     playerState(state) {
@@ -316,6 +319,9 @@ export default {
     setCapabilities(state, payload) {
       state.capabilities = normalizeCapabilities(payload)
     },
+    markOpenPackTimeout(state) {
+      state.lastOpenPackTimeoutAt = Date.now()
+    },
     clear(state) {
       state.loading = false
       state.actionLoading = false
@@ -329,6 +335,7 @@ export default {
       state.duckCaveStash = []
       state.debugAllowed = false
       state.capabilities = defaultCapabilities()
+      state.lastOpenPackTimeoutAt = 0
     },
   },
   actions: {
@@ -495,6 +502,7 @@ export default {
         commit('setError', message)
 
         if (/timed out/i.test(message) && !LOCAL_ECONOMY_ENABLED) {
+          commit('markOpenPackTimeout')
           // Best-effort auto-recovery to avoid requiring manual restart scripts.
           try {
             const data = await apiBootstrapPlayer()
@@ -620,6 +628,28 @@ export default {
         total_unique: 0,
         per_layer: [],
       }
+    },
+
+    async fetchLifetimeCompletionBoard({ rootState }, { limit = 100 } = {}) {
+      const user = rootState.auth.user
+      if (!user?.id) return []
+      if (!rootState.game?.capabilities?.supports_lifetime_collection) return []
+
+      if (LOCAL_ECONOMY_ENABLED) {
+        return getLocalLifetimeCompletionBoard(user, { limit })
+      }
+
+      try {
+        const rows = await apiFetchLifetimeCompletionBoard(limit)
+        return Array.isArray(rows) ? rows : []
+      } catch (error) {
+        const message = String(error?.message || '')
+        if (!/timed out/i.test(message)) {
+          throw error
+        }
+      }
+
+      return []
     },
 
     async resetAccount({ commit, rootState }) {

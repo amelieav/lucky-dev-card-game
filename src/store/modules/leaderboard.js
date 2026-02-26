@@ -198,10 +198,22 @@ function normalizeSeasonHistoryRows(rows) {
       best_term_copies: Math.max(0, Number(row?.best_term_copies || 0)),
       first_place_name: row?.first_place_name || null,
       first_place_score: Math.max(0, Number(row?.first_place_score || 0)),
+      first_place_best_term_name: row?.first_place_best_term_name || null,
+      first_place_best_term_tier: Math.max(0, Number(row?.first_place_best_term_tier || 0)),
+      first_place_best_term_rarity: normalizeRarity(row?.first_place_best_term_rarity),
+      first_place_best_term_mutation: normalizeMutation(row?.first_place_best_term_mutation),
       second_place_name: row?.second_place_name || null,
       second_place_score: Math.max(0, Number(row?.second_place_score || 0)),
+      second_place_best_term_name: row?.second_place_best_term_name || null,
+      second_place_best_term_tier: Math.max(0, Number(row?.second_place_best_term_tier || 0)),
+      second_place_best_term_rarity: normalizeRarity(row?.second_place_best_term_rarity),
+      second_place_best_term_mutation: normalizeMutation(row?.second_place_best_term_mutation),
       third_place_name: row?.third_place_name || null,
       third_place_score: Math.max(0, Number(row?.third_place_score || 0)),
+      third_place_best_term_name: row?.third_place_best_term_name || null,
+      third_place_best_term_tier: Math.max(0, Number(row?.third_place_best_term_tier || 0)),
+      third_place_best_term_rarity: normalizeRarity(row?.third_place_best_term_rarity),
+      third_place_best_term_mutation: normalizeMutation(row?.third_place_best_term_mutation),
     }
   })
 }

@@ -35,7 +35,7 @@ test('local runtime capabilities mirror production feature surfaces', () => {
 
 test('bootstrap creates a local snapshot with pack defaults', () => {
   const snapshot = bootstrapLocalPlayer(user('pack-bootstrap'), { nowMs: 1_000 })
-  assert.equal(snapshot.state.coins, 100)
+  assert.equal(snapshot.state.coins, 0)
   assert.equal(snapshot.state.value_level, 0)
   assert.equal(snapshot.state.packs_opened, 0)
   assert.equal(snapshot.state.auto_unlocked, false)
@@ -59,7 +59,7 @@ test('manual pack open is free and awards coins', () => {
 
   assert.equal(result.snapshot.state.packs_opened, 1)
   assert.equal(result.snapshot.state.manual_opens, 1)
-  assert.ok(result.snapshot.state.coins > 100)
+  assert.ok(result.snapshot.state.coins > 0)
   assert.equal(result.draw.reward, 3)
 })
 
@@ -152,8 +152,8 @@ test('passive income accrues only during active heartbeat windows', () => {
   const atThirty = keepAliveLocalPlayer(account, { debugAllowed: true, nowMs: 30_000 })
 
   assert.equal(atFive.snapshot.state.passive_rate_cps, 3)
-  assert.equal(atFive.snapshot.state.coins, 115)
-  assert.equal(atThirty.snapshot.state.coins, 160)
+  assert.equal(atFive.snapshot.state.coins, 15)
+  assert.equal(atThirty.snapshot.state.coins, 60)
 })
 
 test('losing a card removes it completely from collection', () => {
@@ -359,7 +359,7 @@ test('rebirth resets current run but preserves lifetime collection', () => {
   const rebirth = rebirthLocalPlayer(account, { debugAllowed: true, nowMs: 3_000 })
   assert.equal(rebirth.rebirth.rebirth_count, 1)
   assert.equal(rebirth.rebirth.to_layer, 2)
-  assert.equal(rebirth.snapshot.state.coins, 100)
+  assert.equal(rebirth.snapshot.state.coins, 0)
   assert.equal(rebirth.snapshot.terms.length, 0)
 
   const lifetime = getLocalLifetimeCollection(account, { nowMs: 3_100 })
@@ -401,7 +401,7 @@ test('season rollover archives history and resets progression', () => {
   debugApplyLocal(account, { type: 'set_coins', amount: 9_999 }, { debugAllowed: true, nowMs: 1_000 })
   const nextWeekMs = 8 * 24 * 60 * 60 * 1000
   const afterRollover = bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: nextWeekMs })
-  assert.equal(afterRollover.state.coins, 100)
+  assert.equal(afterRollover.state.coins, 0)
   assert.equal(afterRollover.state.rebirth_count, 0)
   assert.equal(afterRollover.state.active_layer, 1)
 

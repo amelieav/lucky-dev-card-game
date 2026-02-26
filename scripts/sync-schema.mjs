@@ -9,7 +9,7 @@ const TERM_MARKER_END = '-- GENERATED: term_catalog:end'
 const NICK_MARKER_START = '-- GENERATED: nickname_words:start'
 const NICK_MARKER_END = '-- GENERATED: nickname_words:end'
 
-const TERM_LEGACY_PATTERN = /insert into public\.term_catalog\s*\(term_key, display_name, tier, rarity, base_bp\)[\s\S]*?base_bp = excluded\.base_bp;/m
+const TERM_LEGACY_PATTERN = /insert into public\.term_catalog\s*\([^)]*\)[\s\S]*?base_bp = excluded\.base_bp;/m
 const NICK_LEGACY_PATTERN = /create or replace function public\.allowed_nick_words\(\)[\s\S]*?create or replace function public\.allowed_nick_part_c\(\)[\s\S]*?\$\$;/m
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -59,17 +59,32 @@ function buildAllowedNickFunction(functionName, words) {
 }
 
 function buildTermCatalogBlock() {
+  const canonicalRows = TERMS.map((term) => {
+    return `    ('${escapeSql(term.slotId)}', '${escapeSql(term.key)}')`
+  }).join(',\n')
+
   const valueRows = TERMS.map((term) => {
-    return `  ('${escapeSql(term.key)}', '${escapeSql(term.name)}', ${Number(term.tier)}, '${escapeSql(term.rarity)}', ${Number(term.baseBp)})`
+    return `  ('${escapeSql(term.slotId)}', '${escapeSql(term.key)}', '${escapeSql(term.name)}', ${Number(term.tier)}, '${escapeSql(term.rarity)}', ${Number(term.baseBp)})`
   }).join(',\n')
 
   return [
     TERM_MARKER_START,
-    'insert into public.term_catalog (term_key, display_name, tier, rarity, base_bp)',
+    'with canonical(card_slot_id, term_key) as (',
+    '  values',
+    canonicalRows,
+    ')',
+    'update public.term_catalog tc',
+    'set card_slot_id = canonical.card_slot_id',
+    'from canonical',
+    'where tc.term_key = canonical.term_key',
+    '  and tc.card_slot_id <> canonical.card_slot_id;',
+    '',
+    'insert into public.term_catalog (card_slot_id, term_key, display_name, tier, rarity, base_bp)',
     'values',
     valueRows,
-    'on conflict (term_key) do update',
+    'on conflict (card_slot_id) do update',
     'set',
+    '  term_key = excluded.term_key,',
     '  display_name = excluded.display_name,',
     '  tier = excluded.tier,',
     '  rarity = excluded.rarity,',

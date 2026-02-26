@@ -101,6 +101,7 @@ test('reward formula combines rarity and card tier value', () => {
     rarity: 'common',
     mutation: 'none',
     valueLevel: 0,
+    rebirthCount: 0,
   })
 
   const boosted = computeCardReward({
@@ -108,9 +109,14 @@ test('reward formula combines rarity and card tier value', () => {
     rarity: 'legendary',
     mutation: 'holo',
     valueLevel: 10,
+    rebirthCount: 1,
   })
 
   assert.equal(baseline, 6)
+  assert.equal(
+    computeCardReward({ baseBp: 100, rarity: 'common', mutation: 'none', valueLevel: 0, rebirthCount: 1 }),
+    7,
+  )
   assert.ok(boosted > baseline)
 })
 

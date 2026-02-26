@@ -50,19 +50,22 @@
       </div>
     </div>
 
-    <div v-if="gameError" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-      {{ gameError }}
+    <div v-if="generalGameError" class="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      {{ generalGameError }}
     </div>
+
+    <section class="card p-4">
+      <h1 class="text-base text-xl font-semibold">How to Play</h1>
+      <p class="mt-1 text-m text-muted">
+        Open packs to collect cards. Mutations boost passive income, and coins buy upgrades. Complete your set, rebirth, and climb the leaderboard.
+      </p>
+    </section>
 
     <div class="grid gap-4 lg:grid-cols-3">
       <section class="card p-6 lg:col-span-2">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <p class="text-xs uppercase tracking-wide text-muted">{{ autoUnlocked ? 'Auto Roll' : 'Manual Open' }}</p>
-            <h1 class="mt-1 text-xl font-semibold">Lucky Dev Card Pack</h1>
-            <p class="mt-1 text-sm text-muted">
-              {{ autoUnlocked ? 'Single pack opens on a loop. Card tier is rolled by your current odds.' : 'Open the single pack manually until Auto Opener is unlocked.' }}
-            </p>
+            <h1 class="mt-1 text-xl font-semibold">Pack Opener</h1>
           </div>
           <div class="text-right">
             <p class="text-xs text-muted">{{ autoUnlocked ? 'Loop Cadence' : 'Open Mode' }}</p>
@@ -181,30 +184,30 @@
       </section>
 
       <aside class="card p-4 text-sm">
-        <p class="text-xs uppercase tracking-wide text-muted">Pack Odds</p>
+        <p class="text-s uppercase tracking-wide text-muted">Pack Odds</p>
         <p class="mt-1 text-xs text-muted">Current calculated rates</p>
 
         <div class="mt-3 space-y-2">
-          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Tier + Rarity</p>
+          <p class="text-s font-semibold uppercase tracking-wide text-muted">Tier + Rarity</p>
           <div v-for="rarityRow in rarityRows" :key="`rarity-${rarityRow.tier}`" class="rounded-lg border border-soft bg-panel-soft p-2">
             <div class="flex items-center justify-between">
-              <p class="text-xs font-semibold" :style="{ color: tierColor(rarityRow.tier) }">{{ packName(rarityRow.tier) }}</p>
+              <p class="text-s font-semibold" :style="{ color: tierColor(rarityRow.tier) }">{{ packName(rarityRow.tier) }}</p>
               <p class="text-xs font-semibold text-main">{{ percent(tierWeightByTier[rarityRow.tier]) }}</p>
             </div>
             <p class="mt-1 text-xs text-muted">
-              C {{ percent(rarityRow.weights.common) }} · R {{ percent(rarityRow.weights.rare) }} · L {{ percent(rarityRow.weights.legendary) }}
+              <strong>Common</strong> {{ percent(rarityRow.weights.common) }} · <strong>Rare</strong> {{ percent(rarityRow.weights.rare) }} · <strong>Legendary</strong> {{ percent(rarityRow.weights.legendary) }}
             </p>
           </div>
         </div>
 
         <div class="mt-3 space-y-2">
-          <p class="text-xs font-semibold uppercase tracking-wide text-muted">Mutation</p>
+          <p class="text-s font-semibold uppercase tracking-wide text-muted">Mutation</p>
           <div class="rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
-            None {{ percent(mutationWeights.none) }} · Foil {{ percent(mutationWeights.foil) }} · Holo {{ percent(mutationWeights.holo) }}
+            <strong>None</strong> {{ percent(mutationWeights.none) }} · <strong>Foil</strong> {{ percent(mutationWeights.foil) }} · <strong>Holo</strong> {{ percent(mutationWeights.holo) }}
           </div>
           <div class="rounded-lg border border-soft bg-panel-soft p-2 text-xs text-muted">
             <p class="mb-1 font-semibold text-main">Mutation passive bonus</p>
-            <p>Foil: +1 coin/sec each card · Holo: +3 coins/sec each card</p>
+            <p><strong>Foil:</strong> +1 coin/sec each card · <strong>Holo:</strong> +3 coins/sec each card</p>
           </div>
         </div>
 
@@ -223,18 +226,21 @@
             <p class="text-xs uppercase tracking-wide text-muted">Rebirth</p>
             <p class="mt-1 text-sm font-semibold">{{ currentCollectionCount }}/{{ TERMS.length }} cards in current collection</p>
             <p class="mt-1 text-[11px] text-muted">
-              {{ rebirthReady ? 'Ready: full collection complete.' : rebirthLockLabel }}
+              {{ rebirthStatusLabel }}
             </p>
           </div>
           <button
             class="rebirth-cta-btn"
             type="button"
-            :disabled="!rebirthReady || actionLoading"
+            :disabled="!canUseRebirthAction || actionLoading"
             @click="rebirthPlayer"
           >
-            Rebirth
+            {{ rebirthButtonLabel }}
           </button>
         </div>
+        <p v-if="rebirthSeasonError" class="mt-2 text-xs text-red-600">
+          {{ rebirthSeasonError }}
+        </p>
       </article>
 
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -300,46 +306,33 @@
             <p class="text-xs text-muted">{{ tierRow.collected }}/{{ tierRow.items.length }} found</p>
           </div>
 
-          <div class="grid gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+          <div class="grid gap-0 grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-8 xl:grid-cols-10">
             <div
               v-for="item in tierRow.items"
               :key="item.termKey"
               :ref="(el) => setCardBookItemRef(item.termKey, el)"
-              class="space-y-1 card-book-slot"
+              class="card-book-slot"
               :class="{
                 'card-book-slot--targeted': chickRaid.targetTermKey === item.termKey,
                 'card-book-slot--snatched': chickRaid.targetTermKey === item.termKey && (chickRaid.stage === 'bite' || chickRaid.stage === 'drag'),
               }"
             >
               <term-card
-                size="medium"
+                size="mini"
                 :name="item.name"
                 :tier="item.tier"
                 :rarity="item.rarity"
                 :mutation="item.bestMutation"
                 :icon="item.icon"
                 :coins="item.value"
+                stat-label="coins"
+                stat-prefix="+"
+                :secondary-stat-value="item.copies ?? 0"
+                secondary-stat-label="copies"
+                secondary-stat-prefix="x"
                 :stolen="item.stolen"
                 :unknown="!item.owned && !item.stolen"
               />
-              <div class="card-book-meta">
-                <div class="card-book-meta__top">
-                  <p class="card-book-metric">
-                    <span class="card-book-metric__label">Slot</span>
-                    <span class="card-book-metric__value">{{ item.slot }}</span>
-                  </p>
-                  <p class="card-book-metric">
-                    <span class="card-book-metric__label">Copies</span>
-                    <span class="card-book-metric__value">{{ item.copies }}</span>
-                  </p>
-                </div>
-                <div class="card-book-meta__bottom">
-                  <p class="card-book-metric card-book-metric--best">
-                    <span class="card-book-metric__label">Best</span>
-                    <span class="card-book-metric__value">{{ mutationLabel(item.bestMutation) }}</span>
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
         </section>
@@ -468,6 +461,18 @@ const stolenTermKeys = computed(() => {
   return new Set(Array.isArray(snapshot.value?.stolen_terms) ? snapshot.value.stolen_terms : [])
 })
 const gameError = computed(() => store.state.game.error)
+const rebirthSeasonError = computed(() => {
+  const message = String(gameError.value || '').trim()
+  if (!message) return null
+  return /rebirth already used for this season/i.test(message) ? message : null
+})
+const generalGameError = computed(() => {
+  if (rebirthSeasonError.value) return null
+  const message = String(gameError.value || '').trim()
+  if (!message) return null
+  if (/open_pack timed out/i.test(message)) return null
+  return message
+})
 const actionLoading = computed(() => store.state.game.actionLoading)
 const openPackLoading = computed(() => Boolean(store.state.game.openPackLoading))
 const packActionBusy = computed(() => actionLoading.value || openPackLoading.value)
@@ -714,6 +719,16 @@ const missingCardGiftButtonLabel = computed(() => {
   return 'Buy'
 })
 const rebirthReady = computed(() => currentCollectionCount.value >= TERMS.length)
+const rebirthMaxedThisSeason = computed(() => Math.max(0, Number(playerState.value?.rebirth_count || 0)) >= 1)
+const canUseRebirthAction = computed(() => supportsRebirth.value && rebirthReady.value && !rebirthMaxedThisSeason.value)
+const rebirthButtonLabel = computed(() => (
+  rebirthMaxedThisSeason.value ? 'Maximum rebirths reached this season' : 'Rebirth'
+))
+const rebirthStatusLabel = computed(() => {
+  if (rebirthMaxedThisSeason.value) return 'Maximum rebirths reached this season.'
+  if (rebirthReady.value) return 'Ready: full collection complete.'
+  return rebirthLockLabel.value
+})
 const rebirthLockLabel = computed(() => {
   const remaining = Math.max(0, TERMS.length - currentCollectionCount.value)
   if (remaining <= 0) return 'Ready: full collection complete.'
@@ -1121,7 +1136,7 @@ async function buyMissingCardGift() {
 
 async function rebirthPlayer() {
   if (!supportsRebirth.value) return
-  if (!rebirthReady.value || actionLoading.value) return
+  if (!canUseRebirthAction.value || actionLoading.value) return
   await store.dispatch('game/rebirth')
   await store.dispatch('leaderboard/fetch', { force: true, limit: 100 })
   await store.dispatch('leaderboard/fetchSeasonHistory', { limit: 200 })
@@ -1833,59 +1848,9 @@ function handleDuckFrameError(event) {
 }
 
 .card-book-slot :deep(.term-card) {
-  max-width: clamp(128px, 12vw, 168px);
-  margin-inline: auto;
-}
-
-.card-book-meta {
-  display: grid;
-  gap: 0.24rem;
-  border-radius: 0.5rem;
-  border: 1px solid rgba(120, 143, 194, 0.3);
-  background: rgba(255, 255, 255, 0.76);
-  padding: 0.28rem 0.3rem;
-  min-height: 2.2rem;
-}
-
-.card-book-meta__top {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.24rem;
-}
-
-.card-book-meta__bottom {
-  display: flex;
-  justify-content: center;
-}
-
-.card-book-metric {
+  max-width: none;
+  width: 100%;
   margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.28rem;
-  border-radius: 999px;
-  border: 1px solid rgba(120, 143, 194, 0.35);
-  background: rgba(233, 242, 255, 0.95);
-  padding: 0.08rem 0.34rem;
-  font-size: 0.6rem;
-  line-height: 1.1;
-  min-width: 0;
-}
-
-.card-book-metric--best {
-  min-width: 5.8rem;
-}
-
-.card-book-metric__label {
-  color: #60759d;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.card-book-metric__value {
-  color: #203d68;
-  font-weight: 700;
 }
 
 .card-book-slot--targeted {
