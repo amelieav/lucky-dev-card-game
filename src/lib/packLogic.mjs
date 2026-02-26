@@ -420,7 +420,23 @@ export function getUpgradeCost(stateLike, upgradeKey) {
   const curve = BALANCE_CONFIG.upgradeCostCurves[normalizedKey]
   if (!curve) return null
 
-  return Math.floor(curve.base * Math.pow(curve.growth, level) * rebirthMultiplier)
+  let baseCost = Math.floor(curve.base * Math.pow(curve.growth, level))
+
+  if (normalizedKey === 'mutation_upgrade') {
+    const nextMutation = getMutationWeights(level + 1)
+    const floorConfig = BALANCE_CONFIG.mutationUpgradeCostFloor || {}
+    const threshold = Number(floorConfig.thresholdHoloPercent || 4)
+    const stepPercent = Math.max(0.0001, Number(floorConfig.stepPercent || 2))
+    const minCostPerStep = Math.max(0, Number(floorConfig.minCostPerStep || 8000))
+    const aboveThreshold = Math.max(0, Number(nextMutation.holo || 0) - threshold)
+
+    if (aboveThreshold > 0) {
+      const steps = Math.ceil(aboveThreshold / stepPercent)
+      baseCost = Math.max(baseCost, Math.floor(steps * minCostPerStep))
+    }
+  }
+
+  return Math.floor(baseCost * rebirthMultiplier)
 }
 
 export function canBuyUpgrade(stateLike, upgradeKey) {

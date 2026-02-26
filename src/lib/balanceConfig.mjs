@@ -105,6 +105,11 @@ export const BALANCE_CONFIG = {
     mutation_upgrade: { base: 32, growth: 1.38 },
     value_upgrade: { base: 40, growth: 1.4 },
   },
+  mutationUpgradeCostFloor: {
+    thresholdHoloPercent: 4,
+    stepPercent: 2,
+    minCostPerStep: 8000,
+  },
 }
 
 export function valueUpgradeCost(level) {

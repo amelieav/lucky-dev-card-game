@@ -136,6 +136,30 @@ test('upgrade cost curve increases and preview reports current/next effect', () 
   assert.ok(preview.next.includes('C'))
 })
 
+test('mutation upgrade cost floors to 8k per 2% holo above 4%', () => {
+  const state = {
+    coins: 1_000_000_000,
+    auto_unlocked: true,
+    auto_speed_level: 0,
+    tier_boost_level: 0,
+    mutation_level: 0,
+    value_level: 0,
+    packs_opened: 0,
+  }
+
+  state.mutation_level = 5
+  const costNearThreshold = getUpgradeCost(state, 'mutation_upgrade')
+  assert.ok(costNearThreshold >= 8000, `Expected >=8000 once holo passes 4%, got ${costNearThreshold}`)
+
+  state.mutation_level = 9
+  const costAtNextBand = getUpgradeCost(state, 'mutation_upgrade')
+  assert.ok(costAtNextBand >= 16000, `Expected >=16000 around holo ~6%, got ${costAtNextBand}`)
+
+  state.mutation_level = 12
+  const costAtThirdBand = getUpgradeCost(state, 'mutation_upgrade')
+  assert.ok(costAtThirdBand >= 24000, `Expected >=24000 around holo ~8%, got ${costAtThirdBand}`)
+})
+
 test('value upgrade becomes maxed when rarity odds are fully saturated', () => {
   const state = {
     coins: 1_000_000,

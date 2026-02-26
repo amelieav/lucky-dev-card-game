@@ -1086,10 +1086,24 @@ as $$
     when 'auto_unlock' then case when p_auto_unlocked then null else 225::bigint end
     when 'auto_speed' then floor(120 * power(1.45, greatest(0, coalesce(p_level, 0))))::bigint
     when 'tier_boost' then floor(25 * power(1.42, greatest(0, coalesce(p_level, 0))))::bigint
-    when 'mutation_upgrade' then floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'mutation_upgrade' then greatest(
+      floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint,
+      case
+        when (0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) > 4
+          then (ceil(((0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) - 4) / 2) * 8000)::bigint
+        else 0::bigint
+      end
+    )
     when 'value_upgrade' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
     when 'luck_engine' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
-    when 'mutation_lab' then floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint
+    when 'mutation_lab' then greatest(
+      floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint,
+      case
+        when (0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) > 4
+          then (ceil(((0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) - 4) / 2) * 8000)::bigint
+        else 0::bigint
+      end
+    )
     when 'value_engine' then floor(40 * power(1.40, greatest(0, coalesce(p_level, 0))))::bigint
     else null
   end;
