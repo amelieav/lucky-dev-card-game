@@ -3,6 +3,7 @@ import store from '../store'
 import SignIn from '../views/SignIn.vue'
 import AuthCallback from '../views/AuthCallback.vue'
 import Game from '../views/Game.vue'
+import MoneyFlip from '../views/MoneyFlip.vue'
 import Leaderboard from '../views/Leaderboard.vue'
 import LifetimeCollection from '../views/LifetimeCollection.vue'
 import DuckCave from '../views/DuckCave.vue'
@@ -26,6 +27,12 @@ const routes = [
     path: '/auth/callback',
     name: 'AuthCallback',
     component: AuthCallback,
+  },
+  {
+    path: '/money-flip',
+    name: 'MoneyFlip',
+    component: MoneyFlip,
+    meta: { requiresAuth: true },
   },
   {
     path: '/auth/confirm',

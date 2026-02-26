@@ -305,6 +305,41 @@ export async function fetchLifetimeCompletionBoard(limit = 100) {
   ))
 }
 
+export async function fetchMoneyFlipLeaderboard(limit = 50) {
+  return unwrap(await callReadRpcWithRecovery(
+    () => supabase.rpc('get_money_flip_leaderboard', { p_limit: limit }),
+    'get_money_flip_leaderboard',
+  ))
+}
+
+export async function startMoneyFlip({ wager } = {}) {
+  const normalizedWager = Math.floor(Number(wager || 0))
+  if (!Number.isFinite(normalizedWager) || normalizedWager <= 0) {
+    throw new Error('Wager must be greater than 0')
+  }
+
+  return unwrap(await withRpcTimeout(supabase.rpc('money_flip_start', {
+    p_wager: normalizedWager,
+  }), 'money_flip_start'))
+}
+
+export async function resolveMoneyFlip({ roundId, pickIndex } = {}) {
+  const normalizedRoundId = String(roundId || '').trim()
+  const normalizedPickIndex = Math.floor(Number(pickIndex))
+
+  if (!normalizedRoundId) {
+    throw new Error('Missing round id')
+  }
+  if (!Number.isFinite(normalizedPickIndex) || normalizedPickIndex < 0 || normalizedPickIndex > 5) {
+    throw new Error('Invalid pick index')
+  }
+
+  return unwrap(await withRpcTimeout(supabase.rpc('money_flip_resolve', {
+    p_round_id: normalizedRoundId,
+    p_pick_index: normalizedPickIndex,
+  }), 'money_flip_resolve'))
+}
+
 export async function fetchSeasonHistory(limit = 200) {
   return unwrap(await callReadRpcWithRecovery(
     () => supabase.rpc('get_season_history', { p_limit: limit }),

@@ -29,6 +29,9 @@ create table if not exists public.player_state (
   auto_unlocked boolean not null default false,
   auto_speed_level int not null default 0,
   auto_open_progress numeric not null default 0,
+  season_gambled_coins bigint not null default 0,
+  season_gamble_net_coins bigint not null default 0,
+  season_gamble_rounds int not null default 0,
   active_until_at timestamptz not null default now(),
   last_tick_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
@@ -44,6 +47,9 @@ alter table public.player_state add column if not exists value_level int not nul
 alter table public.player_state add column if not exists auto_unlocked boolean not null default false;
 alter table public.player_state add column if not exists auto_speed_level int not null default 0;
 alter table public.player_state add column if not exists auto_open_progress numeric not null default 0;
+alter table public.player_state add column if not exists season_gambled_coins bigint not null default 0;
+alter table public.player_state add column if not exists season_gamble_net_coins bigint not null default 0;
+alter table public.player_state add column if not exists season_gamble_rounds int not null default 0;
 alter table public.player_state add column if not exists active_until_at timestamptz not null default now();
 
 update public.player_state
@@ -2238,6 +2244,9 @@ as $$
       auto_unlocked,
       auto_speed_level,
       auto_open_progress,
+      season_gambled_coins,
+      season_gamble_net_coins,
+      season_gamble_rounds,
       active_until_at,
       last_tick_at,
       updated_at
@@ -2793,6 +2802,9 @@ begin
   set coins = 0,
       luck_level = 0,
       passive_rate_bp = 0,
+      season_gambled_coins = 0,
+      season_gamble_net_coins = 0,
+      season_gamble_rounds = 0,
       highest_tier_unlocked = 1,
       eggs_opened = 0,
       packs_opened = 0,
@@ -3509,6 +3521,9 @@ begin
   set coins = 0,
       luck_level = 0,
       passive_rate_bp = 0,
+      season_gambled_coins = 0,
+      season_gamble_net_coins = 0,
+      season_gamble_rounds = 0,
       highest_tier_unlocked = 1,
       eggs_opened = 0,
       packs_opened = 0,
@@ -3664,6 +3679,9 @@ as $$
       auto_unlocked,
       auto_speed_level,
       auto_open_progress,
+      season_gambled_coins,
+      season_gamble_net_coins,
+      season_gamble_rounds,
       active_until_at,
       last_tick_at,
       updated_at,
@@ -4626,6 +4644,9 @@ begin
   set coins = 0,
       luck_level = 0,
       passive_rate_bp = 0,
+      season_gambled_coins = 0,
+      season_gamble_net_coins = 0,
+      season_gamble_rounds = 0,
       highest_tier_unlocked = 1,
       eggs_opened = 0,
       packs_opened = 0,
@@ -4689,6 +4710,9 @@ begin
   set coins = 0,
       luck_level = 0,
       passive_rate_bp = 0,
+      season_gambled_coins = 0,
+      season_gamble_net_coins = 0,
+      season_gamble_rounds = 0,
       highest_tier_unlocked = 1,
       eggs_opened = 0,
       packs_opened = 0,
@@ -5232,3 +5256,623 @@ $$;
 grant execute on function public.get_runtime_capabilities() to authenticated;
 grant execute on function public.get_duck_cave_stash() to authenticated;
 grant execute on function public.get_lifetime_completion_board(int) to authenticated;
+
+create table if not exists public.player_money_flip_rounds (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  round_id uuid not null unique default gen_random_uuid(),
+  wager bigint not null check (wager > 0),
+  layer int not null check (layer between 1 and 2),
+  cards_sorted jsonb not null,
+  revealed_sorted_indices int[] not null,
+  cards_final jsonb not null,
+  revealed_final_indices int[] not null,
+  highest_index int not null check (highest_index between 0 and 5),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null
+);
+
+create index if not exists idx_player_money_flip_rounds_expires_at
+  on public.player_money_flip_rounds (expires_at);
+
+drop function if exists public.money_flip_start(bigint);
+drop function if exists public.money_flip_card_rank(text);
+drop function if exists public.money_flip_card_suit(text);
+drop function if exists public.money_flip_encode_ranks(int[]);
+drop function if exists public.money_flip_straight_high(int[]);
+drop function if exists public.money_flip_hand_score(text[]);
+drop function if exists public.money_flip_hand_label(bigint);
+
+create or replace function public.money_flip_card_rank(p_card text)
+returns int
+language sql
+immutable
+as $$
+  select case upper(left(coalesce(p_card, ''), 1))
+    when 'A' then 14
+    when 'K' then 13
+    when 'Q' then 12
+    when 'J' then 11
+    when 'T' then 10
+    when '9' then 9
+    when '8' then 8
+    when '7' then 7
+    when '6' then 6
+    when '5' then 5
+    when '4' then 4
+    when '3' then 3
+    when '2' then 2
+    else 0
+  end;
+$$;
+
+create or replace function public.money_flip_card_suit(p_card text)
+returns text
+language sql
+immutable
+as $$
+  select upper(substr(coalesce(p_card, ''), 2, 1));
+$$;
+
+create or replace function public.money_flip_encode_ranks(p_ranks int[])
+returns bigint
+language plpgsql
+immutable
+as $$
+declare
+  rows int[] := coalesce(p_ranks, '{}');
+  padded int[] := array[]::int[];
+begin
+  padded := coalesce(rows[1:5], '{}');
+  while coalesce(array_length(padded, 1), 0) < 5 loop
+    padded := padded || 0;
+  end loop;
+
+  return (
+    coalesce(padded[1], 0) * 15 * 15 * 15 * 15
+    + coalesce(padded[2], 0) * 15 * 15 * 15
+    + coalesce(padded[3], 0) * 15 * 15
+    + coalesce(padded[4], 0) * 15
+    + coalesce(padded[5], 0)
+  )::bigint;
+end;
+$$;
+
+create or replace function public.money_flip_straight_high(p_unique_desc int[])
+returns int
+language plpgsql
+immutable
+as $$
+declare
+  rows int[] := coalesce(p_unique_desc, '{}');
+  scan int[] := rows;
+  i int;
+  head int;
+begin
+  if array_position(rows, 14) is not null then
+    scan := rows || 1;
+  end if;
+
+  if coalesce(array_length(scan, 1), 0) < 5 then
+    return 0;
+  end if;
+
+  for i in 1..(array_length(scan, 1) - 4) loop
+    head := scan[i];
+    if scan[i + 1] = head - 1
+      and scan[i + 2] = head - 2
+      and scan[i + 3] = head - 3
+      and scan[i + 4] = head - 4 then
+      return head;
+    end if;
+  end loop;
+
+  return 0;
+end;
+$$;
+
+create or replace function public.money_flip_hand_score(p_cards text[])
+returns bigint
+language plpgsql
+immutable
+as $$
+declare
+  factor bigint := 1000000000;
+  unique_ranks int[];
+  rank_rows record;
+  flush_suit text;
+  flush_unique int[];
+  straight_high int := 0;
+  straight_flush_high int := 0;
+  quad_rank int := 0;
+  trip_ranks int[];
+  pair_ranks int[];
+  pair_rank int := 0;
+  two_pair_high int := 0;
+  two_pair_low int := 0;
+  kicker int := 0;
+  kickers int[];
+begin
+  with parsed as (
+    select
+      public.money_flip_card_rank(card) as rank,
+      public.money_flip_card_suit(card) as suit
+    from unnest(coalesce(p_cards, '{}')) as card
+    where card ~ '^[2-9TJQKA][SHDC]$'
+  )
+  select coalesce(array_agg(distinct rank order by rank desc), '{}') into unique_ranks
+  from parsed;
+
+  if coalesce(array_length(unique_ranks, 1), 0) < 5 then
+    return 0;
+  end if;
+
+  select suit into flush_suit
+  from (
+    select suit, count(*) as cnt
+    from (
+      select public.money_flip_card_suit(card) as suit
+      from unnest(coalesce(p_cards, '{}')) as card
+      where card ~ '^[2-9TJQKA][SHDC]$'
+    ) s
+    group by suit
+    having count(*) >= 5
+    order by count(*) desc, suit asc
+    limit 1
+  ) x;
+
+  if flush_suit is not null then
+    with flush_parsed as (
+      select public.money_flip_card_rank(card) as rank
+      from unnest(coalesce(p_cards, '{}')) as card
+      where card ~ '^[2-9TJQKA][SHDC]$'
+        and public.money_flip_card_suit(card) = flush_suit
+    )
+    select coalesce(array_agg(distinct rank order by rank desc), '{}') into flush_unique
+    from flush_parsed;
+
+    straight_flush_high := public.money_flip_straight_high(flush_unique);
+    if straight_flush_high > 0 then
+      return (8 * factor) + straight_flush_high;
+    end if;
+  end if;
+
+  with rank_counts as (
+    select public.money_flip_card_rank(card) as rank, count(*)::int as cnt
+    from unnest(coalesce(p_cards, '{}')) as card
+    where card ~ '^[2-9TJQKA][SHDC]$'
+    group by public.money_flip_card_rank(card)
+  )
+  select coalesce(max(rank), 0) into quad_rank
+  from rank_counts
+  where cnt = 4;
+
+  if quad_rank > 0 then
+    select coalesce(max(rank), 0) into kicker
+    from (
+      select public.money_flip_card_rank(card) as rank
+      from unnest(coalesce(p_cards, '{}')) as card
+      where card ~ '^[2-9TJQKA][SHDC]$'
+    ) r
+    where rank <> quad_rank;
+    return (7 * factor) + public.money_flip_encode_ranks(array[quad_rank, kicker]);
+  end if;
+
+  with rank_counts as (
+    select public.money_flip_card_rank(card) as rank, count(*)::int as cnt
+    from unnest(coalesce(p_cards, '{}')) as card
+    where card ~ '^[2-9TJQKA][SHDC]$'
+    group by public.money_flip_card_rank(card)
+  )
+  select
+    coalesce(array_agg(rank order by rank desc) filter (where cnt >= 3), '{}'),
+    coalesce(array_agg(rank order by rank desc) filter (where cnt >= 2), '{}')
+  into trip_ranks, pair_ranks
+  from rank_counts;
+
+  if coalesce(array_length(trip_ranks, 1), 0) > 0 then
+    pair_rank := (
+      select rank
+      from unnest(
+        coalesce(trip_ranks[2:array_length(trip_ranks, 1)], '{}')
+        || coalesce(pair_ranks, '{}')
+      ) as rank
+      where rank <> trip_ranks[1]
+      order by rank desc
+      limit 1
+    );
+
+    if pair_rank is not null then
+      return (6 * factor) + public.money_flip_encode_ranks(array[trip_ranks[1], pair_rank]);
+    end if;
+  end if;
+
+  if flush_suit is not null then
+    return (5 * factor) + public.money_flip_encode_ranks(flush_unique[1:5]);
+  end if;
+
+  straight_high := public.money_flip_straight_high(unique_ranks);
+  if straight_high > 0 then
+    return (4 * factor) + straight_high;
+  end if;
+
+  if coalesce(array_length(trip_ranks, 1), 0) > 0 then
+    with rank_counts as (
+      select public.money_flip_card_rank(card) as rank, count(*)::int as cnt
+      from unnest(coalesce(p_cards, '{}')) as card
+      where card ~ '^[2-9TJQKA][SHDC]$'
+      group by public.money_flip_card_rank(card)
+    )
+    select coalesce(array_agg(rank order by rank desc), '{}') into kickers
+    from rank_counts
+    where rank <> trip_ranks[1];
+
+    return (3 * factor) + public.money_flip_encode_ranks(array[trip_ranks[1], coalesce(kickers[1], 0), coalesce(kickers[2], 0)]);
+  end if;
+
+  if coalesce(array_length(pair_ranks, 1), 0) >= 2 then
+    two_pair_high := pair_ranks[1];
+    two_pair_low := pair_ranks[2];
+
+    with rank_counts as (
+      select public.money_flip_card_rank(card) as rank, count(*)::int as cnt
+      from unnest(coalesce(p_cards, '{}')) as card
+      where card ~ '^[2-9TJQKA][SHDC]$'
+      group by public.money_flip_card_rank(card)
+    )
+    select coalesce(max(rank), 0) into kicker
+    from rank_counts
+    where rank <> two_pair_high and rank <> two_pair_low;
+
+    return (2 * factor) + public.money_flip_encode_ranks(array[two_pair_high, two_pair_low, kicker]);
+  end if;
+
+  if coalesce(array_length(pair_ranks, 1), 0) = 1 then
+    with rank_counts as (
+      select public.money_flip_card_rank(card) as rank, count(*)::int as cnt
+      from unnest(coalesce(p_cards, '{}')) as card
+      where card ~ '^[2-9TJQKA][SHDC]$'
+      group by public.money_flip_card_rank(card)
+    )
+    select coalesce(array_agg(rank order by rank desc), '{}') into kickers
+    from rank_counts
+    where rank <> pair_ranks[1];
+
+    return (1 * factor) + public.money_flip_encode_ranks(array[pair_ranks[1], coalesce(kickers[1], 0), coalesce(kickers[2], 0), coalesce(kickers[3], 0)]);
+  end if;
+
+  return public.money_flip_encode_ranks(unique_ranks[1:5]);
+end;
+$$;
+
+create or replace function public.money_flip_hand_label(p_score bigint)
+returns text
+language sql
+immutable
+as $$
+  select case floor(coalesce(p_score, 0)::numeric / 1000000000)
+    when 8 then 'Straight Flush'
+    when 7 then 'Four of a Kind'
+    when 6 then 'Full House'
+    when 5 then 'Flush'
+    when 4 then 'Straight'
+    when 3 then 'Three of a Kind'
+    when 2 then 'Two Pair'
+    when 1 then 'One Pair'
+    else 'High Card'
+  end;
+$$;
+
+create or replace function public.money_flip_start(p_wager bigint)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  state_row public.player_state;
+  active_layer_value int;
+  wager_value bigint;
+  round_uuid uuid := gen_random_uuid();
+  drawn_cards text[];
+  flop_cards text[];
+  choice_cards text[];
+  villain_cards text[];
+  player_hole text;
+  turn_card text;
+  river_card text;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  wager_value := greatest(0, coalesce(p_wager, 0));
+  if wager_value <= 0 then
+    raise exception 'Wager must be greater than 0';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_auto_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  select * into state_row
+  from public.player_state
+  where user_id = uid
+  for update;
+
+  if state_row.coins < wager_value then
+    raise exception 'Not enough coins for this wager';
+  end if;
+
+  update public.player_state
+  set season_gambled_coins = coalesce(season_gambled_coins, 0) + wager_value,
+      updated_at = now()
+  where user_id = uid
+  returning * into state_row;
+
+  active_layer_value := least(2, greatest(1, coalesce(state_row.active_layer, 1)));
+
+  with deck as (
+    select card
+    from unnest(array[
+      '2S','3S','4S','5S','6S','7S','8S','9S','TS','JS','QS','KS','AS',
+      '2H','3H','4H','5H','6H','7H','8H','9H','TH','JH','QH','KH','AH',
+      '2D','3D','4D','5D','6D','7D','8D','9D','TD','JD','QD','KD','AD',
+      '2C','3C','4C','5C','6C','7C','8C','9C','TC','JC','QC','KC','AC'
+    ]) as card
+    order by random()
+    limit 11
+  ), drawn as (
+    select card, row_number() over () as pos
+    from deck
+  )
+  select
+    coalesce(array_agg(card order by pos), '{}'),
+    coalesce(array_agg(card order by pos) filter (where pos between 1 and 3), '{}'),
+    coalesce(array_agg(card order by pos) filter (where pos between 5 and 7), '{}'),
+    coalesce(array_agg(card order by pos) filter (where pos between 8 and 9), '{}'),
+    max(card) filter (where pos = 4),
+    max(card) filter (where pos = 10),
+    max(card) filter (where pos = 11)
+  into drawn_cards, flop_cards, choice_cards, villain_cards, player_hole, turn_card, river_card
+  from drawn;
+
+  if coalesce(array_length(drawn_cards, 1), 0) <> 11 then
+    raise exception 'Unable to build Money Flip round';
+  end if;
+
+  insert into public.player_money_flip_rounds (
+    user_id,
+    round_id,
+    wager,
+    layer,
+    cards_sorted,
+    revealed_sorted_indices,
+    cards_final,
+    revealed_final_indices,
+    highest_index,
+    created_at,
+    expires_at
+  ) values (
+    uid,
+    round_uuid,
+    wager_value,
+    active_layer_value,
+    jsonb_build_object(
+      'flop', to_jsonb(flop_cards),
+      'player_hole', to_jsonb(array[player_hole]),
+      'choice_options', to_jsonb(choice_cards)
+    ),
+    '{}'::int[],
+    jsonb_build_object(
+      'villain_hole', to_jsonb(villain_cards),
+      'turn', turn_card,
+      'river', river_card
+    ),
+    '{}'::int[],
+    0,
+    now(),
+    now() + interval '5 minutes'
+  )
+  on conflict (user_id) do update
+    set round_id = excluded.round_id,
+        wager = excluded.wager,
+        layer = excluded.layer,
+        cards_sorted = excluded.cards_sorted,
+        revealed_sorted_indices = excluded.revealed_sorted_indices,
+        cards_final = excluded.cards_final,
+        revealed_final_indices = excluded.revealed_final_indices,
+        highest_index = excluded.highest_index,
+        created_at = excluded.created_at,
+        expires_at = excluded.expires_at;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'round', jsonb_build_object(
+      'round_id', round_uuid,
+      'wager', wager_value,
+      'layer', active_layer_value,
+      'flop', to_jsonb(flop_cards),
+      'player_hole', to_jsonb(array[player_hole]),
+      'choice_options', to_jsonb(choice_cards),
+      'villain_hole', to_jsonb(villain_cards),
+      'turn', turn_card,
+      'river', river_card,
+      'created_at', now(),
+      'expires_at', now() + interval '5 minutes'
+    )
+  );
+end;
+$$;
+
+drop function if exists public.money_flip_resolve(uuid, int);
+create or replace function public.money_flip_resolve(p_round_id uuid, p_pick_index int)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid;
+  state_row public.player_state;
+  round_row public.player_money_flip_rounds;
+  flop_cards text[];
+  player_hole text[];
+  choice_cards text[];
+  villain_cards text[];
+  turn_card text;
+  river_card text;
+  selected_card text;
+  board_cards text[];
+  player_cards text[];
+  player_score bigint;
+  villain_score bigint;
+  player_label text;
+  villain_label text;
+  won boolean;
+  net_change bigint;
+begin
+  uid := auth.uid();
+  if uid is null then
+    raise exception 'Authentication required';
+  end if;
+
+  if p_round_id is null then
+    raise exception 'Missing round id';
+  end if;
+  if p_pick_index is null or p_pick_index < 0 or p_pick_index > 2 then
+    raise exception 'Invalid pick index';
+  end if;
+
+  perform public.ensure_season_rollover();
+  perform public.ensure_player_initialized(uid);
+  perform public.apply_auto_progress(uid);
+  perform public.touch_player_activity(uid, 15);
+
+  select * into state_row
+  from public.player_state
+  where user_id = uid
+  for update;
+
+  select * into round_row
+  from public.player_money_flip_rounds
+  where user_id = uid
+  for update;
+
+  if not found then
+    raise exception 'No active Money Flip round found';
+  end if;
+
+  if round_row.round_id <> p_round_id then
+    raise exception 'Money Flip round mismatch';
+  end if;
+
+  if now() > round_row.expires_at then
+    delete from public.player_money_flip_rounds where user_id = uid;
+    raise exception 'Money Flip round expired. Start a new round.';
+  end if;
+
+  if state_row.coins < round_row.wager then
+    raise exception 'Not enough coins to settle this wager';
+  end if;
+
+  flop_cards := coalesce(array(select jsonb_array_elements_text(round_row.cards_sorted -> 'flop')), '{}');
+  player_hole := coalesce(array(select jsonb_array_elements_text(round_row.cards_sorted -> 'player_hole')), '{}');
+  choice_cards := coalesce(array(select jsonb_array_elements_text(round_row.cards_sorted -> 'choice_options')), '{}');
+  villain_cards := coalesce(array(select jsonb_array_elements_text(round_row.cards_final -> 'villain_hole')), '{}');
+  turn_card := nullif(round_row.cards_final ->> 'turn', '');
+  river_card := nullif(round_row.cards_final ->> 'river', '');
+
+  if coalesce(array_length(flop_cards, 1), 0) <> 3
+    or coalesce(array_length(player_hole, 1), 0) <> 1
+    or coalesce(array_length(choice_cards, 1), 0) <> 3
+    or coalesce(array_length(villain_cards, 1), 0) <> 2
+    or turn_card is null
+    or river_card is null then
+    raise exception 'Money Flip round payload is invalid';
+  end if;
+
+  selected_card := choice_cards[p_pick_index + 1];
+  if selected_card is null then
+    raise exception 'Invalid choice card';
+  end if;
+
+  board_cards := flop_cards || turn_card || river_card;
+  player_cards := array[player_hole[1], selected_card];
+  player_score := public.money_flip_hand_score(player_cards || board_cards);
+  villain_score := public.money_flip_hand_score(villain_cards || board_cards);
+  player_label := public.money_flip_hand_label(player_score);
+  villain_label := public.money_flip_hand_label(villain_score);
+
+  won := (player_score > villain_score);
+  net_change := case when won then round_row.wager else -round_row.wager end;
+
+  update public.player_state
+  set coins = greatest(0, coins + net_change),
+      season_gamble_net_coins = coalesce(season_gamble_net_coins, 0) + net_change,
+      season_gamble_rounds = coalesce(season_gamble_rounds, 0) + 1,
+      updated_at = now()
+  where user_id = uid;
+
+  delete from public.player_money_flip_rounds
+  where user_id = uid;
+
+  return jsonb_build_object(
+    'snapshot', public.player_snapshot(uid),
+    'result', jsonb_build_object(
+      'round_id', round_row.round_id,
+      'wager', round_row.wager,
+      'pick_index', p_pick_index,
+      'selected_option', selected_card,
+      'won', won,
+      'payout', case when won then round_row.wager * 2 else 0 end,
+      'net_change', net_change,
+      'layer', round_row.layer,
+      'board', to_jsonb(board_cards),
+      'player_cards', to_jsonb(player_cards),
+      'villain_cards', to_jsonb(villain_cards),
+      'player_hand_label', player_label,
+      'villain_hand_label', villain_label,
+      'player_score', player_score,
+      'villain_score', villain_score,
+      'resolved_at', now()
+    )
+  );
+end;
+$$;
+
+create or replace function public.get_money_flip_leaderboard(p_limit int default 50)
+returns table (
+  user_id uuid,
+  display_name text,
+  season_gambled_coins bigint,
+  season_gamble_net_coins bigint,
+  season_gamble_rounds int
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    ps.user_id,
+    coalesce(pp.display_name, 'Unknown Player') as display_name,
+    coalesce(ps.season_gambled_coins, 0)::bigint as season_gambled_coins,
+    coalesce(ps.season_gamble_net_coins, 0)::bigint as season_gamble_net_coins,
+    coalesce(ps.season_gamble_rounds, 0)::int as season_gamble_rounds
+  from public.player_state ps
+  left join public.player_profile pp on pp.user_id = ps.user_id
+  where coalesce(ps.season_gambled_coins, 0) > 0
+     or coalesce(ps.season_gamble_rounds, 0) > 0
+  order by
+    coalesce(ps.season_gambled_coins, 0) desc,
+    coalesce(ps.season_gamble_net_coins, 0) desc,
+    ps.updated_at desc
+  limit greatest(1, least(coalesce(p_limit, 50), 200));
+$$;
+
+grant execute on function public.money_flip_start(bigint) to authenticated;
+grant execute on function public.money_flip_resolve(uuid, int) to authenticated;
+grant execute on function public.get_money_flip_leaderboard(int) to authenticated;

@@ -12,6 +12,8 @@ import {
   loseLocalCard,
   openLocalPack,
   rebirthLocalPlayer,
+  resolveLocalMoneyFlip,
+  startLocalMoneyFlip,
   syncLocalPlayer,
   updateLocalNickname,
 } from '../src/lib/localEconomy.mjs'
@@ -237,6 +239,41 @@ test('missing card gift is blocked when current collection is complete', () => {
   assert.throws(() => {
     buyLocalMissingCardGift(account, { debugAllowed: true, nowMs: 2_000 })
   }, /already complete/)
+})
+
+test('money flip settles wager against highest card pick', () => {
+  const account = user('pack-money-flip')
+  bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+  debugApplyLocal(account, { type: 'set_coins', amount: 10_000 }, { debugAllowed: true, nowMs: 100 })
+
+  const started = startLocalMoneyFlip(account, {
+    wager: 500,
+    debugAllowed: true,
+    nowMs: 200,
+    rng: () => 0.42,
+  })
+
+  assert.ok(started.round.round_id)
+  assert.equal(started.round.flop.length, 3)
+  assert.equal(started.round.choice_options.length, 3)
+  assert.equal(started.round.villain_hole.length, 2)
+  assert.equal(started.snapshot.state.season_gambled_coins, 500)
+
+  const resolved = resolveLocalMoneyFlip(account, {
+    roundId: started.round.round_id,
+    pickIndex: 0,
+    debugAllowed: true,
+    nowMs: 300,
+  })
+
+  assert.ok(resolved.result.won === true || resolved.result.won === false)
+  assert.ok(Math.abs(Number(resolved.result.net_change || 0)) === 500)
+  assert.ok([9_500, 10_500].includes(resolved.snapshot.state.coins))
+  assert.equal(resolved.result.player_cards.length, 2)
+  assert.equal(resolved.result.board.length, 5)
+  assert.equal(resolved.snapshot.state.season_gambled_coins, 500)
+  assert.equal(resolved.snapshot.state.season_gamble_rounds, 1)
+  assert.ok(Math.abs(Number(resolved.snapshot.state.season_gamble_net_coins || 0)) === 500)
 })
 
 test('debug full set grants all cards and sets coins', () => {

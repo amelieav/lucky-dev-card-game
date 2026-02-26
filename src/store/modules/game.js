@@ -7,11 +7,14 @@ import {
   fetchLifetimeCompletionBoard as apiFetchLifetimeCompletionBoard,
   fetchRuntimeCapabilities as apiFetchRuntimeCapabilities,
   fetchLifetimeCollection as apiFetchLifetimeCollection,
+  fetchMoneyFlipLeaderboard as apiFetchMoneyFlipLeaderboard,
+  resolveMoneyFlip as apiResolveMoneyFlip,
   rebirthPlayer as apiRebirthPlayer,
   keepAlive as apiKeepAlive,
   loseCard as apiLoseCard,
   openPack as apiOpenPack,
   resetAccount as apiResetAccount,
+  startMoneyFlip as apiStartMoneyFlip,
   updateNickname as apiUpdateNickname,
 } from '../../services/gameApi'
 import {
@@ -22,11 +25,14 @@ import {
   getLocalRuntimeCapabilities,
   getLocalLifetimeCollection,
   getLocalLifetimeCompletionBoard,
+  getLocalMoneyFlipLeaderboard,
   keepAliveLocalPlayer,
   rebirthLocalPlayer,
+  resolveLocalMoneyFlip,
   loseLocalCard,
   openLocalPack,
   resetLocalAccount,
+  startLocalMoneyFlip,
   syncLocalPlayer,
   updateLocalNickname,
 } from '../../lib/localEconomy.mjs'
@@ -658,6 +664,55 @@ export default {
       }
     },
 
+    async startMoneyFlip({ commit, rootState }, { wager } = {}) {
+      commit('setActionLoading', true)
+      commit('setError', null)
+
+      try {
+        const user = rootState.auth.user
+        const payload = LOCAL_ECONOMY_ENABLED
+          ? startLocalMoneyFlip(user, {
+              wager,
+              debugAllowed: rootState.debug.enabled,
+            })
+          : await apiStartMoneyFlip({ wager })
+        const snapshot = normalizeSnapshot(payload)
+        commit('applySnapshot', snapshot)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
+        return payload?.round || null
+      } catch (error) {
+        commit('setError', error?.message || 'Unable to start money flip.')
+        throw error
+      } finally {
+        commit('setActionLoading', false)
+      }
+    },
+
+    async resolveMoneyFlip({ commit, rootState }, { roundId, pickIndex } = {}) {
+      commit('setActionLoading', true)
+      commit('setError', null)
+
+      try {
+        const user = rootState.auth.user
+        const payload = LOCAL_ECONOMY_ENABLED
+          ? resolveLocalMoneyFlip(user, {
+              roundId,
+              pickIndex,
+              debugAllowed: rootState.debug.enabled,
+            })
+          : await apiResolveMoneyFlip({ roundId, pickIndex })
+        const snapshot = normalizeSnapshot(payload)
+        commit('applySnapshot', snapshot)
+        commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
+        return payload?.result || null
+      } catch (error) {
+        commit('setError', error?.message || 'Unable to resolve money flip.')
+        throw error
+      } finally {
+        commit('setActionLoading', false)
+      }
+    },
+
     async fetchLifetimeCompletionBoard({ rootState }, { limit = 100 } = {}) {
       const user = rootState.auth.user
       if (!user?.id) return []
@@ -669,6 +724,27 @@ export default {
 
       try {
         const rows = await apiFetchLifetimeCompletionBoard(limit)
+        return Array.isArray(rows) ? rows : []
+      } catch (error) {
+        const message = String(error?.message || '')
+        if (!/timed out/i.test(message)) {
+          throw error
+        }
+      }
+
+      return []
+    },
+
+    async fetchMoneyFlipLeaderboard({ rootState }, { limit = 50 } = {}) {
+      const user = rootState.auth.user
+      if (!user?.id) return []
+
+      if (LOCAL_ECONOMY_ENABLED) {
+        return getLocalMoneyFlipLeaderboard(user, { limit })
+      }
+
+      try {
+        const rows = await apiFetchMoneyFlipLeaderboard(limit)
         return Array.isArray(rows) ? rows : []
       } catch (error) {
         const message = String(error?.message || '')

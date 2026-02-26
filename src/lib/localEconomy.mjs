@@ -41,6 +41,9 @@ const MUTATION_RANK = {
   foil: 2,
   holo: 3,
 }
+const MONEY_FLIP_CARD_COUNT = 6
+const MONEY_FLIP_REVEALED_COUNT = 3
+const MONEY_FLIP_ROUND_TTL_MS = 5 * 60 * 1000
 
 // Local economy is a development fallback and not the authoritative runtime.
 // Keep local feature availability aligned with production so UI/testing surfaces match.
@@ -75,6 +78,206 @@ function normalizeActiveLayer(value) {
 
 function chooseRandom(values, rng = Math.random) {
   return values[Math.floor(rng() * values.length)]
+}
+
+function clampWager(value) {
+  const wager = Math.floor(Number(value || 0))
+  if (!Number.isFinite(wager)) return 0
+  return Math.max(0, wager)
+}
+
+function shuffleArray(values, rng = Math.random) {
+  const next = Array.isArray(values) ? values.slice() : []
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rng() * (i + 1))
+    const temp = next[i]
+    next[i] = next[j]
+    next[j] = temp
+  }
+  return next
+}
+
+function createLocalRoundId(nowMs, rng = Math.random) {
+  const suffix = Math.floor(rng() * 1_000_000_000)
+  return `mf_${Number(nowMs || Date.now())}_${suffix}`
+}
+
+function pokerDeckCards() {
+  const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
+  const suits = ['S', 'H', 'D', 'C']
+  return suits.flatMap((suit) => ranks.map((rank) => `${rank}${suit}`))
+}
+
+function pokerRankValue(card) {
+  const rank = String(card || '').slice(0, 1).toUpperCase()
+  if (rank === 'A') return 14
+  if (rank === 'K') return 13
+  if (rank === 'Q') return 12
+  if (rank === 'J') return 11
+  if (rank === 'T') return 10
+  const parsed = Number(rank)
+  return Number.isFinite(parsed) ? Math.max(2, Math.min(9, parsed)) : 0
+}
+
+function pokerSuitValue(card) {
+  return String(card || '').slice(1, 2).toUpperCase()
+}
+
+function pokerEncodeRanks(ranks) {
+  const safe = Array.isArray(ranks) ? ranks.slice(0, 5) : []
+  while (safe.length < 5) safe.push(0)
+  return (safe[0] * 15 ** 4) + (safe[1] * 15 ** 3) + (safe[2] * 15 ** 2) + (safe[3] * 15) + safe[4]
+}
+
+function pokerStraightHighFromRanks(uniqueRanksDesc) {
+  const values = Array.isArray(uniqueRanksDesc) ? uniqueRanksDesc.slice() : []
+  if (values.includes(14)) values.push(1)
+  const sorted = Array.from(new Set(values)).sort((a, b) => b - a)
+  for (let i = 0; i <= sorted.length - 5; i += 1) {
+    const head = sorted[i]
+    let ok = true
+    for (let j = 1; j < 5; j += 1) {
+      if (sorted[i + j] !== head - j) {
+        ok = false
+        break
+      }
+    }
+    if (ok) return head
+  }
+  return 0
+}
+
+function evaluatePokerSevenCards(cards) {
+  const rows = (Array.isArray(cards) ? cards : [])
+    .map((card) => String(card || '').trim().toUpperCase())
+    .filter((card) => /^[2-9TJQKA][SHDC]$/.test(card))
+  if (rows.length < 5) {
+    return { score: 0, label: 'High Card' }
+  }
+
+  const byRank = new Map()
+  const bySuit = new Map()
+  for (const card of rows) {
+    const rank = pokerRankValue(card)
+    const suit = pokerSuitValue(card)
+    byRank.set(rank, (byRank.get(rank) || 0) + 1)
+    if (!bySuit.has(suit)) bySuit.set(suit, [])
+    bySuit.get(suit).push(rank)
+  }
+
+  const uniqueRanksDesc = Array.from(byRank.keys()).sort((a, b) => b - a)
+  const rankGroups = Array.from(byRank.entries())
+    .map(([rank, count]) => ({ rank, count }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count
+      return b.rank - a.rank
+    })
+
+  let flushRanksDesc = null
+  for (const ranks of bySuit.values()) {
+    if (ranks.length >= 5) {
+      const sorted = Array.from(new Set(ranks)).sort((a, b) => b - a)
+      if (!flushRanksDesc || sorted[0] > flushRanksDesc[0]) flushRanksDesc = sorted
+    }
+  }
+
+  if (flushRanksDesc) {
+    const sfHigh = pokerStraightHighFromRanks(flushRanksDesc)
+    if (sfHigh > 0) {
+      return { score: (8 * 1_000_000_000) + sfHigh, label: 'Straight Flush' }
+    }
+  }
+
+  const quad = rankGroups.find((row) => row.count === 4)
+  if (quad) {
+    const kicker = uniqueRanksDesc.find((rank) => rank !== quad.rank) || 0
+    return { score: (7 * 1_000_000_000) + pokerEncodeRanks([quad.rank, kicker]), label: 'Four of a Kind' }
+  }
+
+  const trips = rankGroups.filter((row) => row.count >= 3).map((row) => row.rank).sort((a, b) => b - a)
+  const pairs = rankGroups.filter((row) => row.count >= 2).map((row) => row.rank).sort((a, b) => b - a)
+  if (trips.length > 0) {
+    const tripRank = trips[0]
+    const pairRank = [...trips.filter((rank) => rank !== tripRank), ...pairs.filter((rank) => rank !== tripRank)][0]
+    if (pairRank != null) {
+      return { score: (6 * 1_000_000_000) + pokerEncodeRanks([tripRank, pairRank]), label: 'Full House' }
+    }
+  }
+
+  if (flushRanksDesc) {
+    return { score: (5 * 1_000_000_000) + pokerEncodeRanks(flushRanksDesc.slice(0, 5)), label: 'Flush' }
+  }
+
+  const straightHigh = pokerStraightHighFromRanks(uniqueRanksDesc)
+  if (straightHigh > 0) {
+    return { score: (4 * 1_000_000_000) + straightHigh, label: 'Straight' }
+  }
+
+  if (trips.length > 0) {
+    const tripRank = trips[0]
+    const kickers = uniqueRanksDesc.filter((rank) => rank !== tripRank).slice(0, 2)
+    return { score: (3 * 1_000_000_000) + pokerEncodeRanks([tripRank, ...kickers]), label: 'Three of a Kind' }
+  }
+
+  if (pairs.length >= 2) {
+    const [highPair, lowPair] = pairs.slice(0, 2)
+    const kicker = uniqueRanksDesc.find((rank) => rank !== highPair && rank !== lowPair) || 0
+    return { score: (2 * 1_000_000_000) + pokerEncodeRanks([highPair, lowPair, kicker]), label: 'Two Pair' }
+  }
+
+  if (pairs.length === 1) {
+    const pair = pairs[0]
+    const kickers = uniqueRanksDesc.filter((rank) => rank !== pair).slice(0, 3)
+    return { score: (1 * 1_000_000_000) + pokerEncodeRanks([pair, ...kickers]), label: 'One Pair' }
+  }
+
+  return { score: pokerEncodeRanks(uniqueRanksDesc.slice(0, 5)), label: 'High Card' }
+}
+
+function normalizeMoneyFlipRound(round, nowMs = Date.now()) {
+  if (!round || typeof round !== 'object') return null
+  const roundId = String(round.round_id || '').trim()
+  if (!roundId) return null
+  const wager = clampWager(round.wager)
+  if (wager <= 0) return null
+
+  const layer = normalizeActiveLayer(round.layer || 1)
+  const createdAtMs = Date.parse(round.created_at || '')
+  const expiresAtMs = Date.parse(round.expires_at || '')
+
+  const safeCard = (card) => {
+    const value = String(card || '').trim().toUpperCase()
+    return /^[2-9TJQKA][SHDC]$/.test(value) ? value : null
+  }
+  const safeArray = (cards, expectedLength) => {
+    const rows = (Array.isArray(cards) ? cards : [])
+      .map((card) => safeCard(card))
+      .filter(Boolean)
+    if (rows.length !== expectedLength) return null
+    return rows
+  }
+
+  const flop = safeArray(round.flop, 3)
+  const choiceOptions = safeArray(round.choice_options, 3)
+  const villainHole = safeArray(round.villain_hole, 2)
+  const playerHole = safeArray(round.player_hole, 1)
+  const turn = safeCard(round.turn)
+  const river = safeCard(round.river)
+  if (!flop || !choiceOptions || !villainHole || !playerHole || !turn || !river) return null
+
+  return {
+    round_id: roundId,
+    wager,
+    layer,
+    flop,
+    player_hole: playerHole,
+    choice_options: choiceOptions,
+    villain_hole: villainHole,
+    turn,
+    river,
+    created_at: Number.isFinite(createdAtMs) ? nowIso(createdAtMs) : nowIso(nowMs),
+    expires_at: Number.isFinite(expiresAtMs) ? nowIso(expiresAtMs) : nowIso(nowMs + MONEY_FLIP_ROUND_TTL_MS),
+  }
 }
 
 function generateDefaultDisplayName(partA, partB, partC) {
@@ -355,6 +558,9 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
     auto_opens: 0,
     auto_open_progress: 0,
     passive_rate_cps: 0,
+    season_gambled_coins: 0,
+    season_gamble_net_coins: 0,
+    season_gamble_rounds: 0,
     rebirth_count: 0,
     active_layer: 1,
     active_until_at: timestamp,
@@ -375,6 +581,7 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
       updated_at: timestamp,
     },
     next_reward: null,
+    money_flip_round: null,
   }
 }
 
@@ -642,10 +849,14 @@ function resetProgress(record, {
   record.auto_opens = 0
   record.auto_open_progress = 0
   record.passive_rate_cps = 0
+  record.season_gambled_coins = 0
+  record.season_gamble_net_coins = 0
+  record.season_gamble_rounds = 0
   record.active_until_at = nowIso(nowMs)
   record.last_tick_at = nowIso(nowMs)
   record.updated_at = nowIso(nowMs)
   record.next_reward = null
+  record.money_flip_round = null
 
   if (clearCurrentTerms) {
     record.terms = []
@@ -733,6 +944,7 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
   merged.stolen_terms = uniqueStolenEntries(merged.stolen_terms, nowMs)
   merged.season = normalizeSeason(merged.season, nowMs)
   merged.season_history = normalizeSeasonHistory(merged.season_history, nowMs)
+  merged.money_flip_round = normalizeMoneyFlipRound(merged.money_flip_round, nowMs)
 
   if (merged.lifetime_terms.length === 0 && merged.terms.length > 0) {
     const migratedLifetime = merged.terms.map((row) => ({
@@ -748,6 +960,9 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
 
   merged.highest_tier_unlocked = getHighestUnlockedTier(merged)
   merged.passive_rate_cps = Math.max(0, Number(merged.passive_rate_cps || 0))
+  merged.season_gambled_coins = Math.max(0, Number(merged.season_gambled_coins || 0))
+  merged.season_gamble_net_coins = Number(merged.season_gamble_net_coins || 0)
+  merged.season_gamble_rounds = Math.max(0, Number(merged.season_gamble_rounds || 0))
 
   return merged
 }
@@ -804,6 +1019,9 @@ function toSnapshot(record, debugAllowed, nowMs = Date.now()) {
       auto_opens: record.auto_opens,
       passive_rate_bp: passiveSummary.totalRate * 100,
       passive_rate_cps: passiveSummary.totalRate,
+      season_gambled_coins: Math.max(0, Number(record.season_gambled_coins || 0)),
+      season_gamble_net_coins: Number(record.season_gamble_net_coins || 0),
+      season_gamble_rounds: Math.max(0, Number(record.season_gamble_rounds || 0)),
       passive_foil_cards: passiveSummary.foilCards,
       passive_holo_cards: passiveSummary.holoCards,
       auto_open_progress: record.auto_open_progress,
@@ -1415,6 +1633,166 @@ export function getLocalSeasonHistory(user, { limit = 200, rng = Math.random, no
 
   const rows = normalizeSeasonHistory(record.season_history || [])
   return rows.slice(0, Math.max(1, Math.min(500, Number(limit || 200))))
+}
+
+export function getLocalMoneyFlipLeaderboard(user, { limit = 50, rng = Math.random, nowMs = Date.now() } = {}) {
+  assertAuthenticatedUser(user)
+  const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
+  writeRecord(user, record)
+
+  const safeLimit = Math.max(1, Math.min(200, Number(limit || 50)))
+  return [{
+    user_id: user.id,
+    display_name: String(record?.profile?.display_name || 'Local Player'),
+    season_gambled_coins: Math.max(0, Number(record.season_gambled_coins || 0)),
+    season_gamble_net_coins: Number(record.season_gamble_net_coins || 0),
+    season_gamble_rounds: Math.max(0, Number(record.season_gamble_rounds || 0)),
+  }].slice(0, safeLimit)
+}
+
+export function startLocalMoneyFlip(
+  user,
+  { wager, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
+) {
+  assertAuthenticatedUser(user)
+  const normalizedWager = clampWager(wager)
+  if (normalizedWager <= 0) {
+    throw new Error('Wager must be greater than 0')
+  }
+
+  const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
+  applyAutoProgress(record, {
+    debugAllowed,
+    rng,
+    nowMs,
+    allowAutoDraws: false,
+  })
+  touchRecordActivity(record, { nowMs })
+
+  if (Number(record.coins || 0) < normalizedWager) {
+    throw new Error('Not enough coins for this wager')
+  }
+
+  const deck = shuffleArray(pokerDeckCards(), rng)
+  if (deck.length < 11) {
+    throw new Error('Unable to prepare Money Flip deck')
+  }
+
+  const flop = deck.slice(0, 3)
+  const playerHole = [deck[3]]
+  const choiceOptions = deck.slice(4, 7)
+  const villainHole = deck.slice(7, 9)
+  const turn = deck[9]
+  const river = deck[10]
+
+  const round = {
+    round_id: createLocalRoundId(nowMs, rng),
+    wager: normalizedWager,
+    layer: normalizeActiveLayer(record.active_layer),
+    flop,
+    player_hole: playerHole,
+    choice_options: choiceOptions,
+    villain_hole: villainHole,
+    turn,
+    river,
+    created_at: nowIso(nowMs),
+    expires_at: nowIso(nowMs + MONEY_FLIP_ROUND_TTL_MS),
+  }
+
+  record.season_gambled_coins = Math.max(0, Number(record.season_gambled_coins || 0)) + normalizedWager
+  record.money_flip_round = round
+  record.updated_at = nowIso(nowMs)
+  writeRecord(user, record)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    round,
+  }
+}
+
+export function resolveLocalMoneyFlip(
+  user,
+  { roundId, pickIndex, debugAllowed = false, rng = Math.random, nowMs = Date.now() } = {},
+) {
+  assertAuthenticatedUser(user)
+  const normalizedRoundId = String(roundId || '').trim()
+  const normalizedPickIndex = Math.floor(Number(pickIndex))
+  if (!normalizedRoundId) {
+    throw new Error('Missing round id')
+  }
+  if (!Number.isFinite(normalizedPickIndex) || normalizedPickIndex < 0 || normalizedPickIndex >= 3) {
+    throw new Error('Invalid pick index')
+  }
+
+  const record = readRecord(user, rng, nowMs)
+  ensureSeasonState(record, nowMs)
+  applyAutoProgress(record, {
+    debugAllowed,
+    rng,
+    nowMs,
+    allowAutoDraws: false,
+  })
+  touchRecordActivity(record, { nowMs })
+
+  const round = normalizeMoneyFlipRound(record.money_flip_round, nowMs)
+  if (!round || round.round_id !== normalizedRoundId) {
+    throw new Error('No active Money Flip round found')
+  }
+
+  const expiresAtMs = Date.parse(round.expires_at || '')
+  if (Number.isFinite(expiresAtMs) && nowMs > expiresAtMs) {
+    record.money_flip_round = null
+    record.updated_at = nowIso(nowMs)
+    writeRecord(user, record)
+    throw new Error('Money Flip round expired. Start a new round.')
+  }
+
+  if (Number(record.coins || 0) < round.wager) {
+    throw new Error('Not enough coins to settle this wager')
+  }
+
+  const selectedOption = round.choice_options[normalizedPickIndex]
+  if (!selectedOption) {
+    throw new Error('Invalid choice card')
+  }
+
+  const board = [...round.flop, round.turn, round.river]
+  const playerCards = [round.player_hole[0], selectedOption]
+  const villainCards = round.villain_hole.slice(0, 2)
+  const playerEval = evaluatePokerSevenCards([...playerCards, ...board])
+  const villainEval = evaluatePokerSevenCards([...villainCards, ...board])
+  const won = playerEval.score > villainEval.score
+  const netChange = won ? round.wager : -round.wager
+  record.coins = Math.max(0, Number(record.coins || 0) + netChange)
+  record.season_gamble_net_coins = Number(record.season_gamble_net_coins || 0) + netChange
+  record.season_gamble_rounds = Math.max(0, Number(record.season_gamble_rounds || 0)) + 1
+  record.money_flip_round = null
+  record.updated_at = nowIso(nowMs)
+  writeRecord(user, record)
+
+  return {
+    snapshot: toSnapshot(record, debugAllowed, nowMs),
+    result: {
+      round_id: round.round_id,
+      wager: round.wager,
+      pick_index: normalizedPickIndex,
+      selected_option: selectedOption,
+      won,
+      payout: won ? round.wager * 2 : 0,
+      net_change: netChange,
+      layer: round.layer,
+      board,
+      player_cards: playerCards,
+      villain_cards: villainCards,
+      player_hand_label: playerEval.label,
+      villain_hand_label: villainEval.label,
+      player_score: playerEval.score,
+      villain_score: villainEval.score,
+      resolved_at: nowIso(nowMs),
+    },
+  }
 }
 
 // Backward-compatible aliases.
