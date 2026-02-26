@@ -169,6 +169,13 @@ function normalizeDuckTheftStats(stats) {
   return safe
 }
 
+function snapshotHasOwnedTerm(snapshot, termKey) {
+  const normalized = String(termKey || '').trim()
+  if (!normalized) return false
+  const rows = Array.isArray(snapshot?.terms) ? snapshot.terms : []
+  return rows.some((row) => String(row?.term_key || row?.termKey || '').trim() === normalized)
+}
+
 function normalizeSeasonId(seasonId) {
   const normalized = String(seasonId || '').trim()
   if (!normalized) return 'legacy'
@@ -457,7 +464,7 @@ export default {
       }
     },
 
-    async loseCard({ commit, rootState }, { termKey } = {}) {
+    async loseCard({ commit, rootState, state }, { termKey } = {}) {
       commit('setActionLoading', true)
       commit('setError', null)
 
@@ -471,7 +478,28 @@ export default {
         commit('applySnapshot', snapshot)
         commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
-        commit('setError', error.message || 'Unable to remove card.')
+        const message = error?.message || 'Unable to remove card.'
+        const isTimeout = /timed out/i.test(message)
+
+        if (isTimeout && !LOCAL_ECONOMY_ENABLED) {
+          const hadCardBefore = snapshotHasOwnedTerm(state.snapshot, termKey)
+          try {
+            const user = rootState.auth.user
+            const refreshed = await apiBootstrapPlayer()
+            const refreshedSnapshot = normalizeSnapshot(refreshed)
+            commit('applySnapshot', refreshedSnapshot)
+            commit('setDuckTheftStats', readDuckTheftStats(user?.id, refreshedSnapshot?.season?.id))
+
+            // If the card is already gone after sync, treat timeout as a successful theft.
+            if (hadCardBefore && !snapshotHasOwnedTerm(refreshedSnapshot, termKey)) {
+              return
+            }
+          } catch (_) {
+            // Keep original timeout context below.
+          }
+        }
+
+        commit('setError', message)
         throw error
       } finally {
         commit('setActionLoading', false)

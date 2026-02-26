@@ -4,6 +4,8 @@ const RPC_TIMEOUT_MS = 15000
 const OPEN_PACK_TIMEOUT_MS = 3500
 const OPEN_PACK_RETRY_TIMEOUT_MS = 3500
 const OPEN_PACK_RETRY_DELAY_MS = 180
+const LOSE_CARD_RETRY_TIMEOUT_MS = 12000
+const LOSE_CARD_RETRY_DELAY_MS = 180
 const READ_RPC_RETRY_TIMEOUT_MS = 22000
 const READ_RPC_RETRY_DELAY_MS = 240
 
@@ -159,19 +161,42 @@ export async function loseCard(termKey) {
     throw new Error('Missing term key')
   }
 
-  const primary = await withRpcTimeout(supabase.rpc('lose_card', {
-    p_term_key: normalized,
-  }), 'lose_card')
-
-  if (!primary.error) {
-    return primary.data
+  async function runLoseCardOnce(timeoutMs = RPC_TIMEOUT_MS) {
+    return withRpcTimeout(supabase.rpc('lose_card', {
+      p_term_key: normalized,
+    }), 'lose_card', timeoutMs)
   }
 
-  if (!isMissingRpcError(primary.error, 'lose_card')) {
-    throw primary.error
-  }
+  try {
+    const primary = await runLoseCardOnce()
+    if (!primary.error) {
+      return primary.data
+    }
 
-  throw new Error('Card loss RPC is not available on this backend yet')
+    if (!isMissingRpcError(primary.error, 'lose_card')) {
+      throw primary.error
+    }
+
+    throw new Error('Card loss RPC is not available on this backend yet')
+  } catch (error) {
+    if (!isTimeoutError(error)) {
+      throw error
+    }
+
+    // Best-effort recovery for transient write stalls.
+    await sleep(LOSE_CARD_RETRY_DELAY_MS)
+    try {
+      await withRpcTimeout(supabase.rpc('keep_alive'), 'keep_alive', 8000)
+    } catch (_) {
+      // Ignore keep_alive failures and still retry lose_card once.
+    }
+
+    const retry = await runLoseCardOnce(LOSE_CARD_RETRY_TIMEOUT_MS)
+    if (!retry.error) {
+      return retry.data
+    }
+    throw retry.error
+  }
 }
 
 export async function buyUpgrade({ upgradeKey } = {}) {
