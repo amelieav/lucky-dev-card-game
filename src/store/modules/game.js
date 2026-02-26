@@ -604,9 +604,16 @@ export default {
         return getLocalLifetimeCollection(user)
       }
 
-      const payload = await apiFetchLifetimeCollection()
-      if (payload && typeof payload === 'object') {
-        return payload
+      try {
+        const payload = await apiFetchLifetimeCollection()
+        if (payload && typeof payload === 'object') {
+          return payload
+        }
+      } catch (error) {
+        const message = String(error?.message || '')
+        if (!/timed out/i.test(message)) {
+          throw error
+        }
       }
 
       return state.snapshot?.lifetime || {

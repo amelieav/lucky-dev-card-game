@@ -310,11 +310,26 @@ export default {
           const user = rootState.auth.user
           rows = user?.id ? getLocalSeasonHistory(user, { limit }) : []
         } else {
-          rows = await apiFetchSeasonHistory(limit)
+          try {
+            rows = await apiFetchSeasonHistory(limit)
+          } catch (error) {
+            if (!isTransientTimeoutError(error)) {
+              throw error
+            }
+
+            await wait(LEADERBOARD_RETRY_DELAY_MS)
+            rows = await apiFetchSeasonHistory(limit)
+          }
         }
 
         commit('setSeasonHistory', normalizeSeasonHistoryRows(rows))
       } catch (error) {
+        if (isTransientTimeoutError(error) && Array.isArray(rootState.leaderboard?.seasonHistory) && rootState.leaderboard.seasonHistory.length > 0) {
+          // Keep stale season history on transient timeout.
+          commit('setHistoryError', null)
+          return
+        }
+
         commit('setHistoryError', error.message || 'Unable to load season history.')
       } finally {
         commit('setHistoryLoading', false)

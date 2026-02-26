@@ -57,12 +57,15 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useStore } from 'vuex'
 
 const store = useStore()
+const route = useRoute()
 const AFK_TIMEOUT_MS = 10_000
 const AFK_TICK_MS = 1_000
 const KEEP_ALIVE_MS = 5_000
+const NAV_KEEP_ALIVE_SUSPENDED_ROUTES = new Set(['Game', 'Leaderboard', 'LifetimeCollection', 'DuckCave'])
 
 const isAuthed = computed(() => !!store.state.auth.user)
 const supportsLifetimeCollection = computed(() => Boolean(store.state.game.capabilities?.supports_lifetime_collection))
@@ -73,6 +76,10 @@ const duckCaveUnlocked = computed(() => {
   return rebirthCount >= 1 || activeLayer > 1
 })
 const duckCardsStolen = computed(() => Math.max(0, Number(store.state.game.duckTheftStats?.count || 0)))
+const shouldRunNavKeepAlive = computed(() => {
+  if (!isAuthed.value) return false
+  return !NAV_KEEP_ALIVE_SUSPENDED_ROUTES.has(String(route.name || ''))
+})
 const duckInfoOpen = ref(false)
 const duckInfoPinned = ref(false)
 const nowMs = ref(Date.now())
@@ -84,6 +91,7 @@ const isAfk = computed(() => {
 
 let afkTimer = null
 let keepAliveTimer = null
+let keepAliveInFlight = false
 
 function markMouseActivity() {
   const timestamp = Date.now()
@@ -92,13 +100,20 @@ function markMouseActivity() {
 }
 
 async function runKeepAliveTick() {
-  if (!isAuthed.value) return
+  if (!shouldRunNavKeepAlive.value) return
   if (store.state.game.actionLoading) return
-  await store.dispatch('game/keepAlive')
+  if (keepAliveInFlight) return
+
+  keepAliveInFlight = true
+  try {
+    await store.dispatch('game/keepAlive')
+  } finally {
+    keepAliveInFlight = false
+  }
 }
 
 function startKeepAlive() {
-  if (keepAliveTimer || !isAuthed.value) return
+  if (keepAliveTimer || !shouldRunNavKeepAlive.value) return
   keepAliveTimer = window.setInterval(() => {
     void runKeepAliveTick()
   }, KEEP_ALIVE_MS)
@@ -159,7 +174,7 @@ onUnmounted(() => {
   stopKeepAlive()
 })
 
-watch(isAuthed, (authed) => {
+watch([isAuthed, () => route.name], ([authed]) => {
   nowMs.value = Date.now()
   lastMouseMoveMs.value = nowMs.value
 
@@ -171,8 +186,13 @@ watch(isAuthed, (authed) => {
   }
 
   store.dispatch('game/hydrateDuckTheftStats')
-  startKeepAlive()
-  void runKeepAliveTick()
+  if (shouldRunNavKeepAlive.value) {
+    startKeepAlive()
+    void runKeepAliveTick()
+    return
+  }
+
+  stopKeepAlive()
 })
 </script>
 

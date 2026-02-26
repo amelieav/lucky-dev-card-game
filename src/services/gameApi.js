@@ -2,8 +2,10 @@ import { supabase } from '../lib/supabase'
 
 const RPC_TIMEOUT_MS = 15000
 const OPEN_PACK_TIMEOUT_MS = 6000
-const OPEN_PACK_RETRY_TIMEOUT_MS = 12000
+const OPEN_PACK_RETRY_TIMEOUT_MS = 6000
 const OPEN_PACK_RETRY_DELAY_MS = 180
+const READ_RPC_RETRY_TIMEOUT_MS = 22000
+const READ_RPC_RETRY_DELAY_MS = 240
 
 function sleep(ms) {
   return new Promise((resolve) => {
@@ -50,6 +52,25 @@ function isMissingRpcError(error, functionName) {
 function isTimeoutError(error) {
   const message = String(error?.message || '').toLowerCase()
   return message.includes('timed out') || message.includes('timeout')
+}
+
+async function callReadRpcWithRecovery(makeCall, actionLabel) {
+  try {
+    return await withRpcTimeout(makeCall(), actionLabel, RPC_TIMEOUT_MS)
+  } catch (error) {
+    if (!isTimeoutError(error)) {
+      throw error
+    }
+
+    await sleep(READ_RPC_RETRY_DELAY_MS)
+    try {
+      await withRpcTimeout(supabase.rpc('keep_alive'), 'keep_alive', 8000)
+    } catch (_) {
+      // Best-effort keep-alive before retrying reads.
+    }
+
+    return withRpcTimeout(makeCall(), actionLabel, READ_RPC_RETRY_TIMEOUT_MS)
+  }
 }
 
 export async function bootstrapPlayer() {
@@ -235,9 +256,10 @@ export async function resetAccount() {
 }
 
 export async function fetchLeaderboard(limit = 50) {
-  return unwrap(await withRpcTimeout(supabase.rpc('get_leaderboard', {
-    p_limit: limit,
-  }), 'get_leaderboard'))
+  return unwrap(await callReadRpcWithRecovery(
+    () => supabase.rpc('get_leaderboard', { p_limit: limit }),
+    'get_leaderboard',
+  ))
 }
 
 export async function rebirthPlayer() {
@@ -245,13 +267,17 @@ export async function rebirthPlayer() {
 }
 
 export async function fetchLifetimeCollection() {
-  return unwrap(await withRpcTimeout(supabase.rpc('get_lifetime_collection'), 'get_lifetime_collection'))
+  return unwrap(await callReadRpcWithRecovery(
+    () => supabase.rpc('get_lifetime_collection'),
+    'get_lifetime_collection',
+  ))
 }
 
 export async function fetchSeasonHistory(limit = 200) {
-  return unwrap(await withRpcTimeout(supabase.rpc('get_season_history', {
-    p_limit: limit,
-  }), 'get_season_history'))
+  return unwrap(await callReadRpcWithRecovery(
+    () => supabase.rpc('get_season_history', { p_limit: limit }),
+    'get_season_history',
+  ))
 }
 
 export async function fetchDuckCaveStash() {
