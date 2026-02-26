@@ -219,14 +219,16 @@
         <article class="rounded-lg border border-soft bg-white/70 p-3 text-sm">
           <p class="text-xs uppercase tracking-wide text-muted">Best Net</p>
           <p class="mt-1 font-semibold">{{ bestNetRow?.display_name || 'None' }}</p>
-          <p class="text-xs text-green-700">
-            {{ Number(bestNetRow?.season_gamble_net_coins || 0) >= 0 ? '+' : '' }}{{ formatNumber(bestNetRow?.season_gamble_net_coins || 0) }} coins
+          <p class="text-xs text-green-700" v-if="bestNetRow">
+            +{{ formatNumber(bestNetRow.season_gamble_net_coins || 0) }} coins
           </p>
+          <p class="text-xs text-muted" v-else>--</p>
         </article>
         <article class="rounded-lg border border-soft bg-white/70 p-3 text-sm">
           <p class="text-xs uppercase tracking-wide text-muted">Worst Net</p>
           <p class="mt-1 font-semibold">{{ worstNetRow?.display_name || 'None' }}</p>
-          <p class="text-xs text-red-700">{{ formatNumber(worstNetRow?.season_gamble_net_coins || 0) }} coins</p>
+          <p class="text-xs text-red-700" v-if="worstNetRow">{{ formatNumber(worstNetRow.season_gamble_net_coins || 0) }} coins</p>
+          <p class="text-xs text-muted" v-else>--</p>
         </article>
       </div>
 
@@ -290,12 +292,16 @@ const mostGambledRow = computed(() => {
   return rows[0] || null
 })
 const bestNetRow = computed(() => {
-  const rows = moneyFlipLeaderboardRows.value.slice()
+  const rows = moneyFlipLeaderboardRows.value
+    .filter((row) => Number(row.season_gamble_net_coins || 0) > 0)
+    .slice()
   rows.sort((a, b) => Number(b.season_gamble_net_coins || 0) - Number(a.season_gamble_net_coins || 0))
   return rows[0] || null
 })
 const worstNetRow = computed(() => {
-  const rows = moneyFlipLeaderboardRows.value.slice()
+  const rows = moneyFlipLeaderboardRows.value
+    .filter((row) => Number(row.season_gamble_net_coins || 0) < 0)
+    .slice()
   rows.sort((a, b) => Number(a.season_gamble_net_coins || 0) - Number(b.season_gamble_net_coins || 0))
   return rows[0] || null
 })
