@@ -42,8 +42,9 @@
 
       <p v-if="magicLinkSent" class="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">
         Check your inbox for the sign-in link.
-        Open the magic link on the device where you want to play.
+        <strong>Open the magic link on the device where you want to play.</strong>
       </p>
+
 
       <p v-if="error" class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
         {{ error }}

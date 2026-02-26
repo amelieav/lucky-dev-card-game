@@ -1,22 +1,21 @@
 <template>
   <header class="app-nav border-b border-soft bg-panel">
-    <div class="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+    <div class="mx-auto flex w-full max-w-[84rem] items-center justify-between px-4 py-3 sm:px-10">
       <div class="flex items-center gap-3">
-        <div class="brand-badge h-8 w-8 rounded-lg grid place-items-center text-sm font-semibold" aria-hidden="true">
-          <vue-feather type="code" size="14" stroke-width="2.5"></vue-feather>
+        <div class="brand-badge h-9 w-9 rounded-lg grid place-items-center text-sm font-semibold" aria-hidden="true">
+          <span class="brand-badge__duck">🐤</span>
         </div>
         <div>
           <p class="text-sm font-semibold tracking-wide text-main">Lucky Dev</p>
-          <p class="text-xs text-muted">Card Opening Game</p>
+          <p class="brand-subtitle text-xs">Card Pack Opening Game by Amélie</p>
         </div>
       </div>
 
-      <nav v-if="isAuthed" class="flex items-center gap-4 text-sm">
+      <nav v-if="isAuthed" class="flex items-center gap-2 text-sm">
         <router-link class="nav-link" to="/game">Game</router-link>
         <router-link class="nav-link" to="/leaderboard">Leaderboard</router-link>
         <router-link v-if="supportsLifetimeCollection" class="nav-link" to="/lifetime">Lifetime Collection</router-link>
         <router-link v-if="duckCaveUnlocked" class="nav-link" to="/duck-cave">Duck Cave</router-link>
-        <router-link class="nav-link" to="/profile">Profile</router-link>
       </nav>
 
       <div class="flex items-center gap-3" v-if="isAuthed">
@@ -50,8 +49,7 @@
         >
           {{ isAfk ? 'AFK' : 'Active' }}
         </span>
-        <span class="hidden text-xs text-muted sm:block">{{ userEmail }}</span>
-        <button class="btn-secondary" type="button" @click="handleSignOut">Sign out</button>
+        <router-link class="btn-secondary profile-btn" to="/profile">Profile</router-link>
       </div>
     </div>
   </header>
@@ -59,17 +57,14 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 
 const store = useStore()
-const router = useRouter()
 const AFK_TIMEOUT_MS = 10_000
 const AFK_TICK_MS = 1_000
 const KEEP_ALIVE_MS = 5_000
 
 const isAuthed = computed(() => !!store.state.auth.user)
-const userEmail = computed(() => store.state.auth.user?.email || '')
 const supportsLifetimeCollection = computed(() => Boolean(store.state.game.capabilities?.supports_lifetime_collection))
 const duckCaveUnlocked = computed(() => {
   const state = store.state.game.snapshot?.state || {}
@@ -179,32 +174,52 @@ watch(isAuthed, (authed) => {
   startKeepAlive()
   void runKeepAliveTick()
 })
-
-async function handleSignOut() {
-  await store.dispatch('auth/signOut')
-  router.push('/')
-}
 </script>
 
 <style scoped>
 .brand-badge {
-  color: #fff7ff;
+  color: #ffe98e;
   background:
-    radial-gradient(circle at 18% 20%, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 50%),
-    linear-gradient(140deg, #f6a4ca 0%, #ec76bc 45%, #d86be6 100%);
+    radial-gradient(circle at 20% 18%, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0) 52%),
+    linear-gradient(140deg, #ff8ac2 0%, #ef6db3 48%, #dc5ca2 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),
-    0 8px 18px rgba(221, 95, 174, 0.35);
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    0 8px 18px rgba(221, 95, 174, 0.32);
+}
+
+.brand-badge__duck {
+  font-size: 1.05rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 0 rgba(107, 53, 18, 0.22));
+}
+
+.brand-subtitle {
+  color: #5d5f92;
+  letter-spacing: 0.02em;
+  font-weight: 600;
 }
 
 .nav-link {
-  color: var(--text-muted);
-  transition: color 0.2s ease;
+  color: #334870;
+  border-radius: 9999px;
+  border: 1px solid rgba(120, 143, 194, 0.32);
+  background: rgba(232, 240, 255, 0.78);
+  padding: 0.3rem 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
 .nav-link.router-link-active,
 .nav-link:hover {
-  color: var(--text-main);
+  color: #10244b;
+  border-color: rgba(82, 116, 192, 0.5);
+  background: rgba(206, 223, 255, 0.96);
+  transform: translateY(-1px);
+}
+
+.profile-btn {
+  text-decoration: none;
 }
 
 .afk-debug {

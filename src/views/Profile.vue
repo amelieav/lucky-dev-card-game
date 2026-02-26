@@ -5,7 +5,12 @@
       <p class="mt-1 text-sm text-muted">Set your leaderboard display name.</p>
 
       <div class="mt-4 rounded-xl border border-soft bg-panel-soft p-4">
-        <p class="text-xs uppercase tracking-wide text-muted">Current Name</p>
+        <p class="text-xs uppercase tracking-wide text-muted">Email</p>
+        <p class="mt-1 text-sm font-medium break-all">{{ authEmail || 'Not signed in' }}</p>
+      </div>
+
+      <div class="mt-4 rounded-xl border border-soft bg-panel-soft p-4">
+        <p class="text-xs uppercase tracking-wide text-muted">Leaderboard Name</p>
         <p class="mt-1 text-lg font-semibold">{{ currentName }}</p>
         <p v-if="!nameCustomized" class="mt-1 text-xs text-amber-700">
           Name setup required before playing.
@@ -14,7 +19,7 @@
 
       <form class="mt-4 grid gap-3" @submit.prevent="saveName">
         <div class="rounded-xl border border-soft bg-panel-soft p-3">
-          <label for="display-name-input" class="text-xs uppercase tracking-wide text-muted">Display Name</label>
+          <label for="display-name-input" class="text-xs uppercase tracking-wide text-muted">Change Leaderboard Name</label>
           <input
             id="display-name-input"
             v-model="draftName"
@@ -49,17 +54,23 @@
         <li>No references to countries.</li>
         <li>No derogatory language.</li>
       </ul>
+
+      <div class="mt-5 border-t border-soft pt-4">
+        <button class="btn-danger w-full" type="button" @click="handleSignOut">Sign out</button>
+      </div>
     </article>
   </section>
 </template>
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { NICK_PARTS_A, NICK_PARTS_B } from '../data/nicknameParts'
 import { validateDisplayName } from '../lib/displayNameValidation.mjs'
 
 const store = useStore()
+const router = useRouter()
 const saveMessage = ref('')
 const draftName = ref('')
 const edited = ref(false)
@@ -68,6 +79,7 @@ const snapshot = computed(() => store.state.game.snapshot)
 const profile = computed(() => snapshot.value?.profile || {})
 const loading = computed(() => store.state.game.actionLoading)
 const error = computed(() => store.state.game.error)
+const authEmail = computed(() => store.state.auth.user?.email || '')
 
 const currentName = computed(() => profile.value.display_name || '')
 const nameCustomized = computed(() => Boolean(profile.value.name_customized))
@@ -136,7 +148,33 @@ async function saveName() {
   }
 }
 
+async function handleSignOut() {
+  await store.dispatch('auth/signOut')
+  router.push('/')
+}
+
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)]
 }
 </script>
+
+<style scoped>
+.btn-danger {
+  border-radius: 0.7rem;
+  border: 1px solid #c83a3a;
+  background: #db4747;
+  color: #fff;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.btn-danger:hover {
+  background: #c83939;
+}
+
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+</style>
