@@ -2,6 +2,14 @@ import { supabase } from '../lib/supabase'
 
 const RPC_TIMEOUT_MS = 15000
 const OPEN_PACK_TIMEOUT_MS = 6000
+const OPEN_PACK_RETRY_TIMEOUT_MS = 12000
+const OPEN_PACK_RETRY_DELAY_MS = 180
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, Math.max(0, Number(ms || 0)))
+  })
+}
 
 async function withRpcTimeout(promise, actionLabel = 'request', timeoutMs = RPC_TIMEOUT_MS) {
   let timeoutId = null
@@ -37,6 +45,11 @@ function isMissingRpcError(error, functionName) {
 
   if (code === 'PGRST202' || code === '42883') return true
   return message.includes('function') && message.includes(functionName)
+}
+
+function isTimeoutError(error) {
+  const message = String(error?.message || '').toLowerCase()
+  return message.includes('timed out') || message.includes('timeout')
 }
 
 export async function bootstrapPlayer() {
@@ -79,24 +92,44 @@ export async function keepAlive() {
 }
 
 export async function openPack({ source = 'manual', debugOverride = null } = {}) {
-  const primary = await withRpcTimeout(supabase.rpc('open_pack', {
-    p_source: source,
-    p_debug_override: debugOverride,
-  }), 'open_pack', OPEN_PACK_TIMEOUT_MS)
+  async function runOpenPackOnce(timeoutMs) {
+    const primary = await withRpcTimeout(supabase.rpc('open_pack', {
+      p_source: source,
+      p_debug_override: debugOverride,
+    }), 'open_pack', timeoutMs)
 
-  if (!primary.error) {
-    return primary.data
+    if (!primary.error) {
+      return primary.data
+    }
+
+    if (!isMissingRpcError(primary.error, 'open_pack')) {
+      throw primary.error
+    }
+
+    const fallbackTier = Number(debugOverride?.tier || 1)
+    return unwrap(await withRpcTimeout(supabase.rpc('open_egg', {
+      p_egg_tier: Math.max(1, Math.min(6, fallbackTier)),
+      p_debug_override: debugOverride,
+    }), 'open_egg', timeoutMs))
   }
 
-  if (!isMissingRpcError(primary.error, 'open_pack')) {
-    throw primary.error
-  }
+  try {
+    return await runOpenPackOnce(OPEN_PACK_TIMEOUT_MS)
+  } catch (error) {
+    if (!isTimeoutError(error)) {
+      throw error
+    }
 
-  const fallbackTier = Number(debugOverride?.tier || 1)
-  return unwrap(await withRpcTimeout(supabase.rpc('open_egg', {
-    p_egg_tier: Math.max(1, Math.min(6, fallbackTier)),
-    p_debug_override: debugOverride,
-  }), 'open_egg', OPEN_PACK_TIMEOUT_MS))
+    // Transient DB stalls can recover without full app restart.
+    await sleep(OPEN_PACK_RETRY_DELAY_MS)
+    try {
+      await withRpcTimeout(supabase.rpc('keep_alive'), 'keep_alive', 8000)
+    } catch (_) {
+      // Best effort only; keep retrying open_pack.
+    }
+
+    return runOpenPackOnce(OPEN_PACK_RETRY_TIMEOUT_MS)
+  }
 }
 
 export async function loseCard(termKey) {

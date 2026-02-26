@@ -5,6 +5,7 @@
       `term-card--tier-${safeTier}`,
       `term-card--mutation-${safeMutation}`,
       `term-card--size-${safeSize}`,
+      `term-card--name-${nameScaleClass}`,
       { 'term-card--mutation-static': !animateMutation },
       { 'term-card--stolen': stolen },
       { 'term-card--unknown': unknown },
@@ -150,6 +151,25 @@ const displayName = computed(() => {
   return String(props.name || 'Unknown Card')
 })
 
+const nameScaleClass = computed(() => {
+  const value = String(displayName.value || '').trim()
+  if (!value) return 'normal'
+
+  const length = value.length
+  const longestWord = value.split(/\s+/).reduce((max, word) => Math.max(max, word.length), 0)
+  const isOpening = safeSize.value === 'opening'
+
+  if (isOpening) {
+    if (length >= 30 || longestWord >= 16) return 'xlong'
+    if (length >= 22 || longestWord >= 12) return 'long'
+    return 'normal'
+  }
+
+  if (length >= 24 || longestWord >= 14) return 'xlong'
+  if (length >= 18 || longestWord >= 10) return 'long'
+  return 'normal'
+})
+
 const formattedCoins = computed(() => {
   return Number(props.coins || 0).toLocaleString()
 })
@@ -225,6 +245,27 @@ const formattedCoins = computed(() => {
   --term-card-coins-value-size: 0.72rem;
   --term-card-coins-label-size: 0.44rem;
   --term-card-mutation-stroke: 0.55px;
+}
+
+.term-card--name-long {
+  --term-card-name-size: clamp(0.92rem, 1.2vw, 1.08rem);
+  --term-card-name-line: 1.08;
+}
+
+.term-card--size-opening.term-card--name-long {
+  --term-card-name-size: clamp(0.98rem, 2.1vw, 1.28rem);
+  --term-card-name-line: 1.06;
+}
+
+.term-card--name-xlong {
+  --term-card-name-size: clamp(0.82rem, 1.08vw, 0.98rem);
+  --term-card-name-line: 1.12;
+}
+
+.term-card--size-opening.term-card--name-xlong {
+  --term-card-name-size: clamp(0.84rem, 1.8vw, 1.08rem);
+  --term-card-name-line: 1.1;
+  --term-card-section-pad-x: 0.46rem;
 }
 
 .term-card::before {
@@ -392,6 +433,8 @@ const formattedCoins = computed(() => {
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
   letter-spacing: 0.01em;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  hyphens: auto;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

@@ -491,7 +491,20 @@ export default {
         commit('setOpenResult', data?.draw || null)
         commit('setDuckTheftStats', readDuckTheftStats(user?.id, snapshot?.season?.id))
       } catch (error) {
-        commit('setError', error.message || 'Unable to open pack.')
+        const message = error?.message || 'Unable to open pack.'
+        commit('setError', message)
+
+        if (/timed out/i.test(message) && !LOCAL_ECONOMY_ENABLED) {
+          // Best-effort auto-recovery to avoid requiring manual restart scripts.
+          try {
+            const data = await apiBootstrapPlayer()
+            const snapshot = normalizeSnapshot(data)
+            commit('applySnapshot', snapshot)
+            commit('setDuckTheftStats', readDuckTheftStats(rootState.auth.user?.id, snapshot?.season?.id))
+          } catch (_) {
+            // Keep original timeout error visible.
+          }
+        }
       } finally {
         commit('setOpenPackLoading', false)
       }

@@ -59,6 +59,15 @@ function getHashParts() {
     return { path: '', params: new URLSearchParams(hash.slice(1)) }
   }
 
+  // Some auth providers append a second hash segment when redirecting into
+  // hash-router apps, e.g. #/auth/callback#access_token=...&refresh_token=...
+  const secondHashIndex = hash.indexOf('#')
+  if (secondHashIndex !== -1) {
+    const path = hash.slice(0, secondHashIndex)
+    const rawParams = hash.slice(secondHashIndex + 1)
+    return { path, params: new URLSearchParams(rawParams) }
+  }
+
   const queryIndex = hash.indexOf('?')
   if (queryIndex === -1) {
     return { path: hash, params: new URLSearchParams() }
