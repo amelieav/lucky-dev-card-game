@@ -42,6 +42,12 @@
 
       <p v-if="saveMessage" class="mt-3 text-sm text-green-700">{{ saveMessage }}</p>
       <p v-if="error" class="mt-3 text-sm text-red-700">{{ error }}</p>
+
+      <div class="mt-5 border-t border-soft pt-4">
+        <router-link class="btn-go-game w-full text-center" to="/game">
+          Take me to the game
+        </router-link>
+      </div>
     </article>
 
     <article class="card p-5">
@@ -176,5 +182,23 @@ function pick(arr) {
 .btn-danger:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.btn-go-game {
+  display: inline-block;
+  border-radius: 0.8rem;
+  border: 1px solid #2f9c52;
+  background: linear-gradient(145deg, #58c776 0%, #3caf61 58%, #2e9951 100%);
+  color: #ffffff;
+  padding: 0.7rem 1rem;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  box-shadow: 0 10px 18px rgba(46, 153, 81, 0.24);
+}
+
+.btn-go-game:hover {
+  background: linear-gradient(145deg, #67d183 0%, #44b467 58%, #319e56 100%);
 }
 </style>

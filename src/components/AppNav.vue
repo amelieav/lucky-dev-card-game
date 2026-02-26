@@ -42,13 +42,6 @@
             escapes.
           </div>
         </div>
-        <router-link class="btn-secondary profile-btn" to="/profile">Profile</router-link>
-        <span
-          v-if="showOpenPackBugDot"
-          class="open-pack-bug-dot"
-          title="Recovered from a pack-open timeout in the last 10 seconds."
-          aria-label="Pack-open timeout recovered"
-        ></span>
         <span
           class="afk-debug"
           :class="isAfk ? 'afk-debug--afk' : 'afk-debug--active'"
@@ -56,6 +49,13 @@
         >
           {{ isAfk ? 'AFK' : 'Active' }}
         </span>
+        <span
+          v-if="showOpenPackBugDot"
+          class="open-pack-bug-dot"
+          title="Recovered from a pack-open timeout in the last 10 seconds."
+          aria-label="Pack-open timeout recovered"
+        ></span>
+        <router-link class="nav-link nav-link--profile" to="/profile">Profile</router-link>
       </div>
     </div>
   </header>
@@ -251,8 +251,8 @@ watch([isAuthed, () => route.name], ([authed]) => {
   transform: translateY(-1px);
 }
 
-.profile-btn {
-  text-decoration: none;
+.nav-link--profile {
+  margin-left: 0.1rem;
 }
 
 .open-pack-bug-dot {
