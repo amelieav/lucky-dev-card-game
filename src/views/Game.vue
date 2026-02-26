@@ -246,11 +246,19 @@
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <article v-for="upgrade in shopRows" :key="upgrade.key" class="rounded-xl border border-soft bg-panel-soft p-4 shop-upgrade-card">
           <div class="shop-upgrade-card__body">
-            <p class="text-xs text-muted">{{ upgrade.label }}</p>
-            <p class="mt-1 text-xs text-muted">{{ upgrade.description }}</p>
+            <p class="shop-upgrade-card__title">{{ upgrade.label }}</p>
+            <p class="shop-upgrade-card__description">{{ upgrade.description }}</p>
 
-            <p class="mt-2 text-sm"><span class="font-semibold">Current:</span> {{ upgrade.currentEffect }}</p>
-            <p class="text-sm text-muted"><span class="font-semibold text-main">Next:</span> {{ upgrade.nextEffect || 'Maxed' }}</p>
+            <div class="shop-upgrade-card__effect-panel">
+              <p class="shop-upgrade-card__effect-row">
+                <span class="font-semibold text-main">Now:</span>
+                <span class="shop-upgrade-card__effect-value">{{ upgrade.currentEffect }}</span>
+              </p>
+              <p class="shop-upgrade-card__effect-row">
+                <span class="font-semibold text-main">After upgrade:</span>
+                <span class="shop-upgrade-card__effect-value">{{ upgrade.nextEffect || 'Maxed' }}</span>
+              </p>
+            </div>
             <div v-if="upgrade.key === 'tier_boost'" class="mt-2 rounded-lg border border-soft bg-white/70 p-2 text-xs text-muted shop-upgrade-card__tier-note">
               <p><span class="font-semibold text-main">Effective now:</span> {{ upgrade.tierOddsNow }}</p>
               <p v-if="upgrade.tierOddsAfterBuy"><span class="font-semibold text-main">After buy:</span> {{ upgrade.tierOddsAfterBuy }}</p>
@@ -262,27 +270,33 @@
             </div>
           </div>
 
-          <div class="flex items-center justify-between shop-upgrade-card__actions">
-            <p class="text-sm font-semibold">{{ upgrade.cost == null ? 'MAX' : `${formatNumber(upgrade.cost)} coins` }}</p>
-            <button class="btn-primary" type="button" :disabled="!upgrade.canBuy || actionLoading" @click="buyUpgrade(upgrade.key)">
-              {{ upgrade.cost == null ? 'Maxed' : 'Buy' }}
+          <div class="shop-upgrade-card__actions">
+            <button class="btn-primary shop-upgrade-card__cta" type="button" :disabled="!upgrade.canBuy || actionLoading" @click="buyUpgrade(upgrade.key)">
+              {{ shopUpgradeButtonLabel(upgrade) }}
             </button>
           </div>
         </article>
 
         <article class="rounded-xl border border-soft bg-panel-soft p-4 shop-upgrade-card">
           <div class="shop-upgrade-card__body">
-            <p class="text-xs text-muted">Missing Card Gift</p>
-            <p class="mt-1 text-xs text-muted">Spend coins to receive one random missing card from your current collection.</p>
+            <p class="shop-upgrade-card__title">Missing Card Gift</p>
+            <p class="shop-upgrade-card__description">Spend coins to receive one random missing card from your current collection.</p>
 
-            <p class="mt-2 text-sm"><span class="font-semibold">Remaining:</span> {{ missingCardsRemaining }} card{{ missingCardsRemaining === 1 ? '' : 's' }}</p>
-            <p class="text-sm text-muted"><span class="font-semibold text-main">Effect:</span> +1 missing card</p>
+            <div class="shop-upgrade-card__effect-panel">
+              <p class="shop-upgrade-card__effect-row">
+                <span class="font-semibold text-main">Remaining:</span>
+                <span class="shop-upgrade-card__effect-value">{{ missingCardsRemaining }} card{{ missingCardsRemaining === 1 ? '' : 's' }}</span>
+              </p>
+              <p class="shop-upgrade-card__effect-row">
+                <span class="font-semibold text-main">After upgrade:</span>
+                <span class="shop-upgrade-card__effect-value">+1 missing card</span>
+              </p>
+            </div>
           </div>
 
-          <div class="flex items-center justify-between shop-upgrade-card__actions">
-            <p class="text-sm font-semibold">{{ formatNumber(MISSING_CARD_GIFT_COST) }} coins</p>
-            <button class="btn-primary" type="button" :disabled="!canBuyMissingCardGiftAction || actionLoading" @click="buyMissingCardGift">
-              {{ canBuyMissingCardGiftAction ? 'Buy' : missingCardGiftButtonLabel }}
+          <div class="shop-upgrade-card__actions">
+            <button class="btn-primary shop-upgrade-card__cta" type="button" :disabled="!canBuyMissingCardGiftAction || actionLoading" @click="buyMissingCardGift">
+              {{ missingCardGiftActionLabel }}
             </button>
           </div>
         </article>
@@ -713,10 +727,10 @@ const canBuyMissingCardGiftAction = computed(() => {
   if (missingCardsRemaining.value <= 0) return false
   return canBuyMissingCardGift(shopAffordabilityState.value)
 })
-const missingCardGiftButtonLabel = computed(() => {
+const missingCardGiftActionLabel = computed(() => {
   if (missingCardsRemaining.value <= 0) return 'Complete'
-  if (!canBuyMissingCardGift(shopAffordabilityState.value)) return 'Not enough coins'
-  return 'Buy'
+  if (!canBuyMissingCardGift(shopAffordabilityState.value)) return `Need ${formatNumber(MISSING_CARD_GIFT_COST)} coins`
+  return `Buy Gift · ${formatNumber(MISSING_CARD_GIFT_COST)} coins`
 })
 const rebirthReady = computed(() => currentCollectionCount.value >= TERMS.length)
 const rebirthMaxedThisSeason = computed(() => Math.max(0, Number(playerState.value?.rebirth_count || 0)) >= 1)
@@ -811,6 +825,12 @@ const manualOpenHint = computed(() => {
   if (packActionBusy.value) return 'Please wait for the current action to finish'
   return autoUnlocked.value ? 'Resume auto anytime from the button above' : 'Tier is decided by probability'
 })
+
+function shopUpgradeButtonLabel(upgrade) {
+  if (!upgrade || upgrade.cost == null) return 'Maxed'
+  if (!upgrade.canBuy) return `Need ${formatNumber(upgrade.cost)} coins`
+  return `Buy Upgrade · ${formatNumber(upgrade.cost)} coins`
+}
 
 async function recoverGameIfStale({ force = false } = {}) {
   if (!viewActive) return
@@ -1761,7 +1781,7 @@ function handleDuckFrameError(event) {
 }
 
 .shop-upgrade-card {
-  --shop-upgrade-card-height: 20.8rem;
+  --shop-upgrade-card-height: 21.8rem;
   height: var(--shop-upgrade-card-height);
   display: flex;
   flex-direction: column;
@@ -1815,12 +1835,57 @@ function handleDuckFrameError(event) {
 
 .shop-upgrade-card__actions {
   margin-top: auto;
-  padding-top: 0.55rem;
+  padding-top: 0.65rem;
+}
+
+.shop-upgrade-card__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #1f3558;
+}
+
+.shop-upgrade-card__description {
+  margin-top: 0.4rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: #4f6689;
+}
+
+.shop-upgrade-card__effect-panel {
+  margin-top: 0.7rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(139, 160, 194, 0.42);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.shop-upgrade-card__effect-row {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.55rem;
+  font-size: 0.83rem;
+  line-height: 1.3;
+}
+
+.shop-upgrade-card__effect-row + .shop-upgrade-card__effect-row {
+  margin-top: 0.3rem;
+}
+
+.shop-upgrade-card__effect-value {
+  text-align: right;
+  color: #31486a;
+}
+
+.shop-upgrade-card__cta {
+  width: 100%;
 }
 
 @media (min-width: 640px) {
   .shop-upgrade-card {
-    --shop-upgrade-card-height: 19.6rem;
+    --shop-upgrade-card-height: 20.6rem;
   }
 }
 
@@ -1838,7 +1903,7 @@ function handleDuckFrameError(event) {
 
 @media (min-width: 1280px) {
   .shop-upgrade-card {
-    --shop-upgrade-card-height: 18.6rem;
+    --shop-upgrade-card-height: 19.8rem;
   }
 }
 
