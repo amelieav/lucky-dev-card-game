@@ -1090,7 +1090,7 @@ as $$
       floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint,
       case
         when (0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) > 4
-          then (ceil(((0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) - 4) / 2) * 8000)::bigint
+          then (8000 + ceil((((0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) - 4) / 2) * 8000))::bigint
         else 0::bigint
       end
     )
@@ -1100,7 +1100,7 @@ as $$
       floor(32 * power(1.38, greatest(0, coalesce(p_level, 0))))::bigint,
       case
         when (0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) > 4
-          then (ceil(((0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) - 4) / 2) * 8000)::bigint
+          then (8000 + ceil((((0.6 + (0.576 * least(25, greatest(0, coalesce(p_level, 0) + 1)))) - 4) / 2) * 8000))::bigint
         else 0::bigint
       end
     )

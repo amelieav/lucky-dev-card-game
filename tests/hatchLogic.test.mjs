@@ -158,6 +158,14 @@ test('mutation upgrade cost floors to 8k per 2% holo above 4%', () => {
   state.mutation_level = 12
   const costAtThirdBand = getUpgradeCost(state, 'mutation_upgrade')
   assert.ok(costAtThirdBand >= 24000, `Expected >=24000 around holo ~8%, got ${costAtThirdBand}`)
+
+  state.mutation_level = 6
+  const costAfterThreshold2 = getUpgradeCost(state, 'mutation_upgrade')
+  assert.ok(costAfterThreshold2 > costNearThreshold, `Expected rising per level above threshold (${costNearThreshold} -> ${costAfterThreshold2})`)
+
+  state.mutation_level = 10
+  const costAtNextBand2 = getUpgradeCost(state, 'mutation_upgrade')
+  assert.ok(costAtNextBand2 > costAtNextBand, `Expected rising per level in next band (${costAtNextBand} -> ${costAtNextBand2})`)
 })
 
 test('value upgrade becomes maxed when rarity odds are fully saturated', () => {

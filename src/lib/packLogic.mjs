@@ -431,8 +431,9 @@ export function getUpgradeCost(stateLike, upgradeKey) {
     const aboveThreshold = Math.max(0, Number(nextMutation.holo || 0) - threshold)
 
     if (aboveThreshold > 0) {
-      const steps = Math.ceil(aboveThreshold / stepPercent)
-      baseCost = Math.max(baseCost, Math.floor(steps * minCostPerStep))
+      const scaledSteps = aboveThreshold / stepPercent
+      const floorCost = minCostPerStep + Math.ceil(scaledSteps * minCostPerStep)
+      baseCost = Math.max(baseCost, floorCost)
     }
   }
 
