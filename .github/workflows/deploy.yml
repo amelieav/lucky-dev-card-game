@@ -33,8 +33,9 @@ jobs:
 
       - name: Build
         env:
-          VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          VITE_AUTH_REDIRECT_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          # Hosted at custom-domain subpath (not repo-name path).
+          VITE_BASE_PATH: /lucky-agent/
+          VITE_AUTH_REDIRECT_URL: https://www.amav.uk/lucky-agent/#/auth/callback
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
