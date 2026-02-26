@@ -6,7 +6,7 @@
           <vue-feather type="code" size="14" stroke-width="2.5"></vue-feather>
         </div>
         <div>
-          <p class="text-sm font-semibold tracking-wide text-main">Lucky Agent</p>
+          <p class="text-sm font-semibold tracking-wide text-main">Lucky Dev</p>
           <p class="text-xs text-muted">Card Opening Game</p>
         </div>
       </div>

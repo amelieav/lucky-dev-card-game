@@ -59,7 +59,7 @@
         <div class="flex items-start justify-between gap-4">
           <div>
             <p class="text-xs uppercase tracking-wide text-muted">{{ autoUnlocked ? 'Auto Roll' : 'Manual Open' }}</p>
-            <h1 class="mt-1 text-xl font-semibold">Lucky Agent Card Pack</h1>
+            <h1 class="mt-1 text-xl font-semibold">Lucky Dev Card Pack</h1>
             <p class="mt-1 text-sm text-muted">
               {{ autoUnlocked ? 'Single pack opens on a loop. Card tier is rolled by your current odds.' : 'Open the single pack manually until Auto Opener is unlocked.' }}
             </p>
