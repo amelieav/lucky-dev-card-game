@@ -61,9 +61,9 @@ export const BALANCE_CONFIG = {
   },
   mutationShift: {
     cap: 25,
-    none: -0.376,
-    foil: 0.24,
-    holo: 0.136,
+    none: -2.016,
+    foil: 1.44,
+    holo: 0.576,
   },
   mutationPassiveIncomePerSecond: {
     foil: 1,

@@ -38,12 +38,14 @@ cp .env.example .env
 3. Fill required variables in `.env`
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_DB_URL` (direct Postgres connection string for schema setup)
 - Optional: `VITE_LOCAL_ECONOMY=1` for local-only economy simulation
 - Optional: `VITE_SEASON_DURATION_MS=604800000` (7 days, default)
 
 4. Apply DB schema
-- Open Supabase SQL Editor
-- Run `supabase/schema.sql`
+```bash
+npm run setup-db
+```
 
 5. Run dev server
 ```bash
@@ -55,6 +57,7 @@ npm run dev
 - `npm test` - run node test suite (`tests/*.test.mjs`)
 - `npm run build` - production build
 - `npm run sync-schema` - refresh generated schema sections from source data files
+- `npm run setup-db` - sync generated schema sections and apply `supabase/schema.sql` via `psql`
 
 ## Supabase auth setup
 Configure redirect/allowlist URLs in Supabase Auth:
@@ -75,7 +78,10 @@ insert into public.debug_allowlist(email) values ('you@example.com');
 
 ## Database operations
 ### Reapply schema safely
-Run `supabase/schema.sql` in Supabase SQL Editor when updating RPC/view logic.
+Run:
+```bash
+npm run setup-db
+```
 
 ### Reset all test profiles and sign-ins
 Use:

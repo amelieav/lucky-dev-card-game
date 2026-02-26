@@ -983,10 +983,10 @@ begin
     foil_w := 50;
     holo_w := 20;
   else
-    -- Base odds are lower and scale to a max of Foil 10% / Holo 4% at cap level.
-    none_w := greatest(0, 95.4 - (0.376 * m));
-    foil_w := greatest(0, 4 + (0.24 * m));
-    holo_w := greatest(0, 0.6 + (0.136 * m));
+    -- Base odds scale to a max of Foil 40% / Holo 15% at cap level.
+    none_w := greatest(0, 95.4 - (2.016 * m));
+    foil_w := greatest(0, 4 + (1.44 * m));
+    holo_w := greatest(0, 0.6 + (0.576 * m));
   end if;
 
   sum_total := none_w + foil_w + holo_w;

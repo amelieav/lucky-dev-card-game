@@ -58,7 +58,7 @@ export const SHOP_UPGRADES = [
   {
     key: 'mutation_upgrade',
     label: 'Mutation Upgrade',
-    description: 'Increase foil/holo chance (caps at Foil 10%, Holo 4%). Foil adds +1 cps, Holo adds +3 cps.',
+    description: 'Increase foil/holo chance (caps at Foil 40%, Holo 15%). Foil adds +1 cps, Holo adds +3 cps.',
   },
   {
     key: 'value_upgrade',
