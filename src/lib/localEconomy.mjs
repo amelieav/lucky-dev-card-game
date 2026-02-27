@@ -261,9 +261,15 @@ function normalizeMoneyFlipRound(round, nowMs = Date.now()) {
   const choiceOptions = safeArray(round.choice_options, 3)
   const villainHole = safeArray(round.villain_hole, 2)
   const playerHole = safeArray(round.player_hole, 1)
+  const remainingDeck = (Array.isArray(round.remaining_deck) ? round.remaining_deck : [])
+    .map((card) => safeCard(card))
+    .filter(Boolean)
   const turn = safeCard(round.turn)
   const river = safeCard(round.river)
-  if (!flop || !choiceOptions || !villainHole || !playerHole || !turn || !river) return null
+  if (!flop || !choiceOptions || !villainHole || !playerHole) return null
+  if (!turn || !river) {
+    if (remainingDeck.length <= 0) return null
+  }
 
   return {
     round_id: roundId,
@@ -273,6 +279,7 @@ function normalizeMoneyFlipRound(round, nowMs = Date.now()) {
     player_hole: playerHole,
     choice_options: choiceOptions,
     villain_hole: villainHole,
+    remaining_deck: remainingDeck,
     turn,
     river,
     created_at: Number.isFinite(createdAtMs) ? nowIso(createdAtMs) : nowIso(nowMs),
@@ -559,6 +566,8 @@ function buildDefaultRecord(user, rng = Math.random, nowMs = Date.now()) {
     auto_open_progress: 0,
     passive_rate_cps: 0,
     season_gambled_coins: 0,
+    season_gamble_won_coins: 0,
+    season_gamble_lost_coins: 0,
     season_gamble_net_coins: 0,
     season_gamble_rounds: 0,
     rebirth_count: 0,
@@ -850,6 +859,8 @@ function resetProgress(record, {
   record.auto_open_progress = 0
   record.passive_rate_cps = 0
   record.season_gambled_coins = 0
+  record.season_gamble_won_coins = 0
+  record.season_gamble_lost_coins = 0
   record.season_gamble_net_coins = 0
   record.season_gamble_rounds = 0
   record.active_until_at = nowIso(nowMs)
@@ -961,6 +972,8 @@ function sanitizeRecord(record, user, rng = Math.random, nowMs = Date.now()) {
   merged.highest_tier_unlocked = getHighestUnlockedTier(merged)
   merged.passive_rate_cps = Math.max(0, Number(merged.passive_rate_cps || 0))
   merged.season_gambled_coins = Math.max(0, Number(merged.season_gambled_coins || 0))
+  merged.season_gamble_won_coins = Math.max(0, Number(merged.season_gamble_won_coins || 0))
+  merged.season_gamble_lost_coins = Math.max(0, Number(merged.season_gamble_lost_coins || 0))
   merged.season_gamble_net_coins = Number(merged.season_gamble_net_coins || 0)
   merged.season_gamble_rounds = Math.max(0, Number(merged.season_gamble_rounds || 0))
 
@@ -1020,6 +1033,8 @@ function toSnapshot(record, debugAllowed, nowMs = Date.now()) {
       passive_rate_bp: passiveSummary.totalRate * 100,
       passive_rate_cps: passiveSummary.totalRate,
       season_gambled_coins: Math.max(0, Number(record.season_gambled_coins || 0)),
+      season_gamble_won_coins: Math.max(0, Number(record.season_gamble_won_coins || 0)),
+      season_gamble_lost_coins: Math.max(0, Number(record.season_gamble_lost_coins || 0)),
       season_gamble_net_coins: Number(record.season_gamble_net_coins || 0),
       season_gamble_rounds: Math.max(0, Number(record.season_gamble_rounds || 0)),
       passive_foil_cards: passiveSummary.foilCards,
@@ -1646,6 +1661,8 @@ export function getLocalMoneyFlipLeaderboard(user, { limit = 50, rng = Math.rand
     user_id: user.id,
     display_name: String(record?.profile?.display_name || 'Local Player'),
     season_gambled_coins: Math.max(0, Number(record.season_gambled_coins || 0)),
+    season_gamble_won_coins: Math.max(0, Number(record.season_gamble_won_coins || 0)),
+    season_gamble_lost_coins: Math.max(0, Number(record.season_gamble_lost_coins || 0)),
     season_gamble_net_coins: Number(record.season_gamble_net_coins || 0),
     season_gamble_rounds: Math.max(0, Number(record.season_gamble_rounds || 0)),
   }].slice(0, safeLimit)
@@ -1684,8 +1701,7 @@ export function startLocalMoneyFlip(
   const playerHole = [deck[3]]
   const choiceOptions = deck.slice(4, 7)
   const villainHole = deck.slice(7, 9)
-  const turn = deck[9]
-  const river = deck[10]
+  const remainingDeck = deck.slice(9)
 
   const round = {
     round_id: createLocalRoundId(nowMs, rng),
@@ -1695,8 +1711,9 @@ export function startLocalMoneyFlip(
     player_hole: playerHole,
     choice_options: choiceOptions,
     villain_hole: villainHole,
-    turn,
-    river,
+    remaining_deck: remainingDeck,
+    turn: null,
+    river: null,
     created_at: nowIso(nowMs),
     expires_at: nowIso(nowMs + MONEY_FLIP_ROUND_TTL_MS),
   }
@@ -1758,14 +1775,33 @@ export function resolveLocalMoneyFlip(
     throw new Error('Invalid choice card')
   }
 
-  const board = [...round.flop, round.turn, round.river]
+  const unpickedOptions = round.choice_options.filter((_, idx) => idx !== normalizedPickIndex)
+  let turnCard = round.turn || null
+  let riverCard = round.river || null
+  if (!turnCard || !riverCard) {
+    const dealPool = [...(round.remaining_deck || []), ...unpickedOptions]
+    const shuffled = shuffleArray(dealPool, rng)
+    turnCard = shuffled[0] || null
+    riverCard = shuffled[1] || null
+  }
+  if (!turnCard || !riverCard) {
+    throw new Error('Unable to deal turn and river cards')
+  }
+
+  const board = [...round.flop, turnCard, riverCard]
   const playerCards = [round.player_hole[0], selectedOption]
   const villainCards = round.villain_hole.slice(0, 2)
   const playerEval = evaluatePokerSevenCards([...playerCards, ...board])
   const villainEval = evaluatePokerSevenCards([...villainCards, ...board])
   const won = playerEval.score > villainEval.score
-  const netChange = won ? round.wager : -round.wager
+  const isTie = playerEval.score === villainEval.score
+  const netChange = won ? round.wager : (isTie ? 0 : -round.wager)
   record.coins = Math.max(0, Number(record.coins || 0) + netChange)
+  if (won) {
+    record.season_gamble_won_coins = Math.max(0, Number(record.season_gamble_won_coins || 0)) + round.wager
+  } else if (!isTie) {
+    record.season_gamble_lost_coins = Math.max(0, Number(record.season_gamble_lost_coins || 0)) + round.wager
+  }
   record.season_gamble_net_coins = Number(record.season_gamble_net_coins || 0) + netChange
   record.season_gamble_rounds = Math.max(0, Number(record.season_gamble_rounds || 0)) + 1
   record.money_flip_round = null
@@ -1780,10 +1816,13 @@ export function resolveLocalMoneyFlip(
       pick_index: normalizedPickIndex,
       selected_option: selectedOption,
       won,
+      is_tie: isTie,
       payout: won ? round.wager * 2 : 0,
       net_change: netChange,
       layer: round.layer,
       board,
+      turn: turnCard,
+      river: riverCard,
       player_cards: playerCards,
       villain_cards: villainCards,
       player_hand_label: playerEval.label,

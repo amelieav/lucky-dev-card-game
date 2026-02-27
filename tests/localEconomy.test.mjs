@@ -274,6 +274,59 @@ test('money flip settles wager against highest card pick', () => {
   assert.equal(resolved.snapshot.state.season_gambled_coins, 500)
   assert.equal(resolved.snapshot.state.season_gamble_rounds, 1)
   assert.ok(Math.abs(Number(resolved.snapshot.state.season_gamble_net_coins || 0)) === 500)
+  assert.ok(
+    Number(resolved.snapshot.state.season_gamble_won_coins || 0) === 500
+    || Number(resolved.snapshot.state.season_gamble_lost_coins || 0) === 500,
+  )
+})
+
+test('money flip tie refunds wager (no loss, no gain)', () => {
+  const makeRng = (seed) => {
+    let s = Number(seed) || 1
+    return () => {
+      s = (s * 1664525 + 1013904223) % 4294967296
+      return s / 4294967296
+    }
+  }
+
+  let tieResolved = null
+  let account = null
+  let wager = 500
+
+  for (let seed = 1; seed <= 1200; seed += 1) {
+    account = user(`pack-money-flip-tie-${seed}`)
+    bootstrapLocalPlayer(account, { debugAllowed: true, nowMs: 0 })
+    debugApplyLocal(account, { type: 'set_coins', amount: 10_000 }, { debugAllowed: true, nowMs: 100 })
+
+    const started = startLocalMoneyFlip(account, {
+      wager,
+      debugAllowed: true,
+      nowMs: 200,
+      rng: makeRng(seed),
+    })
+
+    const resolved = resolveLocalMoneyFlip(account, {
+      roundId: started.round.round_id,
+      pickIndex: 0,
+      debugAllowed: true,
+      nowMs: 300,
+      rng: makeRng(seed + 9999),
+    })
+
+    if (resolved.result.is_tie) {
+      tieResolved = resolved
+      break
+    }
+  }
+
+  assert.ok(tieResolved, 'expected to find at least one tie scenario in deterministic seed search')
+  assert.equal(tieResolved.result.net_change, 0)
+  assert.equal(tieResolved.snapshot.state.coins, 10_000)
+  assert.equal(tieResolved.snapshot.state.season_gamble_net_coins, 0)
+  assert.equal(tieResolved.snapshot.state.season_gamble_won_coins, 0)
+  assert.equal(tieResolved.snapshot.state.season_gamble_lost_coins, 0)
+  assert.equal(tieResolved.snapshot.state.season_gamble_rounds, 1)
+  assert.equal(tieResolved.snapshot.state.season_gambled_coins, wager)
 })
 
 test('debug full set grants all cards and sets coins', () => {

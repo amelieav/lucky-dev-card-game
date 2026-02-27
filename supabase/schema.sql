@@ -30,6 +30,8 @@ create table if not exists public.player_state (
   auto_speed_level int not null default 0,
   auto_open_progress numeric not null default 0,
   season_gambled_coins bigint not null default 0,
+  season_gamble_won_coins bigint not null default 0,
+  season_gamble_lost_coins bigint not null default 0,
   season_gamble_net_coins bigint not null default 0,
   season_gamble_rounds int not null default 0,
   active_until_at timestamptz not null default now(),
@@ -48,6 +50,8 @@ alter table public.player_state add column if not exists auto_unlocked boolean n
 alter table public.player_state add column if not exists auto_speed_level int not null default 0;
 alter table public.player_state add column if not exists auto_open_progress numeric not null default 0;
 alter table public.player_state add column if not exists season_gambled_coins bigint not null default 0;
+alter table public.player_state add column if not exists season_gamble_won_coins bigint not null default 0;
+alter table public.player_state add column if not exists season_gamble_lost_coins bigint not null default 0;
 alter table public.player_state add column if not exists season_gamble_net_coins bigint not null default 0;
 alter table public.player_state add column if not exists season_gamble_rounds int not null default 0;
 alter table public.player_state add column if not exists active_until_at timestamptz not null default now();
@@ -2245,6 +2249,8 @@ as $$
       auto_speed_level,
       auto_open_progress,
       season_gambled_coins,
+      season_gamble_won_coins,
+      season_gamble_lost_coins,
       season_gamble_net_coins,
       season_gamble_rounds,
       active_until_at,
@@ -2803,6 +2809,8 @@ begin
       luck_level = 0,
       passive_rate_bp = 0,
       season_gambled_coins = 0,
+      season_gamble_won_coins = 0,
+      season_gamble_lost_coins = 0,
       season_gamble_net_coins = 0,
       season_gamble_rounds = 0,
       highest_tier_unlocked = 1,
@@ -3522,6 +3530,8 @@ begin
       luck_level = 0,
       passive_rate_bp = 0,
       season_gambled_coins = 0,
+      season_gamble_won_coins = 0,
+      season_gamble_lost_coins = 0,
       season_gamble_net_coins = 0,
       season_gamble_rounds = 0,
       highest_tier_unlocked = 1,
@@ -3680,6 +3690,8 @@ as $$
       auto_speed_level,
       auto_open_progress,
       season_gambled_coins,
+      season_gamble_won_coins,
+      season_gamble_lost_coins,
       season_gamble_net_coins,
       season_gamble_rounds,
       active_until_at,
@@ -4645,6 +4657,8 @@ begin
       luck_level = 0,
       passive_rate_bp = 0,
       season_gambled_coins = 0,
+      season_gamble_won_coins = 0,
+      season_gamble_lost_coins = 0,
       season_gamble_net_coins = 0,
       season_gamble_rounds = 0,
       highest_tier_unlocked = 1,
@@ -4711,6 +4725,8 @@ begin
       luck_level = 0,
       passive_rate_bp = 0,
       season_gambled_coins = 0,
+      season_gamble_won_coins = 0,
+      season_gamble_lost_coins = 0,
       season_gamble_net_coins = 0,
       season_gamble_rounds = 0,
       highest_tier_unlocked = 1,
@@ -5579,8 +5595,7 @@ declare
   choice_cards text[];
   villain_cards text[];
   player_hole text;
-  turn_card text;
-  river_card text;
+  remaining_deck text[];
 begin
   uid := auth.uid();
   if uid is null then
@@ -5614,19 +5629,14 @@ begin
 
   active_layer_value := least(2, greatest(1, coalesce(state_row.active_layer, 1)));
 
-  with deck as (
-    select card
+  with shuffled as (
+    select card, row_number() over (order by random()) as pos
     from unnest(array[
       '2S','3S','4S','5S','6S','7S','8S','9S','TS','JS','QS','KS','AS',
       '2H','3H','4H','5H','6H','7H','8H','9H','TH','JH','QH','KH','AH',
       '2D','3D','4D','5D','6D','7D','8D','9D','TD','JD','QD','KD','AD',
       '2C','3C','4C','5C','6C','7C','8C','9C','TC','JC','QC','KC','AC'
     ]) as card
-    order by random()
-    limit 11
-  ), drawn as (
-    select card, row_number() over () as pos
-    from deck
   )
   select
     coalesce(array_agg(card order by pos), '{}'),
@@ -5634,12 +5644,12 @@ begin
     coalesce(array_agg(card order by pos) filter (where pos between 5 and 7), '{}'),
     coalesce(array_agg(card order by pos) filter (where pos between 8 and 9), '{}'),
     max(card) filter (where pos = 4),
-    max(card) filter (where pos = 10),
-    max(card) filter (where pos = 11)
-  into drawn_cards, flop_cards, choice_cards, villain_cards, player_hole, turn_card, river_card
-  from drawn;
+    coalesce(array_agg(card order by pos) filter (where pos >= 10), '{}')
+  into drawn_cards, flop_cards, choice_cards, villain_cards, player_hole, remaining_deck
+  from shuffled;
 
-  if coalesce(array_length(drawn_cards, 1), 0) <> 11 then
+  if coalesce(array_length(drawn_cards, 1), 0) <> 52
+    or coalesce(array_length(remaining_deck, 1), 0) < 2 then
     raise exception 'Unable to build Money Flip round';
   end if;
 
@@ -5668,8 +5678,7 @@ begin
     '{}'::int[],
     jsonb_build_object(
       'villain_hole', to_jsonb(villain_cards),
-      'turn', turn_card,
-      'river', river_card
+      'remaining_deck', to_jsonb(remaining_deck)
     ),
     '{}'::int[],
     0,
@@ -5698,8 +5707,7 @@ begin
       'player_hole', to_jsonb(array[player_hole]),
       'choice_options', to_jsonb(choice_cards),
       'villain_hole', to_jsonb(villain_cards),
-      'turn', turn_card,
-      'river', river_card,
+      'remaining_deck', to_jsonb(remaining_deck),
       'created_at', now(),
       'expires_at', now() + interval '5 minutes'
     )
@@ -5722,6 +5730,9 @@ declare
   player_hole text[];
   choice_cards text[];
   villain_cards text[];
+  remaining_deck text[];
+  unpicked_cards text[];
+  deal_pool text[];
   turn_card text;
   river_card text;
   selected_card text;
@@ -5732,6 +5743,7 @@ declare
   player_label text;
   villain_label text;
   won boolean;
+  is_tie boolean;
   net_change bigint;
 begin
   uid := auth.uid();
@@ -5782,6 +5794,7 @@ begin
   player_hole := coalesce(array(select jsonb_array_elements_text(round_row.cards_sorted -> 'player_hole')), '{}');
   choice_cards := coalesce(array(select jsonb_array_elements_text(round_row.cards_sorted -> 'choice_options')), '{}');
   villain_cards := coalesce(array(select jsonb_array_elements_text(round_row.cards_final -> 'villain_hole')), '{}');
+  remaining_deck := coalesce(array(select jsonb_array_elements_text(round_row.cards_final -> 'remaining_deck')), '{}');
   turn_card := nullif(round_row.cards_final ->> 'turn', '');
   river_card := nullif(round_row.cards_final ->> 'river', '');
 
@@ -5789,14 +5802,41 @@ begin
     or coalesce(array_length(player_hole, 1), 0) <> 1
     or coalesce(array_length(choice_cards, 1), 0) <> 3
     or coalesce(array_length(villain_cards, 1), 0) <> 2
-    or turn_card is null
-    or river_card is null then
+    or (turn_card is null and river_card is not null)
+    or (turn_card is not null and river_card is null) then
     raise exception 'Money Flip round payload is invalid';
   end if;
 
   selected_card := choice_cards[p_pick_index + 1];
   if selected_card is null then
     raise exception 'Invalid choice card';
+  end if;
+
+  if turn_card is null or river_card is null then
+    unpicked_cards := array(
+      select card
+      from unnest(choice_cards) with ordinality as c(card, idx)
+      where idx <> (p_pick_index + 1)
+    );
+    deal_pool := coalesce(remaining_deck, '{}') || coalesce(unpicked_cards, '{}');
+
+    if coalesce(array_length(deal_pool, 1), 0) < 2 then
+      raise exception 'Unable to deal turn and river cards';
+    end if;
+
+    with shuffled as (
+      select card, row_number() over (order by random()) as pos
+      from unnest(deal_pool) as card
+    )
+    select
+      max(card) filter (where pos = 1),
+      max(card) filter (where pos = 2)
+    into turn_card, river_card
+    from shuffled;
+  end if;
+
+  if turn_card is null or river_card is null then
+    raise exception 'Unable to deal turn and river cards';
   end if;
 
   board_cards := flop_cards || turn_card || river_card;
@@ -5806,11 +5846,18 @@ begin
   player_label := public.money_flip_hand_label(player_score);
   villain_label := public.money_flip_hand_label(villain_score);
 
+  is_tie := (player_score = villain_score);
   won := (player_score > villain_score);
-  net_change := case when won then round_row.wager else -round_row.wager end;
+  net_change := case
+    when won then round_row.wager
+    when is_tie then 0
+    else -round_row.wager
+  end;
 
   update public.player_state
   set coins = greatest(0, coins + net_change),
+      season_gamble_won_coins = coalesce(season_gamble_won_coins, 0) + case when won then round_row.wager else 0 end,
+      season_gamble_lost_coins = coalesce(season_gamble_lost_coins, 0) + case when (not won and not is_tie) then round_row.wager else 0 end,
       season_gamble_net_coins = coalesce(season_gamble_net_coins, 0) + net_change,
       season_gamble_rounds = coalesce(season_gamble_rounds, 0) + 1,
       updated_at = now()
@@ -5827,10 +5874,13 @@ begin
       'pick_index', p_pick_index,
       'selected_option', selected_card,
       'won', won,
+      'is_tie', is_tie,
       'payout', case when won then round_row.wager * 2 else 0 end,
       'net_change', net_change,
       'layer', round_row.layer,
       'board', to_jsonb(board_cards),
+      'turn', turn_card,
+      'river', river_card,
       'player_cards', to_jsonb(player_cards),
       'villain_cards', to_jsonb(villain_cards),
       'player_hand_label', player_label,
@@ -5843,11 +5893,14 @@ begin
 end;
 $$;
 
+drop function if exists public.get_money_flip_leaderboard(int);
 create or replace function public.get_money_flip_leaderboard(p_limit int default 50)
 returns table (
   user_id uuid,
   display_name text,
   season_gambled_coins bigint,
+  season_gamble_won_coins bigint,
+  season_gamble_lost_coins bigint,
   season_gamble_net_coins bigint,
   season_gamble_rounds int
 )
@@ -5860,6 +5913,8 @@ as $$
     ps.user_id,
     coalesce(pp.display_name, 'Unknown Player') as display_name,
     coalesce(ps.season_gambled_coins, 0)::bigint as season_gambled_coins,
+    coalesce(ps.season_gamble_won_coins, 0)::bigint as season_gamble_won_coins,
+    coalesce(ps.season_gamble_lost_coins, 0)::bigint as season_gamble_lost_coins,
     coalesce(ps.season_gamble_net_coins, 0)::bigint as season_gamble_net_coins,
     coalesce(ps.season_gamble_rounds, 0)::int as season_gamble_rounds
   from public.player_state ps

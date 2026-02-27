@@ -58,11 +58,9 @@
     <section class="rounded-xl border border-soft bg-panel-soft p-4 space-y-4">
       <div class="moneyflip-row">
         <div class="moneyflip-row__head">
-          <img src="/ducks/walk1.png" alt="Duck villain" class="duck-face" />
-          <div>
-            <p class="text-xs uppercase tracking-wide text-muted">Villain (Duck)</p>
-            <p class="text-sm font-semibold">{{ result?.villain_hand_label || 'Waiting...' }}</p>
-          </div>
+          <p class="text-xs uppercase tracking-wide text-muted">Villain (Duck)</p>
+          <img :src="duckFaceSrc" alt="Duck villain" class="duck-face" :class="duckFaceClass" />
+          <p class="text-sm font-semibold">{{ result?.villain_hand_label || 'Waiting...' }}</p>
         </div>
         <div class="moneyflip-cards">
           <div v-for="(card, index) in villainCards" :key="`villain-${index}`" class="play-card-wrap">
@@ -124,19 +122,22 @@
           <p class="moneyflip-subrow__label">Your Hole Cards</p>
           <div class="moneyflip-cards moneyflip-cards--compact">
             <div class="play-card-wrap">
-              <div class="play-card" :class="cardColorClass(playerFirstCard)">
-                <span class="play-card__rank-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" class="play-card__rank-svg">
-                    <rect x="3.5" y="3.5" width="17" height="17" rx="4" ry="4" class="play-card__rank-bg" />
-                    <text x="12" y="16" text-anchor="middle" class="play-card__rank-text">{{ cardRank(playerFirstCard) }}</text>
-                  </svg>
-                </span>
-                <span class="play-card__suit-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" class="play-card__suit-svg">
-                    <path :d="cardSuitPath(playerFirstCard)" />
-                  </svg>
-                </span>
-              </div>
+              <template v-if="playerFirstCard">
+                <div class="play-card" :class="cardColorClass(playerFirstCard)">
+                  <span class="play-card__rank-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" class="play-card__rank-svg">
+                      <rect x="3.5" y="3.5" width="17" height="17" rx="4" ry="4" class="play-card__rank-bg" />
+                      <text x="12" y="16" text-anchor="middle" class="play-card__rank-text">{{ cardRank(playerFirstCard) }}</text>
+                    </svg>
+                  </span>
+                  <span class="play-card__suit-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" class="play-card__suit-svg">
+                      <path :d="cardSuitPath(playerFirstCard)" />
+                    </svg>
+                  </span>
+                </div>
+              </template>
+              <div v-else class="play-card-back">?</div>
             </div>
             <div class="play-card-wrap">
               <template v-if="selectedPlayerCard">
@@ -190,13 +191,13 @@
     </section>
 
     <section v-if="phase === 'resolved' && result" class="rounded-xl border border-soft bg-panel-soft p-4">
-      <p class="text-base font-semibold" :class="result.won ? 'text-green-700' : 'text-red-700'">
-        {{ result.won ? 'You beat the duck. Double payout.' : 'Duck wins this hand.' }}
+      <p class="text-base font-semibold" :class="result.won ? 'text-green-700' : (result.is_tie ? 'text-main' : 'text-red-700')">
+        {{ result.won ? 'You beat the duck. Double payout.' : (result.is_tie ? 'Split pot. Tie hand (push).' : 'Duck wins this hand.') }}
       </p>
       <p class="mt-1 text-sm text-muted">
         Wager: {{ formatNumber(result.wager) }} · Net:
-        <span :class="result.won ? 'text-green-700 font-semibold' : 'text-red-700 font-semibold'">
-          {{ result.won ? `+${formatNumber(result.net_change)}` : formatNumber(result.net_change) }}
+        <span :class="result.won ? 'text-green-700 font-semibold' : (result.is_tie ? 'text-main font-semibold' : 'text-red-700 font-semibold')">
+          {{ Number(result.net_change || 0) > 0 ? `+${formatNumber(result.net_change)}` : formatNumber(result.net_change) }}
         </span>
       </p>
       <button class="btn-secondary mt-3" type="button" @click="resetBoard">Play Again</button>
@@ -210,24 +211,32 @@
         </button>
       </div>
 
-      <div class="grid gap-2 sm:grid-cols-3">
+      <div class="grid gap-2 sm:grid-cols-4">
         <article class="rounded-lg border border-soft bg-white/70 p-3 text-sm">
           <p class="text-xs uppercase tracking-wide text-muted">Most Gambled</p>
           <p class="mt-1 font-semibold">{{ mostGambledRow?.display_name || 'None' }}</p>
           <p class="text-xs text-muted">{{ formatNumber(mostGambledRow?.season_gambled_coins || 0) }} coins</p>
         </article>
         <article class="rounded-lg border border-soft bg-white/70 p-3 text-sm">
-          <p class="text-xs uppercase tracking-wide text-muted">Best Net</p>
-          <p class="mt-1 font-semibold">{{ bestNetRow?.display_name || 'None' }}</p>
-          <p class="text-xs text-green-700" v-if="bestNetRow">
-            +{{ formatNumber(bestNetRow.season_gamble_net_coins || 0) }} coins
+          <p class="text-xs uppercase tracking-wide text-muted">Most Won</p>
+          <p class="mt-1 font-semibold">{{ mostWonRow?.display_name || 'None' }}</p>
+          <p class="text-xs text-green-700" v-if="mostWonRow">
+            {{ formatNumber(mostWonRow.season_gamble_won_coins || 0) }} coins
           </p>
           <p class="text-xs text-muted" v-else>--</p>
         </article>
         <article class="rounded-lg border border-soft bg-white/70 p-3 text-sm">
-          <p class="text-xs uppercase tracking-wide text-muted">Worst Net</p>
-          <p class="mt-1 font-semibold">{{ worstNetRow?.display_name || 'None' }}</p>
-          <p class="text-xs text-red-700" v-if="worstNetRow">{{ formatNumber(worstNetRow.season_gamble_net_coins || 0) }} coins</p>
+          <p class="text-xs uppercase tracking-wide text-muted">Most Lost</p>
+          <p class="mt-1 font-semibold">{{ mostLostRow?.display_name || 'None' }}</p>
+          <p class="text-xs text-red-700" v-if="mostLostRow">{{ formatNumber(mostLostRow.season_gamble_lost_coins || 0) }} coins</p>
+          <p class="text-xs text-muted" v-else>--</p>
+        </article>
+        <article class="rounded-lg border border-soft bg-white/70 p-3 text-sm">
+          <p class="text-xs uppercase tracking-wide text-muted">Top Net</p>
+          <p class="mt-1 font-semibold">{{ topNetRow?.display_name || 'None' }}</p>
+          <p class="text-xs" :class="Number(topNetRow?.season_gamble_net_coins || 0) >= 0 ? 'text-green-700' : 'text-red-700'" v-if="topNetRow">
+            {{ Number(topNetRow?.season_gamble_net_coins || 0) >= 0 ? '+' : '' }}{{ formatNumber(topNetRow?.season_gamble_net_coins || 0) }} coins
+          </p>
           <p class="text-xs text-muted" v-else>--</p>
         </article>
       </div>
@@ -241,6 +250,8 @@
               <th>#</th>
               <th>Player</th>
               <th>Gambled</th>
+              <th>Won</th>
+              <th>Lost</th>
               <th>Net</th>
               <th>Rounds</th>
             </tr>
@@ -250,13 +261,15 @@
               <td>{{ index + 1 }}</td>
               <td>{{ row.display_name }}</td>
               <td>{{ formatNumber(row.season_gambled_coins) }}</td>
+              <td class="text-green-700">{{ formatNumber(row.season_gamble_won_coins) }}</td>
+              <td class="text-red-700">{{ formatNumber(row.season_gamble_lost_coins) }}</td>
               <td :class="Number(row.season_gamble_net_coins || 0) >= 0 ? 'text-green-700' : 'text-red-700'">
                 {{ Number(row.season_gamble_net_coins || 0) >= 0 ? '+' : '' }}{{ formatNumber(row.season_gamble_net_coins) }}
               </td>
               <td>{{ formatNumber(row.season_gamble_rounds) }}</td>
             </tr>
             <tr v-if="!moneyFlipLeaderboardRows.length">
-              <td colspan="5" class="text-center text-muted">No gambling results yet this season.</td>
+              <td colspan="7" class="text-center text-muted">No gambling results yet this season.</td>
             </tr>
           </tbody>
         </table>
@@ -280,6 +293,8 @@ const moneyFlipLeaderboardRows = ref([])
 const leaderboardLoading = ref(false)
 const leaderboardError = ref(null)
 let phaseTimer = null
+let duckAnimTimer = null
+const duckAnimTick = ref(0)
 
 const snapshot = computed(() => store.state.game.snapshot || null)
 const gameError = computed(() => store.state.game.error)
@@ -291,19 +306,40 @@ const mostGambledRow = computed(() => {
   rows.sort((a, b) => Number(b.season_gambled_coins || 0) - Number(a.season_gambled_coins || 0))
   return rows[0] || null
 })
-const bestNetRow = computed(() => {
+const mostWonRow = computed(() => {
   const rows = moneyFlipLeaderboardRows.value
-    .filter((row) => Number(row.season_gamble_net_coins || 0) > 0)
+    .filter((row) => Number(row.season_gamble_won_coins || 0) > 0)
     .slice()
+  rows.sort((a, b) => Number(b.season_gamble_won_coins || 0) - Number(a.season_gamble_won_coins || 0))
+  return rows[0] || null
+})
+const mostLostRow = computed(() => {
+  const rows = moneyFlipLeaderboardRows.value
+    .filter((row) => Number(row.season_gamble_lost_coins || 0) > 0)
+    .slice()
+  rows.sort((a, b) => Number(b.season_gamble_lost_coins || 0) - Number(a.season_gamble_lost_coins || 0))
+  return rows[0] || null
+})
+const topNetRow = computed(() => {
+  const rows = moneyFlipLeaderboardRows.value.slice()
   rows.sort((a, b) => Number(b.season_gamble_net_coins || 0) - Number(a.season_gamble_net_coins || 0))
   return rows[0] || null
 })
-const worstNetRow = computed(() => {
-  const rows = moneyFlipLeaderboardRows.value
-    .filter((row) => Number(row.season_gamble_net_coins || 0) < 0)
-    .slice()
-  rows.sort((a, b) => Number(a.season_gamble_net_coins || 0) - Number(b.season_gamble_net_coins || 0))
-  return rows[0] || null
+const duckFaceSrc = computed(() => {
+  if (phase.value === 'resolved' && result.value) {
+    if (result.value.won) {
+      return (duckAnimTick.value % 2 === 0) ? '/ducks/cry1.png' : '/ducks/cry2.png'
+    }
+    if (!result.value.is_tie) {
+      return '/ducks/drag1.png'
+    }
+  }
+  return (duckAnimTick.value % 2 === 0) ? '/ducks/drag1.png' : '/ducks/drag2.png'
+})
+const duckFaceClass = computed(() => {
+  if (phase.value === 'resolved' && result.value?.won) return 'duck-face--crying'
+  if (phase.value === 'resolved' && result.value && !result.value.won && !result.value.is_tie) return 'duck-face--joy'
+  return ''
 })
 
 const canEditWager = computed(() => phase.value === 'idle')
@@ -337,6 +373,15 @@ const selectedPlayerCard = computed(() => {
 })
 const villainCards = computed(() => result.value?.villain_cards || round.value?.villain_hole || [])
 const boardCards = computed(() => {
+  if (result.value?.board?.length === 5) {
+    return [
+      result.value.board[0] || null,
+      result.value.board[1] || null,
+      result.value.board[2] || null,
+      result.value.board[3] || null,
+      result.value.board[4] || null,
+    ]
+  }
   if (!round.value) return [null, null, null, null, null]
   const flop = round.value.flop || []
   const turn = phase.value === 'dealingRiver' || phase.value === 'resolving' || phase.value === 'resolved'
@@ -354,7 +399,10 @@ const roundMessage = computed(() => {
   if (phase.value === 'dealingTurn') return 'Turn card dealt...'
   if (phase.value === 'dealingRiver') return 'River card dealt...'
   if (phase.value === 'resolving') return 'Comparing hands...'
-  if (phase.value === 'resolved') return result.value?.won ? 'Winning hand.' : 'Losing hand.'
+  if (phase.value === 'resolved') {
+    if (result.value?.is_tie) return 'Tie hand.'
+    return result.value?.won ? 'Winning hand.' : 'Losing hand.'
+  }
   return null
 })
 
@@ -512,6 +560,9 @@ function resetBoard() {
 }
 
 onMounted(async () => {
+  duckAnimTimer = window.setInterval(() => {
+    duckAnimTick.value += 1
+  }, 420)
   await store.dispatch('auth/initAuth')
   if (!store.state.game.snapshot) {
     await store.dispatch('game/bootstrapPlayer')
@@ -530,6 +581,10 @@ watch(playerCoins, (coins) => {
 
 onUnmounted(() => {
   clearPhaseTimer()
+  if (duckAnimTimer) {
+    window.clearInterval(duckAnimTimer)
+    duckAnimTimer = null
+  }
 })
 </script>
 
@@ -567,14 +622,25 @@ onUnmounted(() => {
 
 .moneyflip-row__head {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0;
+  text-align: center;
 }
 
 .duck-face {
-  width: 3.15rem;
-  height: 3.15rem;
+  width: 10.4rem;
+  height: 10.4rem;
+  margin: -1.9rem 0 -4.6rem;
   object-fit: contain;
+}
+
+.duck-face--crying {
+  animation: duck-cry-bob 0.7s ease-in-out infinite;
+}
+
+.duck-face--joy {
+  animation: duck-joy-spin 0.95s linear infinite;
 }
 
 .moneyflip-cards {
@@ -720,6 +786,17 @@ onUnmounted(() => {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #4e6994;
+}
+
+@keyframes duck-joy-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes duck-cry-bob {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(3px); }
+  100% { transform: translateY(0px); }
 }
 
 @keyframes card-drop-in {
