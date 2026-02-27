@@ -15,11 +15,6 @@
         <p v-if="!nameCustomized" class="mt-1 text-xs text-amber-700">
           Name setup required before playing.
         </p>
-        <p class="mt-3 text-xs uppercase tracking-wide text-muted">Performance</p>
-        <p class="mt-1 text-sm text-muted">Disable visual animations for smoother gameplay on low-spec devices.</p>
-        <button class="btn-secondary mt-2" type="button" @click="toggleAnimations">
-          {{ animationsDisabled ? 'Animations Off' : 'Animations On' }}
-        </button>
       </div>
 
       <form class="mt-4 grid gap-3" @submit.prevent="saveName">
@@ -47,6 +42,24 @@
 
       <p v-if="saveMessage" class="mt-3 text-sm text-green-700">{{ saveMessage }}</p>
       <p v-if="error" class="mt-3 text-sm text-red-700">{{ error }}</p>
+
+      <div class="mt-4 rounded-xl border border-soft bg-panel-soft p-4">
+        <p class="text-xs uppercase tracking-wide text-muted">Performance</p>
+        <p class="mt-1 text-sm text-muted">Disable visual animations for smoother gameplay on low-spec devices.</p>
+        <button
+          class="anim-switch mt-3"
+          :class="{ 'anim-switch--off': animationsDisabled }"
+          type="button"
+          role="switch"
+          :aria-checked="(!animationsDisabled).toString()"
+          @click="toggleAnimations"
+        >
+          <span class="anim-switch__thumb"></span>
+          <span class="anim-switch__label">
+            {{ animationsDisabled ? 'Performance Mode OFF' : 'Performance Mode ON' }}
+          </span>
+        </button>
+      </div>
 
       <div class="mt-5 border-t border-soft pt-4">
         <router-link class="btn-go-game w-full text-center" to="/game">
@@ -213,5 +226,54 @@ function toggleAnimations() {
 
 .btn-go-game:hover {
   background: linear-gradient(145deg, #67d183 0%, #44b467 58%, #319e56 100%);
+}
+
+.anim-switch {
+  position: relative;
+  width: 15.2rem;
+  height: 4.25rem;
+  border-radius: 999px;
+  border: 1px solid #2f9c52;
+  background: linear-gradient(145deg, #58c776 0%, #3caf61 58%, #2e9951 100%);
+  color: #ffffff;
+  font-size: 1.74rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 3.4rem;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.anim-switch--off {
+  border-color: #b63d3d;
+  background: linear-gradient(145deg, #da6262 0%, #cb4e4e 58%, #b84040 100%);
+}
+
+.anim-switch__thumb {
+  position: absolute;
+  left: calc(100% - 1.8rem - 0.24rem);
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transition: left 0.2s ease;
+}
+
+.anim-switch--off .anim-switch__thumb {
+  left: 0.24rem;
+}
+
+.anim-switch__label {
+  position: relative;
+  z-index: 1;
+  user-select: none;
+  white-space: nowrap;
+  font-size: 0.64rem;
+  letter-spacing: 0.03em;
 }
 </style>
