@@ -63,20 +63,23 @@
           <p class="text-sm font-semibold">{{ result?.villain_hand_label || 'Waiting...' }}</p>
         </div>
         <div class="moneyflip-cards">
-          <div v-for="(card, index) in villainCards" :key="`villain-${index}`" class="play-card-wrap">
-            <div class="play-card" :class="cardColorClass(card)">
-              <span class="play-card__rank-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" class="play-card__rank-svg">
-                  <rect x="3.5" y="3.5" width="17" height="17" rx="4" ry="4" class="play-card__rank-bg" />
-                  <text x="12" y="16" text-anchor="middle" class="play-card__rank-text">{{ cardRank(card) }}</text>
-                </svg>
-              </span>
-              <span class="play-card__suit-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" class="play-card__suit-svg">
-                  <path :d="cardSuitPath(card)" />
-                </svg>
-              </span>
-            </div>
+          <div v-for="(card, index) in villainDisplayCards" :key="`villain-${index}`" class="play-card-wrap">
+            <template v-if="card">
+              <div class="play-card" :class="[cardColorClass(card), { 'play-card--drop': shouldDropVillainCard(index) }]">
+                <span class="play-card__rank-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" class="play-card__rank-svg">
+                    <rect x="3.5" y="3.5" width="17" height="17" rx="4" ry="4" class="play-card__rank-bg" />
+                    <text x="12" y="16" text-anchor="middle" class="play-card__rank-text">{{ cardRank(card) }}</text>
+                  </svg>
+                </span>
+                <span class="play-card__suit-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" class="play-card__suit-svg">
+                    <path :d="cardSuitPath(card)" />
+                  </svg>
+                </span>
+              </div>
+            </template>
+            <div v-else class="play-card-back">?</div>
           </div>
         </div>
       </div>
@@ -292,6 +295,8 @@ const selectedPickIndex = ref(null)
 const moneyFlipLeaderboardRows = ref([])
 const leaderboardLoading = ref(false)
 const leaderboardError = ref(null)
+const revealedBoard = ref([null, null, null, null, null])
+const revealedVillainCount = ref(0)
 let phaseTimer = null
 let duckAnimTimer = null
 const duckAnimTick = ref(0)
@@ -371,26 +376,15 @@ const selectedPlayerCard = computed(() => {
   if (selectedPickIndex.value == null) return null
   return choiceCards.value[selectedPickIndex.value] || null
 })
-const villainCards = computed(() => result.value?.villain_cards || round.value?.villain_hole || [])
+const villainCards = computed(() => result.value?.villain_cards || [])
+const villainDisplayCards = computed(() => {
+  const all = villainCards.value
+  if (!all.length) return [null, null]
+  const shown = Math.max(0, Math.min(2, Number(revealedVillainCount.value || 0)))
+  return [all[0] || null, shown >= 2 ? (all[1] || null) : null]
+})
 const boardCards = computed(() => {
-  if (result.value?.board?.length === 5) {
-    return [
-      result.value.board[0] || null,
-      result.value.board[1] || null,
-      result.value.board[2] || null,
-      result.value.board[3] || null,
-      result.value.board[4] || null,
-    ]
-  }
-  if (!round.value) return [null, null, null, null, null]
-  const flop = round.value.flop || []
-  const turn = phase.value === 'dealingRiver' || phase.value === 'resolving' || phase.value === 'resolved'
-    ? round.value.turn
-    : null
-  const river = phase.value === 'resolving' || phase.value === 'resolved'
-    ? round.value.river
-    : null
-  return [flop[0] || null, flop[1] || null, flop[2] || null, turn || null, river || null]
+  return revealedBoard.value
 })
 
 const roundMessage = computed(() => {
@@ -398,6 +392,8 @@ const roundMessage = computed(() => {
   if (phase.value === 'pick') return 'Choose 1 of 3 cards for your second hole card.'
   if (phase.value === 'dealingTurn') return 'Turn card dealt...'
   if (phase.value === 'dealingRiver') return 'River card dealt...'
+  if (phase.value === 'revealVillainOne') return 'Duck reveals first card...'
+  if (phase.value === 'revealVillainTwo') return 'Duck reveals second card...'
   if (phase.value === 'resolving') return 'Comparing hands...'
   if (phase.value === 'resolved') {
     if (result.value?.is_tie) return 'Tie hand.'
@@ -492,6 +488,9 @@ async function startRound() {
     const nextRound = await store.dispatch('game/startMoneyFlip', { wager: normalizedWager() })
     if (!nextRound) throw new Error('Unable to start hand')
     round.value = nextRound
+    const flop = Array.isArray(nextRound.flop) ? nextRound.flop : []
+    revealedBoard.value = [flop[0] || null, flop[1] || null, flop[2] || null, null, null]
+    revealedVillainCount.value = 0
     phase.value = 'pick'
     void refreshMoneyFlipLeaderboard()
   } catch (error) {
@@ -506,13 +505,13 @@ function canPick(index) {
 }
 
 function shouldDropBoardCard(index) {
-  if (index === 3) {
-    return phase.value === 'dealingRiver' || phase.value === 'resolving' || phase.value === 'resolved'
-  }
-  if (index === 4) {
-    return phase.value === 'resolving' || phase.value === 'resolved'
-  }
+  if (index === 3) return !!boardCards.value[3]
+  if (index === 4) return !!boardCards.value[4]
   return false
+}
+
+function shouldDropVillainCard(index) {
+  return index < Number(revealedVillainCount.value || 0)
 }
 
 async function pickChoice(index) {
@@ -521,16 +520,44 @@ async function pickChoice(index) {
   selectedPickIndex.value = index
 
   try {
-    phase.value = 'dealingTurn'
-    await wait(1200)
-    phase.value = 'dealingRiver'
-    await wait(1200)
-    phase.value = 'resolving'
-
     const resolved = await store.dispatch('game/resolveMoneyFlip', {
       roundId: round.value.round_id,
       pickIndex: index,
     })
+    if (!resolved) throw new Error('Unable to resolve money flip.')
+
+    const finalBoard = Array.isArray(resolved.board) ? resolved.board : []
+
+    phase.value = 'dealingTurn'
+    revealedBoard.value = [
+      boardCards.value[0] || null,
+      boardCards.value[1] || null,
+      boardCards.value[2] || null,
+      finalBoard[3] || null,
+      null,
+    ]
+    await wait(1800)
+
+    phase.value = 'dealingRiver'
+    revealedBoard.value = [
+      boardCards.value[0] || null,
+      boardCards.value[1] || null,
+      boardCards.value[2] || null,
+      finalBoard[3] || null,
+      finalBoard[4] || null,
+    ]
+    await wait(1800)
+
+    phase.value = 'revealVillainOne'
+    revealedVillainCount.value = 1
+    await wait(1400)
+
+    phase.value = 'revealVillainTwo'
+    revealedVillainCount.value = 2
+    await wait(1400)
+
+    phase.value = 'resolving'
+    await wait(700)
     result.value = resolved
     phase.value = 'resolved'
     void refreshMoneyFlipLeaderboard()
@@ -557,6 +584,8 @@ function resetBoard() {
   clearPhaseTimer()
   round.value = null
   result.value = null
+  revealedBoard.value = [null, null, null, null, null]
+  revealedVillainCount.value = 0
   selectedPickIndex.value = null
   localError.value = null
   phase.value = 'idle'
