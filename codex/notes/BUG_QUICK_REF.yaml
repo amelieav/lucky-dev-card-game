@@ -1,0 +1,116 @@
+version: 1
+updated: 2026-02-27
+entries:
+  - id: B-001
+    status: fixed
+    area: deploy-routing-auth
+    trigger: "GitHub Pages redirect loop / 404"
+    fix: "Set correct Vite base path + matching auth redirect URLs"
+
+  - id: B-002
+    status: fixed
+    area: assets-remote
+    trigger: "Duck images work local, fail remote"
+    fix: "Use BASE_URL-aware duck asset helper"
+
+  - id: B-010
+    status: mitigated
+    area: auth-email
+    trigger: "Supabase /auth/v1/otp 500 magic link send failure"
+    fix: "Correct SMTP sender/domain configuration"
+
+  - id: B-020
+    status: fixed
+    area: rpc-timeout-open-pack
+    trigger: "open_pack timed out after 6s"
+    fix: "Retry/recovery behavior; keep restart script as fallback"
+
+  - id: B-021
+    status: fixed
+    area: rpc-timeout-lose-card
+    trigger: "lose_card timed out after 15s"
+    fix: "Retry/recovery alignment with robust RPC handling"
+
+  - id: B-022
+    status: fixed
+    area: rpc-pressure
+    trigger: "first-load timeout on leaderboard/lifetime fetch"
+    fix: "Reduce overlapping keep-alive/fetch pressure"
+
+  - id: B-030
+    status: fixed
+    area: passive-income-scope
+    trigger: "Passive income progresses off Game page"
+    fix: "Restrict progression triggers to Game flow only"
+
+  - id: B-031
+    status: fixed
+    area: mutation-pricing
+    trigger: "Mutation cost scaling/caps not applied as intended"
+    fix: "Adjust mutation curve and high-tier floor logic"
+
+  - id: B-040
+    status: fixed
+    area: money-flip-deal
+    trigger: "Unpicked cards not returned before turn/river"
+    fix: "Deal turn/river at resolve from shuffled remaining+unpicked pool"
+
+  - id: B-041
+    status: fixed
+    area: money-flip-tie
+    trigger: "Equal hands not refunded"
+    fix: "Push result net_change=0; no won/lost increment on ties"
+
+  - id: B-042
+    status: fixed
+    area: money-flip-evaluator
+    trigger: "Full house scored wrong (duck wins incorrectly)"
+    fix: "SQL evaluator gate changed from unique-rank check to valid-card-count check"
+
+  - id: B-043
+    status: fixed
+    area: money-flip-randomness
+    trigger: "Cards dealt in deterministic order"
+    fix: "Use row_number() over(order by random()) in deal CTEs"
+
+  - id: B-044
+    status: fixed
+    area: money-flip-reveal
+    trigger: "Duck card reveals too early / both at once"
+    fix: "Stage resolved preview + explicit reveal-count gating"
+
+  - id: B-045
+    status: fixed
+    area: money-flip-round-flow
+    trigger: "Cannot start new hand without Play Again"
+    fix: "Allow Start Hand from any state with hard round reset"
+
+  - id: B-050
+    status: fixed
+    area: login-background
+    trigger: "Background cut/split/green tint artifact"
+    fix: "Adjust layering; remove conflicting diffusion effects"
+
+  - id: B-051
+    status: fixed
+    area: card-text-layout
+    trigger: "Card names clipped"
+    fix: "Auto-scale title sizing + card layout adjustments"
+
+  - id: B-052
+    status: fixed
+    area: profile-toggle-ux
+    trigger: "Performance toggle placement/text visibility mismatch"
+    fix: "Move to requested profile order; adjust switch sizing/padding/label"
+
+  - id: B-060
+    status: fixed
+    area: money-flip-leaderboard
+    trigger: "Best/worst net labels confusing"
+    fix: "Track and display Most Won/Most Lost/Top Net separately"
+
+  - id: B-061
+    status: fixed
+    area: completion-history
+    trigger: "Completion ordering/timestamps looked incorrect"
+    fix: "Sort by first completion timestamp; correct backfill handling"

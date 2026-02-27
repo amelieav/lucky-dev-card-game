@@ -22,7 +22,7 @@
       <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Coins</p>
-          <p class="text-2xl font-semibold">{{ formatNumber(playerCoinsDisplay) }}</p>
+          <p class="text-2xl font-semibold">{{ formatNumber(visibleCoinsDisplay) }}</p>
         </article>
         <article class="rounded-xl border border-soft bg-panel-soft p-3">
           <p class="text-xs text-muted">Manual / Auto</p>
@@ -399,6 +399,7 @@ const manualPackPhase = ref('ready')
 const manualRevealDraw = ref(null)
 const displayedRecentDraws = ref([])
 const autoRollEnabled = ref(true)
+const coinsDisplayHold = ref(null)
 
 const REVEAL_READ_MS = 2750
 const MANUAL_OPENING_EXTRA_MS = 500
@@ -520,6 +521,10 @@ const playerCoinsDisplay = computed(() => {
     : liveNowMs.value
   const elapsedSeconds = Math.max(0, Math.floor((effectiveNowMs - lastTickMs) / 1000))
   return baseCoins + (elapsedSeconds * passiveRateCps.value)
+})
+const visibleCoinsDisplay = computed(() => {
+  if (coinsDisplayHold.value == null) return playerCoinsDisplay.value
+  return Number(coinsDisplayHold.value || 0)
 })
 const shopAffordabilityState = computed(() => {
   return {
@@ -1059,6 +1064,7 @@ async function runAutoRollTick() {
   try {
     await runAutoRollCycle()
   } catch (_) {
+    releaseVisibleCoins()
     manualPackPhase.value = 'ready'
     if (viewActive && autoUnlocked.value && autoRollEnabled.value) {
       scheduleAutoRoll(AUTO_LOOP_RETRY_MS)
@@ -1080,6 +1086,7 @@ async function runAutoRollCycle() {
   if (!viewActive) return
   const previousDraw = store.state.game.openResult
   manualRevealDraw.value = null
+  holdVisibleCoins()
   await store.dispatch('game/openPack', { source: 'auto' })
   if (!viewActive) return
 
@@ -1087,6 +1094,7 @@ async function runAutoRollCycle() {
   const hasFreshDraw = !store.state.game.error && draw && draw !== previousDraw
 
   if (!hasFreshDraw) {
+    releaseVisibleCoins()
     manualPackPhase.value = 'ready'
     if (autoUnlocked.value && autoRollEnabled.value) {
       const message = String(store.state.game.error || '')
@@ -1102,6 +1110,7 @@ async function runAutoRollCycle() {
   if (!viewActive) return
   manualRevealDraw.value = draw
   manualPackPhase.value = 'reveal'
+  releaseVisibleCoins()
   await sleep(REVEAL_READ_MS)
   manualPackPhase.value = 'ready'
   appendRecentDraw(draw)
@@ -1113,35 +1122,43 @@ async function runAutoRollCycle() {
 async function openManualPack() {
   if (!canOpenManual.value) return
 
-  const cycle = getCycleDurations(BALANCE_CONFIG.manualOpenCooldownMs)
-  const previousDraw = store.state.game.openResult
-  manualRevealDraw.value = null
-  await store.dispatch('game/openPack', {
-    source: 'manual',
-    pauseAutoProgress: autoUnlocked.value && !autoRollEnabled.value,
-  })
+  try {
+    const cycle = getCycleDurations(BALANCE_CONFIG.manualOpenCooldownMs)
+    const previousDraw = store.state.game.openResult
+    manualRevealDraw.value = null
+    holdVisibleCoins()
+    await store.dispatch('game/openPack', {
+      source: 'manual',
+      pauseAutoProgress: autoUnlocked.value && !autoRollEnabled.value,
+    })
 
-  const draw = store.state.game.openResult
-  const hasFreshDraw = !store.state.game.error && draw && draw !== previousDraw
+    const draw = store.state.game.openResult
+    const hasFreshDraw = !store.state.game.error && draw && draw !== previousDraw
 
-  if (!hasFreshDraw) {
+    if (!hasFreshDraw) {
+      releaseVisibleCoins()
+      manualPackPhase.value = 'ready'
+      if (autoUnlocked.value && autoRollEnabled.value) {
+        scheduleAutoRoll(0)
+      }
+      return
+    }
+
+    triggerLegendarySparkle(draw)
+    manualPackPhase.value = 'opening'
+    await sleep(cycle.openingMs + MANUAL_OPENING_EXTRA_MS)
+    manualRevealDraw.value = draw
+    manualPackPhase.value = 'reveal'
+    releaseVisibleCoins()
+    await sleep(REVEAL_READ_MS)
     manualPackPhase.value = 'ready'
+    appendRecentDraw(draw)
     if (autoUnlocked.value && autoRollEnabled.value) {
       scheduleAutoRoll(0)
     }
-    return
-  }
-
-  triggerLegendarySparkle(draw)
-  manualPackPhase.value = 'opening'
-  await sleep(cycle.openingMs + MANUAL_OPENING_EXTRA_MS)
-  manualRevealDraw.value = draw
-  manualPackPhase.value = 'reveal'
-  await sleep(REVEAL_READ_MS)
-  manualPackPhase.value = 'ready'
-  appendRecentDraw(draw)
-  if (autoUnlocked.value && autoRollEnabled.value) {
-    scheduleAutoRoll(0)
+  } catch (error) {
+    releaseVisibleCoins()
+    throw error
   }
 }
 
@@ -1180,6 +1197,14 @@ function setCardBookItemRef(termKey, el) {
 function noteUserActivity() {
   lastMouseActivityMs.value = Date.now()
   resetChickInactivityTarget()
+}
+
+function holdVisibleCoins() {
+  coinsDisplayHold.value = Number(playerCoinsDisplay.value || 0)
+}
+
+function releaseVisibleCoins() {
+  coinsDisplayHold.value = null
 }
 
 function bindActivityListeners() {
