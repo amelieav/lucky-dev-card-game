@@ -15,6 +15,11 @@
         <p v-if="!nameCustomized" class="mt-1 text-xs text-amber-700">
           Name setup required before playing.
         </p>
+        <p class="mt-3 text-xs uppercase tracking-wide text-muted">Performance</p>
+        <p class="mt-1 text-sm text-muted">Disable visual animations for smoother gameplay on low-spec devices.</p>
+        <button class="btn-secondary mt-2" type="button" @click="toggleAnimations">
+          {{ animationsDisabled ? 'Animations Off' : 'Animations On' }}
+        </button>
       </div>
 
       <form class="mt-4 grid gap-3" @submit.prevent="saveName">
@@ -74,12 +79,14 @@ import { useRouter } from 'vue-router'
 import { useStore } from 'vuex'
 import { NICK_PARTS_A, NICK_PARTS_B } from '../data/nicknameParts'
 import { validateDisplayName } from '../lib/displayNameValidation.mjs'
+import { loadAnimationsDisabled, setAnimationsDisabled } from '../lib/animationPrefs'
 
 const store = useStore()
 const router = useRouter()
 const saveMessage = ref('')
 const draftName = ref('')
 const edited = ref(false)
+const animationsDisabled = ref(false)
 
 const snapshot = computed(() => store.state.game.snapshot)
 const profile = computed(() => snapshot.value?.profile || {})
@@ -107,6 +114,7 @@ watch(
 )
 
 onMounted(async () => {
+  animationsDisabled.value = loadAnimationsDisabled()
   if (!snapshot.value) {
     await store.dispatch('game/bootstrapPlayer')
   }
@@ -161,6 +169,11 @@ async function handleSignOut() {
 
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)]
+}
+
+function toggleAnimations() {
+  animationsDisabled.value = !animationsDisabled.value
+  setAnimationsDisabled(animationsDisabled.value)
 }
 </script>
 

@@ -3,7 +3,10 @@ import VueFeather from 'vue-feather'
 import App from './App.vue'
 import store from './store'
 import router from './router'
+import { applyAnimationsDisabled, loadAnimationsDisabled } from './lib/animationPrefs'
 import './main.css'
+
+applyAnimationsDisabled(loadAnimationsDisabled())
 
 const app = createApp(App)
 

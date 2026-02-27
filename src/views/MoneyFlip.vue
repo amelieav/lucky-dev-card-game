@@ -347,10 +347,10 @@ const duckFaceClass = computed(() => {
   return ''
 })
 
-const canEditWager = computed(() => phase.value === 'idle')
+const canEditWager = computed(() => !actionLoading.value)
 const canStartRound = computed(() => {
   const wager = normalizedWager()
-  return phase.value === 'idle' && !actionLoading.value && wager > 0 && wager <= playerCoins.value
+  return !actionLoading.value && wager > 0 && wager <= playerCoins.value
 })
 
 const wagerPresets = computed(() => {
@@ -480,8 +480,13 @@ function wait(ms) {
 
 async function startRound() {
   if (!canStartRound.value) return
+  clearPhaseTimer()
   localError.value = null
+  phase.value = 'idle'
+  round.value = null
   result.value = null
+  revealedBoard.value = [null, null, null, null, null]
+  revealedVillainCount.value = 0
   selectedPickIndex.value = null
 
   try {

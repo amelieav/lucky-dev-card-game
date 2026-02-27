@@ -114,3 +114,10 @@ body {
   box-shadow: 0 0 0 2px rgba(128, 155, 235, 0.2);
   outline: 0;
 }
+
+html.animations-off *,
+html.animations-off *::before,
+html.animations-off *::after {
+  animation: none !important;
+  transition: none !important;
+}
