@@ -328,13 +328,13 @@ const topNetRow = computed(() => {
 const duckFaceSrc = computed(() => {
   if (phase.value === 'resolved' && result.value) {
     if (result.value.won) {
-      return (duckAnimTick.value % 2 === 0) ? '/ducks/cry1.png' : '/ducks/cry2.png'
+      return (duckAnimTick.value % 2 === 0) ? duckAsset('cry1.png') : duckAsset('cry2.png')
     }
     if (!result.value.is_tie) {
-      return '/ducks/drag1.png'
+      return duckAsset('drag1.png')
     }
   }
-  return (duckAnimTick.value % 2 === 0) ? '/ducks/drag1.png' : '/ducks/drag2.png'
+  return (duckAnimTick.value % 2 === 0) ? duckAsset('drag1.png') : duckAsset('drag2.png')
 })
 const duckFaceClass = computed(() => {
   if (phase.value === 'resolved' && result.value?.won) return 'duck-face--crying'
@@ -435,6 +435,10 @@ function cardRank(card) {
 
   const match = value.match(/([2-9TJQKA])/)
   return match?.[1] || '?'
+}
+
+function duckAsset(fileName) {
+  return `${import.meta.env.BASE_URL || '/'}ducks/${fileName}`
 }
 
 function cardSuit(card) {
@@ -636,11 +640,12 @@ onUnmounted(() => {
 }
 
 .duck-face--crying {
-  animation: duck-cry-bob 0.7s ease-in-out infinite;
+  animation: duck-cry-bob 0.1s ease-in-out infinite;
+  margin: -2.4rem 0 -3.2rem;
 }
 
 .duck-face--joy {
-  animation: duck-joy-spin 0.95s linear infinite;
+  animation: duck-joy-spin 0.55s linear infinite;
 }
 
 .moneyflip-cards {
