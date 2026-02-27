@@ -1680,13 +1680,6 @@ export function startLocalMoneyFlip(
 
   const record = readRecord(user, rng, nowMs)
   ensureSeasonState(record, nowMs)
-  applyAutoProgress(record, {
-    debugAllowed,
-    rng,
-    nowMs,
-    allowAutoDraws: false,
-  })
-  touchRecordActivity(record, { nowMs })
 
   if (Number(record.coins || 0) < normalizedWager) {
     throw new Error('Not enough coins for this wager')
@@ -1745,13 +1738,6 @@ export function resolveLocalMoneyFlip(
 
   const record = readRecord(user, rng, nowMs)
   ensureSeasonState(record, nowMs)
-  applyAutoProgress(record, {
-    debugAllowed,
-    rng,
-    nowMs,
-    allowAutoDraws: false,
-  })
-  touchRecordActivity(record, { nowMs })
 
   const round = normalizeMoneyFlipRound(record.money_flip_round, nowMs)
   if (!round || round.round_id !== normalizedRoundId) {

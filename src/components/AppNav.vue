@@ -73,7 +73,6 @@ const AFK_TIMEOUT_MS = 10_000
 const AFK_TICK_MS = 1_000
 const KEEP_ALIVE_MS = 5_000
 const OPEN_PACK_BUG_DOT_MS = 10_000
-const NAV_KEEP_ALIVE_SUSPENDED_ROUTES = new Set(['Game', 'MoneyFlip', 'Leaderboard', 'LifetimeCollection', 'DuckCave'])
 
 const isAuthed = computed(() => !!store.state.auth.user)
 const supportsLifetimeCollection = computed(() => Boolean(store.state.game.capabilities?.supports_lifetime_collection))
@@ -84,10 +83,7 @@ const duckCaveUnlocked = computed(() => {
   return rebirthCount >= 1 || activeLayer > 1
 })
 const duckCardsStolen = computed(() => Math.max(0, Number(store.state.game.duckTheftStats?.count || 0)))
-const shouldRunNavKeepAlive = computed(() => {
-  if (!isAuthed.value) return false
-  return !NAV_KEEP_ALIVE_SUSPENDED_ROUTES.has(String(route.name || ''))
-})
+const shouldRunNavKeepAlive = computed(() => false)
 const duckInfoOpen = ref(false)
 const duckInfoPinned = ref(false)
 const nowMs = ref(Date.now())

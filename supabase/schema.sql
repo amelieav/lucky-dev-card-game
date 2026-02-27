@@ -3890,8 +3890,6 @@ begin
 
   perform public.ensure_season_rollover();
   perform public.ensure_player_initialized(uid);
-  perform public.apply_auto_progress(uid);
-  perform public.touch_player_activity(uid, 15);
 
   return public.player_snapshot(uid);
 end;
@@ -4370,8 +4368,6 @@ begin
 
   perform public.ensure_season_rollover();
   perform public.ensure_player_initialized(uid);
-  perform public.apply_auto_progress(uid);
-  perform public.touch_player_activity(uid, 15);
 
   select * into state_row
   from public.player_state
