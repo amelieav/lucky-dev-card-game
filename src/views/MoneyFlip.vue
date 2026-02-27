@@ -386,7 +386,10 @@ const villainDisplayCards = computed(() => {
   const all = villainCards.value
   if (!all.length) return [null, null]
   const shown = Math.max(0, Math.min(2, Number(revealedVillainCount.value || 0)))
-  return [all[0] || null, shown >= 2 ? (all[1] || null) : null]
+  return [
+    shown >= 1 ? (all[0] || null) : null,
+    shown >= 2 ? (all[1] || null) : null,
+  ]
 })
 const boardCards = computed(() => {
   return revealedBoard.value

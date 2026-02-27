@@ -5393,6 +5393,7 @@ immutable
 as $$
 declare
   factor bigint := 1000000000;
+  valid_card_count int := 0;
   unique_ranks int[];
   rank_rows record;
   flush_suit text;
@@ -5415,10 +5416,13 @@ begin
     from unnest(coalesce(p_cards, '{}')) as card
     where card ~ '^[2-9TJQKA][SHDC]$'
   )
-  select coalesce(array_agg(distinct rank order by rank desc), '{}') into unique_ranks
+  select
+    count(*)::int,
+    coalesce(array_agg(distinct rank order by rank desc), '{}')
+  into valid_card_count, unique_ranks
   from parsed;
 
-  if coalesce(array_length(unique_ranks, 1), 0) < 5 then
+  if coalesce(valid_card_count, 0) < 5 then
     return 0;
   end if;
 
