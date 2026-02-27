@@ -290,6 +290,7 @@ const phase = ref('idle')
 const wagerInput = ref(1)
 const round = ref(null)
 const result = ref(null)
+const resolvedPreview = ref(null)
 const localError = ref(null)
 const selectedPickIndex = ref(null)
 const moneyFlipLeaderboardRows = ref([])
@@ -376,7 +377,11 @@ const selectedPlayerCard = computed(() => {
   if (selectedPickIndex.value == null) return null
   return choiceCards.value[selectedPickIndex.value] || null
 })
-const villainCards = computed(() => result.value?.villain_cards || [])
+const villainCards = computed(() => (
+  resolvedPreview.value?.villain_cards
+  || result.value?.villain_cards
+  || []
+))
 const villainDisplayCards = computed(() => {
   const all = villainCards.value
   if (!all.length) return [null, null]
@@ -485,6 +490,7 @@ async function startRound() {
   phase.value = 'idle'
   round.value = null
   result.value = null
+  resolvedPreview.value = null
   revealedBoard.value = [null, null, null, null, null]
   revealedVillainCount.value = 0
   selectedPickIndex.value = null
@@ -530,6 +536,7 @@ async function pickChoice(index) {
       pickIndex: index,
     })
     if (!resolved) throw new Error('Unable to resolve money flip.')
+    resolvedPreview.value = resolved
 
     const finalBoard = Array.isArray(resolved.board) ? resolved.board : []
 
@@ -568,6 +575,7 @@ async function pickChoice(index) {
     void refreshMoneyFlipLeaderboard()
   } catch (error) {
     phase.value = 'pick'
+    resolvedPreview.value = null
     localError.value = error?.message || 'Unable to resolve money flip.'
   }
 }
@@ -589,6 +597,7 @@ function resetBoard() {
   clearPhaseTimer()
   round.value = null
   result.value = null
+  resolvedPreview.value = null
   revealedBoard.value = [null, null, null, null, null]
   revealedVillainCount.value = 0
   selectedPickIndex.value = null
