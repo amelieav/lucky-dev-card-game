@@ -56,7 +56,7 @@
         >
           <span class="anim-switch__thumb"></span>
           <span class="anim-switch__label">
-            {{ animationsDisabled ? 'Performance Mode OFF' : 'Performance Mode ON' }}
+            {{ animationsDisabled ? 'Performance Mode ON' : 'Performance Mode OFF' }}
           </span>
         </button>
       </div>
